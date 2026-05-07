@@ -1,15 +1,13 @@
-BIN := miii
-INSTALL_DIR := /usr/local/bin
+.PHONY: dev build install clean
 
-.PHONY: build install uninstall
+dev:
+	tsx src/index.ts
 
 build:
-	go build -ldflags="-s -w" -o $(BIN) .
+	tsc
 
 install: build
-	cp $(BIN) $(INSTALL_DIR)/$(BIN)
-	@echo "installed → $(INSTALL_DIR)/$(BIN)"
+	npm link
 
-uninstall:
-	rm -f $(INSTALL_DIR)/$(BIN)
-	@echo "removed $(INSTALL_DIR)/$(BIN)"
+clean:
+	rm -rf dist

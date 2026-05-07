@@ -1,0 +1,39 @@
+import { render } from 'ink'
+import React from 'react'
+import minimist from 'minimist'
+import { loadConfig } from './config.js'
+import { SkillLoader } from './skills/loader.js'
+import { InputBar } from './tui/InputBar.js'
+import { welcome } from './tui/printer.js'
+
+export async function lazyInit(): Promise<void> {
+  const argv = minimist(process.argv.slice(2), {
+    string: ['model', 'url', 'provider', 'session'],
+    alias: { m: 'model', u: 'url', p: 'provider', s: 'session' },
+  })
+
+  const config = loadConfig()
+  if (argv.model) config.model = argv.model
+  if (argv.url) config.baseUrl = argv.url
+  if (argv.provider) config.provider = argv.provider as typeof config.provider
+
+  const skills = new SkillLoader()
+  await skills.loadAll()
+
+  // Print welcome banner to scrollback BEFORE Ink starts
+  welcome(config.provider, config.model, process.cwd())
+
+  // Move cursor to last terminal row so Ink renders at absolute bottom
+  process.stdout.write(`\x1b[${process.stdout.rows ?? 24};1H`)
+
+  // Ink renders ONLY the input bar (small footprint at bottom)
+  // patchConsole: true (default) ensures console.log output appears above Ink
+  const sessionName = (argv.session as string) || 'default'
+
+  const { waitUntilExit } = render(
+    React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName }),
+    { exitOnCtrlC: false }
+  )
+
+  await waitUntilExit()
+}

@@ -1,0 +1,235 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { useState, useMemo } from 'react';
+import { Box, Text, useInput } from 'ink';
+import { listFiles } from '../../files/ops.js';
+import { CommandPalette } from './CommandPalette.js';
+import { AtPicker } from './AtPicker.js';
+export function InputArea({ status, skills, cwd, onSubmit, onAbort }) {
+    const [lines, setLines] = useState(['']);
+    const [cursor, setCursor] = useState({ row: 0, col: 0 });
+    const [overlay, setOverlay] = useState('none');
+    const [overlayIdx, setOverlayIdx] = useState(0);
+    const [files] = useState(() => {
+        try {
+            return listFiles(cwd, true);
+        }
+        catch {
+            return [];
+        }
+    });
+    const isActive = status === 'idle';
+    const fullInput = lines.join('\n');
+    const commandQuery = useMemo(() => fullInput.startsWith('/') ? fullInput.slice(1) : '', [fullInput]);
+    const atQuery = useMemo(() => {
+        const line = lines[cursor.row] ?? '';
+        const before = line.slice(0, cursor.col);
+        const atIdx = before.lastIndexOf('@');
+        if (atIdx === -1)
+            return '';
+        const after = before.slice(atIdx + 1);
+        if (after.includes(' '))
+            return ''; // space breaks @ ref
+        return after;
+    }, [lines, cursor]);
+    const filteredCommands = useMemo(() => {
+        const q = commandQuery.toLowerCase();
+        if (!q)
+            return skills.slice(0, 8);
+        return skills.filter(s => s.name.includes(q) ||
+            `${s.ns}:${s.name}`.includes(q) ||
+            s.description.toLowerCase().includes(q)).slice(0, 8);
+    }, [commandQuery, skills]);
+    const filteredFiles = useMemo(() => {
+        if (!atQuery)
+            return files.slice(0, 8);
+        return files.filter(f => f.rel.toLowerCase().includes(atQuery.toLowerCase())).slice(0, 8);
+    }, [atQuery, files]);
+    const overlayCount = overlay === 'command' ? filteredCommands.length : filteredFiles.length;
+    function clearInput() {
+        setLines(['']);
+        setCursor({ row: 0, col: 0 });
+        setOverlay('none');
+        setOverlayIdx(0);
+    }
+    function appendChar(ch) {
+        setLines(prev => {
+            const next = [...prev];
+            const r = cursor.row;
+            next[r] = next[r].slice(0, cursor.col) + ch + next[r].slice(cursor.col);
+            return next;
+        });
+        setCursor(c => ({ ...c, col: c.col + ch.length }));
+    }
+    function deleteChar() {
+        const { row, col } = cursor;
+        setLines(prev => {
+            const next = [...prev];
+            if (col > 0) {
+                next[row] = next[row].slice(0, col - 1) + next[row].slice(col);
+            }
+            else if (row > 0) {
+                const prevLen = next[row - 1].length;
+                next.splice(row - 1, 2, next[row - 1] + next[row]);
+                setCursor({ row: row - 1, col: prevLen });
+                return next;
+            }
+            return next;
+        });
+        if (col > 0)
+            setCursor(c => ({ ...c, col: c.col - 1 }));
+    }
+    function selectCommand(skill) {
+        const name = skill.ns === 'default' ? `/${skill.name}` : `/${skill.ns}:${skill.name}`;
+        clearInput();
+        onSubmit(name);
+    }
+    function selectFile(file) {
+        setLines(prev => {
+            const next = [...prev];
+            const r = cursor.row;
+            const line = next[r];
+            const before = line.slice(0, cursor.col);
+            const atIdx = before.lastIndexOf('@');
+            if (atIdx === -1)
+                return prev;
+            const newLine = line.slice(0, atIdx) + '@' + file.rel + ' ' + line.slice(cursor.col);
+            next[r] = newLine;
+            setCursor({ row: r, col: atIdx + 1 + file.rel.length + 1 });
+            return next;
+        });
+        setOverlay('none');
+        setOverlayIdx(0);
+    }
+    useInput((input, key) => {
+        // ESC: close overlay, abort stream, or clear input
+        if (key.escape) {
+            if (overlay !== 'none') {
+                setOverlay('none');
+                setOverlayIdx(0);
+                return;
+            }
+            if (status !== 'idle') {
+                onAbort();
+                return;
+            }
+            clearInput();
+            return;
+        }
+        // Ctrl+C
+        if (key.ctrl && input === 'c') {
+            if (status !== 'idle') {
+                onAbort();
+            }
+            else {
+                process.exit(0);
+            }
+            return;
+        }
+        if (!isActive)
+            return;
+        // Overlay navigation
+        if (overlay !== 'none') {
+            if (key.upArrow) {
+                setOverlayIdx(i => Math.max(0, i - 1));
+                return;
+            }
+            if (key.downArrow) {
+                setOverlayIdx(i => Math.min(overlayCount - 1, i + 1));
+                return;
+            }
+            if (key.return) {
+                if (overlay === 'command' && filteredCommands[overlayIdx]) {
+                    selectCommand(filteredCommands[overlayIdx]);
+                }
+                else if (overlay === 'at' && filteredFiles[overlayIdx]) {
+                    selectFile(filteredFiles[overlayIdx]);
+                }
+                return;
+            }
+            // backspace/typing falls through to normal handling below
+        }
+        if (key.return) {
+            const text = fullInput.trim();
+            if (text) {
+                clearInput();
+                onSubmit(text);
+            }
+            return;
+        }
+        if (key.backspace || key.delete) {
+            deleteChar();
+            // Recompute overlay trigger for updated input
+            const r = cursor.row;
+            const col = cursor.col;
+            const prospectiveLine = col > 0
+                ? lines[r].slice(0, col - 1) + lines[r].slice(col)
+                : lines[r];
+            const prospectiveLines = [...lines];
+            prospectiveLines[r] = prospectiveLine;
+            const prospective = prospectiveLines.join('\n');
+            if (overlay === 'command' && !prospective.startsWith('/'))
+                setOverlay('none');
+            if (overlay === 'at') {
+                const before = prospectiveLine.slice(0, Math.max(0, col - 1));
+                const atIdx = before.lastIndexOf('@');
+                if (atIdx === -1)
+                    setOverlay('none');
+            }
+            return;
+        }
+        if (key.upArrow && overlay === 'none') {
+            setCursor(c => ({ row: Math.max(0, c.row - 1), col: 0 }));
+            return;
+        }
+        if (key.downArrow && overlay === 'none') {
+            setCursor(c => ({ row: Math.min(lines.length - 1, c.row + 1), col: 0 }));
+            return;
+        }
+        if (key.leftArrow) {
+            setCursor(c => ({ ...c, col: Math.max(0, c.col - 1) }));
+            return;
+        }
+        if (key.rightArrow) {
+            setCursor(c => ({ ...c, col: Math.min(lines[c.row]?.length ?? 0, c.col + 1) }));
+            return;
+        }
+        if (input && !key.ctrl && !key.meta) {
+            // Compute prospective new input to decide overlay
+            const r = cursor.row;
+            const col = cursor.col;
+            const prospectiveLine = lines[r].slice(0, col) + input + lines[r].slice(col);
+            const prospectiveLines = [...lines];
+            prospectiveLines[r] = prospectiveLine;
+            const prospective = prospectiveLines.join('\n');
+            appendChar(input);
+            // Open/update overlays
+            if (prospective.startsWith('/')) {
+                setOverlay('command');
+                setOverlayIdx(0);
+            }
+            else if (input === '@' || (overlay === 'at' && atQuery !== undefined)) {
+                setOverlay('at');
+                setOverlayIdx(0);
+            }
+            else if (overlay === 'command') {
+                setOverlay('none');
+            }
+        }
+    });
+    const isProcessing = status !== 'idle';
+    const borderColor = isProcessing ? 'yellow' : 'cyan';
+    const hint = isProcessing
+        ? 'esc to abort'
+        : overlay === 'command'
+            ? '↑↓ navigate  enter select  esc close'
+            : overlay === 'at'
+                ? '↑↓ navigate  enter select  esc close'
+                : '@ file  / command  enter send  ctrl+c exit';
+    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: skills, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsxs(Box, { borderStyle: "round", borderColor: borderColor, paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { color: borderColor, bold: true, children: '❯ ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: lines.length === 1 && !lines[0] ? (_jsx(Text, { color: isActive ? 'white' : 'gray', dimColor: isProcessing, children: isActive ? '█' : 'processing...' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
+                                        ? renderLineWithCursor(line, cursor.col, isActive)
+                                        : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: hint })] })] }));
+}
+function renderLineWithCursor(line, col, showCursor) {
+    return line.slice(0, col) + (showCursor ? '█' : '') + line.slice(col);
+}
+//# sourceMappingURL=InputArea.js.map
