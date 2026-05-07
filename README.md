@@ -12,6 +12,8 @@
 [![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
 [![node](https://img.shields.io/node/v/miii-cli)](https://nodejs.org)
 
+![miii demo](mii-cli.gif)
+
 ---
 
 ## What is miii?
