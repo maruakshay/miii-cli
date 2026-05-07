@@ -14,7 +14,7 @@ No cloud. No API keys. Just you, your terminal, and whatever model you pull.
 ## Install
 
 ```bash
-npm install -g miii
+npm install -g miii-cli
 ```
 
 Or run from source:
