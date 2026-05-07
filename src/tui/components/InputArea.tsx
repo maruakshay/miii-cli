@@ -16,6 +16,14 @@ const BUILTIN_COMMANDS: Skill[] = [
   { ns: 'builtin', name: 'session',  description: 'switch session  /session <name>' },
   { ns: 'builtin', name: 'exit',     description: 'exit miii' },
   { ns: 'builtin', name: 'list',     description: 'list all loaded skills' },
+  { ns: 'builtin', name: 'plan',     description: 'start planning mode  /plan [topic]' },
+]
+
+const PLANNING_COMMANDS: Skill[] = [
+  { ns: 'plan', name: 'next',      description: 'suggest next concrete steps' },
+  { ns: 'plan', name: 'breakdown', description: 'break current topic into subtasks' },
+  { ns: 'plan', name: 'review',    description: 'review and critique the plan so far' },
+  { ns: 'plan', name: 'done',      description: 'exit planning mode' },
 ]
 
 type Overlay = 'none' | 'command' | 'at'
@@ -24,11 +32,12 @@ interface Props {
   status: Status
   skills: Skill[]
   cwd: string
+  planningMode?: boolean
   onSubmit: (text: string) => void
   onAbort: () => void
 }
 
-export function InputArea({ status, skills, cwd, onSubmit, onAbort }: Props) {
+export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
@@ -42,8 +51,9 @@ export function InputArea({ status, skills, cwd, onSubmit, onAbort }: Props) {
   const allCommands = useMemo(() => {
     const builtinNames = new Set(BUILTIN_COMMANDS.map(b => b.name))
     const userSkills = skills.filter(s => !builtinNames.has(s.name))
-    return [...BUILTIN_COMMANDS, ...userSkills]
-  }, [skills])
+    const base = [...BUILTIN_COMMANDS, ...userSkills]
+    return planningMode ? [...PLANNING_COMMANDS, ...base] : base
+  }, [skills, planningMode])
 
   const isActive = status === 'idle'
   const fullInput = lines.join('\n')
@@ -245,6 +255,8 @@ export function InputArea({ status, skills, cwd, onSubmit, onAbort }: Props) {
     ? '↑↓ navigate  enter select  esc close'
     : overlay === 'at'
     ? '↑↓ navigate  enter select  esc close'
+    : planningMode
+    ? '📋 planning mode  / suggestions  enter send  /plan:done to exit'
     : '@ file  / command  enter send  ctrl+c exit'
 
   return (

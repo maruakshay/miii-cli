@@ -5,6 +5,7 @@ import { loadConfig } from './config.js'
 import { SkillLoader } from './skills/loader.js'
 import { InputBar } from './tui/InputBar.js'
 import { welcome } from './tui/printer.js'
+import { ensureOllama } from './llm/ollama.js'
 
 export async function lazyInit(): Promise<void> {
   const argv = minimist(process.argv.slice(2), {
@@ -16,6 +17,10 @@ export async function lazyInit(): Promise<void> {
   if (argv.model) config.model = argv.model
   if (argv.url) config.baseUrl = argv.url
   if (argv.provider) config.provider = argv.provider as typeof config.provider
+
+  if (config.provider === 'ollama') {
+    await ensureOllama(config.baseUrl)
+  }
 
   const skills = new SkillLoader()
   await skills.loadAll()
