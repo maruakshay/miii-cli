@@ -18,6 +18,15 @@ function indent(text: string, pad = '  '): string {
   return text.split('\n').map(l => pad + l).join('\n')
 }
 
+function stripMarkdown(s: string): string {
+  return s
+    .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6} /gm, '')
+}
+
 function formatContent(text: string): string {
   const lines = text.split('\n')
   let inCode = false
@@ -30,7 +39,7 @@ function formatContent(text: string): string {
     } else if (inCode) {
       out.push('  ' + yellow(line || ' '))
     } else {
-      out.push('  ' + (line || ''))
+      out.push('  ' + stripMarkdown(line || ''))
     }
   }
   return out.join('\n')
