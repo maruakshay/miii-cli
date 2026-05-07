@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, unlinkSync, mkdirSync, readdirSync, statSync, existsSync, } from 'fs';
+import { readFileSync, writeFileSync, unlinkSync, mkdirSync, readdirSync, statSync, existsSync, renameSync, } from 'fs';
 import { join, dirname, relative, extname } from 'path';
 const SKIP_DIRS = new Set([
     'node_modules', 'dist', 'build', '.git', '.next', '.nuxt', '.svelte-kit',
@@ -30,6 +30,13 @@ export function writeFile(p, content) {
 }
 export function deleteFile(p) {
     unlinkSync(p);
+}
+export function createDir(p) {
+    mkdirSync(p, { recursive: true });
+}
+export function moveFile(from, to) {
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(from, to);
 }
 export function listFiles(dir, recursive = false, cwd = process.cwd()) {
     if (!existsSync(dir))

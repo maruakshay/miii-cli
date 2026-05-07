@@ -1,6 +1,8 @@
 export declare function readFile(p: string): string;
 export declare function writeFile(p: string, content: string): void;
 export declare function deleteFile(p: string): void;
+export declare function createDir(p: string): void;
+export declare function moveFile(from: string, to: string): void;
 export interface FileEntry {
     name: string;
     path: string;

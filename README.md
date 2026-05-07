@@ -80,6 +80,9 @@ Type `/` to open the command palette.
 | `/session <name>` | Switch to or create a named session |
 | `/sessions` | List all sessions with message counts |
 | `/clear` | Clear current session history |
+| `/mkdir <path>` | Create a folder (and any missing parents) |
+| `/touch <path>` | Create an empty file |
+| `/mv <from> <to>` | Move or rename a file or folder |
 | `/list` | Show loaded skills |
 | `/exit` | Exit miii |
 
@@ -93,7 +96,9 @@ The model can call these tools automatically — no setup needed.
 |---|---|
 | `read_file` | Read any file |
 | `list_files` | List directory contents |
-| `edit_file` | Create or overwrite a file |
+| `edit_file` | Create or overwrite a file (auto-creates parent dirs) |
+| `create_folder` | Create a directory and any missing parents |
+| `move_file` | Move or rename a file or directory |
 | `delete_file` | Delete a file |
 | `run_command` | Run a shell command in the current directory |
 

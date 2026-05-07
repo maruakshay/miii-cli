@@ -1,4 +1,4 @@
-import { readFile, writeFile, deleteFile, listFiles } from '../files/ops.js'
+import { readFile, writeFile, deleteFile, listFiles, createDir, moveFile } from '../files/ops.js'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -56,6 +56,24 @@ export const tools: Tool[] = [
     execute: async ({ command }) => {
       const { stdout, stderr } = await run(command as string, { cwd: process.cwd() })
       return [stdout, stderr ? `stderr: ${stderr}` : ''].filter(Boolean).join('\n').trim()
+    },
+  },
+  {
+    name: 'create_folder',
+    description: 'Create a directory (and any missing parents)',
+    params: '{"path": "string"}',
+    execute: async ({ path }) => {
+      createDir(path as string)
+      return `created: ${path}`
+    },
+  },
+  {
+    name: 'move_file',
+    description: 'Move or rename a file or directory',
+    params: '{"from": "string", "to": "string"}',
+    execute: async ({ from, to }) => {
+      moveFile(from as string, to as string)
+      return `moved: ${from} → ${to}`
     },
   },
 ]

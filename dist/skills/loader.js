@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
+import { createDir, moveFile, writeFile } from '../files/ops.js';
 const builtin = [
     {
         name: 'caveman',
@@ -33,7 +34,7 @@ const builtin = [
         ns: 'default',
         description: 'Show available commands',
         execute: (_, ctx) => {
-            return 'Built-in skills: /caveman:caveman /caveman:normal /review /help\nType /list for all loaded skills.';
+            return 'Built-in: /review /mkdir /mv /touch /models /sessions /session /clear /list /help\nType /list for all loaded skills.';
         },
     },
     {
@@ -47,6 +48,43 @@ const builtin = [
         ns: 'default',
         description: 'Choose or pull Ollama models',
         // execute handled specially in App.tsx before skill lookup
+    },
+    {
+        name: 'mkdir',
+        ns: 'default',
+        description: 'Create a folder — usage: /mkdir <path>',
+        execute: (args) => {
+            const p = args.trim();
+            if (!p)
+                return 'Usage: /mkdir <path>';
+            createDir(p);
+            return `created: ${p}`;
+        },
+    },
+    {
+        name: 'mv',
+        ns: 'default',
+        description: 'Move or rename file/folder — usage: /mv <from> <to>',
+        execute: (args) => {
+            const parts = args.trim().split(/\s+/);
+            if (parts.length < 2)
+                return 'Usage: /mv <from> <to>';
+            const [from, to] = parts;
+            moveFile(from, to);
+            return `moved: ${from} → ${to}`;
+        },
+    },
+    {
+        name: 'touch',
+        ns: 'default',
+        description: 'Create empty file — usage: /touch <path>',
+        execute: (args) => {
+            const p = args.trim();
+            if (!p)
+                return 'Usage: /touch <path>';
+            writeFile(p, '');
+            return `created: ${p}`;
+        },
     },
 ];
 export class SkillLoader {

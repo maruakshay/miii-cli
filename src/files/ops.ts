@@ -1,6 +1,6 @@
 import {
   readFileSync, writeFileSync, unlinkSync,
-  mkdirSync, readdirSync, statSync, existsSync,
+  mkdirSync, readdirSync, statSync, existsSync, renameSync,
 } from 'fs'
 import { join, dirname, relative, extname } from 'path'
 
@@ -38,6 +38,15 @@ export function writeFile(p: string, content: string): void {
 
 export function deleteFile(p: string): void {
   unlinkSync(p)
+}
+
+export function createDir(p: string): void {
+  mkdirSync(p, { recursive: true })
+}
+
+export function moveFile(from: string, to: string): void {
+  mkdirSync(dirname(to), { recursive: true })
+  renameSync(from, to)
 }
 
 export interface FileEntry {
