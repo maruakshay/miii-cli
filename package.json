@@ -1,11 +1,29 @@
 {
   "name": "miii-cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
+  "description": "Local AI coding assistant for your terminal. No cloud. No API keys.",
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maruakshay/miii-cli.git"
+  },
+  "homepage": "https://github.com/maruakshay/miii-cli#readme",
+  "bugs": {
+    "url": "https://github.com/maruakshay/miii-cli/issues"
+  },
+  "keywords": [
+    "ai",
+    "cli",
+    "ollama",
+    "llm",
+    "coding-assistant",
+    "terminal",
+    "local-ai"
+  ],
   "bin": {
     "miii": "dist/index.js"
   },
