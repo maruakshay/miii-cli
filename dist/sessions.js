@@ -5,6 +5,11 @@ const SESSIONS_DIR = join(homedir(), '.config', 'miii', 'sessions');
 function ensureDir() {
     mkdirSync(SESSIONS_DIR, { recursive: true });
 }
+function sanitizeName(name) {
+    if (!/^[\w-]+$/.test(name))
+        throw new Error(`invalid session name: ${name}`);
+    return name;
+}
 export function listSessions() {
     ensureDir();
     return readdirSync(SESSIONS_DIR)
@@ -26,11 +31,12 @@ export function listSessions() {
 }
 export function loadSession(name) {
     ensureDir();
-    const p = join(SESSIONS_DIR, `${name}.json`);
+    const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`);
     if (!existsSync(p))
         return [];
     try {
-        return JSON.parse(readFileSync(p, 'utf-8'));
+        const parsed = JSON.parse(readFileSync(p, 'utf-8'));
+        return Array.isArray(parsed) ? parsed : [];
     }
     catch {
         return [];
@@ -38,10 +44,10 @@ export function loadSession(name) {
 }
 export function saveSession(name, messages) {
     ensureDir();
-    writeFileSync(join(SESSIONS_DIR, `${name}.json`), JSON.stringify(messages));
+    writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages));
 }
 export function deleteSession(name) {
-    const p = join(SESSIONS_DIR, `${name}.json`);
+    const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`);
     if (existsSync(p))
         unlinkSync(p);
 }

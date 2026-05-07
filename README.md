@@ -185,6 +185,23 @@ Works with LM Studio, vLLM, Groq, Together, and any other OpenAI-compatible serv
 
 ---
 
+## Security
+
+miii **0.1.5** addresses the following OWASP issues:
+
+| Issue | Fix |
+|---|---|
+| Path traversal (A01) | All file tool operations are now restricted to the current working directory via `guardPath()` |
+| Path traversal (A01) | `@filename` references validated against `cwd` before reading |
+| Path traversal (A01) | `/mv`, `/mkdir`, `/touch` commands restricted to `cwd` |
+| Path traversal (A01) | Session names sanitized to alphanumeric + hyphens only |
+| Injection (A03) | `run_command` tool enforces a 30-second execution timeout |
+| Insecure deserialization (A08) | Config loading whitelists allowed keys; session data validated as array |
+| XML injection | File paths in context XML attributes are properly escaped |
+| Configurable API key | OpenAI-compatible provider token now configurable via `apiKey` in config (no longer hardcoded) |
+
+---
+
 ## Source
 
 ```bash

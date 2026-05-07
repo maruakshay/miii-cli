@@ -9,18 +9,19 @@ import { stream } from '../llm/stream.js';
 import { listModels, pullModel } from '../llm/ollama.js';
 import { StreamParser } from '../parser/stream-parser.js';
 import { tools, getSystemPrompt } from '../tools/index.js';
-import { readFile } from '../files/ops.js';
+import { readFile, guardPath } from '../files/ops.js';
 import { generateId } from '../types.js';
 const MAX_TOOL_DEPTH = 6;
 const RENDER_THROTTLE_MS = 40;
-function expandAtRefs(text) {
+function expandAtRefs(text, cwd) {
     const refs = [...text.matchAll(/@([\w./\-]+)/g)];
     if (!refs.length)
         return { displayText: text, contextPrefix: '' };
     const parts = [];
     for (const m of refs) {
         try {
-            const content = readFile(m[1]);
+            const safePath = guardPath(m[1], cwd);
+            const content = readFile(safePath);
             parts.push(`<file path="${m[1]}">\n${content}\n</file>`);
         }
         catch { }
@@ -109,6 +110,7 @@ export function App({ config, skills, cwd }) {
             provider: config.provider,
             model: currentModelRef.current,
             baseUrl: config.baseUrl,
+            apiKey: config.apiKey,
             messages: contextMsgs,
             signal: abortRef.current.signal,
             onToken(token) {
@@ -243,7 +245,7 @@ export function App({ config, skills, cwd }) {
             return;
         }
         // Expand @file references
-        const { displayText, contextPrefix } = expandAtRefs(text);
+        const { displayText, contextPrefix } = expandAtRefs(text, cwd);
         addMsg('user', displayText);
         const llmContent = contextPrefix + text;
         await runLoop(buildContext({ role: 'user', content: llmContent }));

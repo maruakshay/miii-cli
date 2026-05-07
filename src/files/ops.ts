@@ -2,7 +2,16 @@ import {
   readFileSync, writeFileSync, unlinkSync,
   mkdirSync, readdirSync, statSync, existsSync, renameSync,
 } from 'fs'
-import { join, dirname, relative, extname } from 'path'
+import { join, dirname, relative, extname, resolve, sep } from 'path'
+
+export function guardPath(p: string, base = process.cwd()): string {
+  const abs = resolve(base, p)
+  const root = resolve(base)
+  if (abs !== root && !abs.startsWith(root + sep)) {
+    throw new Error(`path outside working directory: ${p}`)
+  }
+  return abs
+}
 
 const SKIP_DIRS = new Set([
   'node_modules', 'dist', 'build', '.git', '.next', '.nuxt', '.svelte-kit',

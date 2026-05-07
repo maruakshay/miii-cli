@@ -9,6 +9,11 @@ function ensureDir() {
   mkdirSync(SESSIONS_DIR, { recursive: true })
 }
 
+function sanitizeName(name: string): string {
+  if (!/^[\w-]+$/.test(name)) throw new Error(`invalid session name: ${name}`)
+  return name
+}
+
 export function listSessions(): Array<{ name: string; messageCount: number; updatedAt: number }> {
   ensureDir()
   return readdirSync(SESSIONS_DIR)
@@ -30,17 +35,20 @@ export function listSessions(): Array<{ name: string; messageCount: number; upda
 
 export function loadSession(name: string): ChatMessage[] {
   ensureDir()
-  const p = join(SESSIONS_DIR, `${name}.json`)
+  const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`)
   if (!existsSync(p)) return []
-  try { return JSON.parse(readFileSync(p, 'utf-8')) } catch { return [] }
+  try {
+    const parsed = JSON.parse(readFileSync(p, 'utf-8'))
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
 }
 
 export function saveSession(name: string, messages: ChatMessage[]) {
   ensureDir()
-  writeFileSync(join(SESSIONS_DIR, `${name}.json`), JSON.stringify(messages))
+  writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages))
 }
 
 export function deleteSession(name: string) {
-  const p = join(SESSIONS_DIR, `${name}.json`)
+  const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`)
   if (existsSync(p)) unlinkSync(p)
 }

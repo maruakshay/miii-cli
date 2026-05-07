@@ -72,7 +72,7 @@ export function ModelPicker({ models, current, loading, error, pull, onSelect, o
   })
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+    <Box flexDirection="column" flexGrow={1} borderStyle="round" borderColor="cyan" paddingX={1}>
       <Box marginBottom={1}>
         <Text bold color="cyan"> models </Text>
         {loading && <Text color="yellow"> loading...</Text>}

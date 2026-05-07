@@ -11,6 +11,7 @@ export interface Config {
     provider: 'ollama' | 'openai-compat';
     baseUrl: string;
     systemPrompt?: string;
+    apiKey?: string;
 }
 export interface ChatMessage {
     role: 'system' | 'user' | 'assistant';

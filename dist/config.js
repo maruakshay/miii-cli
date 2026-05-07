@@ -6,6 +6,7 @@ const defaults = {
     provider: 'ollama',
     baseUrl: 'http://localhost:11434',
 };
+const ALLOWED_KEYS = new Set(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey']);
 export function loadConfig() {
     const candidates = [
         join(process.cwd(), '.miii.json'),
@@ -14,7 +15,13 @@ export function loadConfig() {
     for (const p of candidates) {
         if (existsSync(p)) {
             try {
-                return { ...defaults, ...JSON.parse(readFileSync(p, 'utf-8')) };
+                const raw = JSON.parse(readFileSync(p, 'utf-8'));
+                const safe = {};
+                for (const key of ALLOWED_KEYS) {
+                    if (key in raw)
+                        safe[key] = raw[key];
+                }
+                return { ...defaults, ...safe };
             }
             catch { }
         }

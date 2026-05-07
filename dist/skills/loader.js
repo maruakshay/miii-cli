@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
-import { createDir, moveFile, writeFile } from '../files/ops.js';
+import { createDir, moveFile, writeFile, guardPath } from '../files/ops.js';
 const builtin = [
     {
         name: 'caveman',
@@ -57,7 +57,7 @@ const builtin = [
             const p = args.trim();
             if (!p)
                 return 'Usage: /mkdir <path>';
-            createDir(p);
+            createDir(guardPath(p));
             return `created: ${p}`;
         },
     },
@@ -70,7 +70,7 @@ const builtin = [
             if (parts.length < 2)
                 return 'Usage: /mv <from> <to>';
             const [from, to] = parts;
-            moveFile(from, to);
+            moveFile(guardPath(from), guardPath(to));
             return `moved: ${from} → ${to}`;
         },
     },
@@ -82,7 +82,7 @@ const builtin = [
             const p = args.trim();
             if (!p)
                 return 'Usage: /touch <path>';
-            writeFile(p, '');
+            writeFile(guardPath(p), '');
             return `created: ${p}`;
         },
     },

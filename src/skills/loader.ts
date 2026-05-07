@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join, basename } from 'path'
 import { homedir } from 'os'
-import { createDir, moveFile, writeFile } from '../files/ops.js'
+import { createDir, moveFile, writeFile, guardPath } from '../files/ops.js'
 
 export interface SkillContext {
   messages: Array<{ role: string; content: string }>
@@ -72,7 +72,7 @@ const builtin: Skill[] = [
     execute: (args) => {
       const p = args.trim()
       if (!p) return 'Usage: /mkdir <path>'
-      createDir(p)
+      createDir(guardPath(p))
       return `created: ${p}`
     },
   },
@@ -84,7 +84,7 @@ const builtin: Skill[] = [
       const parts = args.trim().split(/\s+/)
       if (parts.length < 2) return 'Usage: /mv <from> <to>'
       const [from, to] = parts
-      moveFile(from, to)
+      moveFile(guardPath(from), guardPath(to))
       return `moved: ${from} → ${to}`
     },
   },
@@ -95,7 +95,7 @@ const builtin: Skill[] = [
     execute: (args) => {
       const p = args.trim()
       if (!p) return 'Usage: /touch <path>'
-      writeFile(p, '')
+      writeFile(guardPath(p), '')
       return `created: ${p}`
     },
   },

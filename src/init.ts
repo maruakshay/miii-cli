@@ -23,9 +23,6 @@ export async function lazyInit(): Promise<void> {
   // Print welcome banner to scrollback BEFORE Ink starts
   welcome(config.provider, config.model, process.cwd())
 
-  // Move cursor to last terminal row so Ink renders at absolute bottom
-  process.stdout.write(`\x1b[${process.stdout.rows ?? 24};1H`)
-
   // Ink renders ONLY the input bar (small footprint at bottom)
   // patchConsole: true (default) ensures console.log output appears above Ink
   const sessionName = (argv.session as string) || 'default'

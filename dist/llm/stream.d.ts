@@ -3,6 +3,7 @@ export interface StreamConfig {
     provider: 'ollama' | 'openai-compat';
     model: string;
     baseUrl: string;
+    apiKey?: string;
     messages: ChatMessage[];
     signal?: AbortSignal;
     onToken: (token: string) => void;

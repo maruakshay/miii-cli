@@ -9,6 +9,8 @@ const defaults: Config = {
   baseUrl: 'http://localhost:11434',
 }
 
+const ALLOWED_KEYS = new Set<keyof Config>(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey'])
+
 export function loadConfig(): Config {
   const candidates = [
     join(process.cwd(), '.miii.json'),
@@ -17,7 +19,12 @@ export function loadConfig(): Config {
   for (const p of candidates) {
     if (existsSync(p)) {
       try {
-        return { ...defaults, ...JSON.parse(readFileSync(p, 'utf-8')) }
+        const raw: Record<string, unknown> = JSON.parse(readFileSync(p, 'utf-8'))
+        const safe: Partial<Config> = {}
+        for (const key of ALLOWED_KEYS) {
+          if (key in raw) (safe as Record<string, unknown>)[key] = raw[key]
+        }
+        return { ...defaults, ...safe }
       } catch {}
     }
   }

@@ -42,6 +42,9 @@ function walk(dir, out, cwd, depth = 0) {
         catch { }
     }
 }
+function xmlAttr(s) {
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 function build(input) {
     const parts = [];
     for (const p of input.paths) {
@@ -51,7 +54,7 @@ function build(input) {
         if (s.isFile()) {
             const content = safe(p);
             if (content !== null)
-                parts.push(`<file path="${relative(input.cwd, p)}">\n${content}\n</file>`);
+                parts.push(`<file path="${xmlAttr(relative(input.cwd, p))}">\n${content}\n</file>`);
         }
         else if (s.isDirectory()) {
             const files = [];
@@ -59,7 +62,7 @@ function build(input) {
             for (const f of files.slice(0, 100)) {
                 const content = safe(f);
                 if (content !== null)
-                    parts.push(`<file path="${relative(input.cwd, f)}">\n${content}\n</file>`);
+                    parts.push(`<file path="${xmlAttr(relative(input.cwd, f))}">\n${content}\n</file>`);
             }
         }
     }

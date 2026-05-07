@@ -4,6 +4,7 @@ export interface StreamConfig {
   provider: 'ollama' | 'openai-compat'
   model: string
   baseUrl: string
+  apiKey?: string
   messages: ChatMessage[]
   signal?: AbortSignal
   onToken: (token: string) => void
@@ -66,12 +67,12 @@ async function streamOllama(cfg: StreamConfig): Promise<void> {
 }
 
 async function streamOpenAI(cfg: StreamConfig): Promise<void> {
-  const { model, messages, baseUrl, signal, onToken, onDone, onError } = cfg
+  const { model, messages, baseUrl, apiKey, signal, onToken, onDone, onError } = cfg
   let res: Response
   try {
     res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer local' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey ?? 'local'}` },
       body: JSON.stringify({ model, messages, stream: true }),
       signal,
     })

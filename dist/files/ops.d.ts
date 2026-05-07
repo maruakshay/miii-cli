@@ -1,3 +1,4 @@
+export declare function guardPath(p: string, base?: string): string;
 export declare function readFile(p: string): string;
 export declare function writeFile(p: string, content: string): void;
 export declare function deleteFile(p: string): void;

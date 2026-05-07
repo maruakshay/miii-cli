@@ -1,8 +1,9 @@
-import { readFile, writeFile, deleteFile, listFiles, createDir, moveFile } from '../files/ops.js'
+import { readFile, writeFile, deleteFile, listFiles, createDir, moveFile, guardPath } from '../files/ops.js'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
 const run = promisify(exec)
+const EXEC_TIMEOUT_MS = 30_000
 
 export interface Tool {
   name: string
@@ -17,7 +18,7 @@ export const tools: Tool[] = [
     description: 'Read file contents',
     params: '{"path": "string"}',
     execute: async ({ path }) => {
-      try { return readFile(path as string) }
+      try { return readFile(guardPath(path as string)) }
       catch (e) { throw new Error(`read_file: ${e}`) }
     },
   },
@@ -26,7 +27,7 @@ export const tools: Tool[] = [
     description: 'List directory contents',
     params: '{"path": "string", "recursive": "boolean (optional)"}',
     execute: async ({ path, recursive = false }) => {
-      const entries = listFiles(path as string, recursive as boolean)
+      const entries = listFiles(guardPath(path as string), recursive as boolean)
       if (!entries.length) return '(empty)'
       return entries.map(e => `${e.type === 'dir' ? 'd' : 'f'}  ${e.rel}`).join('\n')
     },
@@ -36,7 +37,7 @@ export const tools: Tool[] = [
     description: 'Write/overwrite file content',
     params: '{"path": "string", "content": "string"}',
     execute: async ({ path, content }) => {
-      writeFile(path as string, content as string)
+      writeFile(guardPath(path as string), content as string)
       return `written: ${path}`
     },
   },
@@ -45,7 +46,7 @@ export const tools: Tool[] = [
     description: 'Delete a file',
     params: '{"path": "string"}',
     execute: async ({ path }) => {
-      deleteFile(path as string)
+      deleteFile(guardPath(path as string))
       return `deleted: ${path}`
     },
   },
@@ -54,7 +55,7 @@ export const tools: Tool[] = [
     description: 'Run a shell command in cwd',
     params: '{"command": "string"}',
     execute: async ({ command }) => {
-      const { stdout, stderr } = await run(command as string, { cwd: process.cwd() })
+      const { stdout, stderr } = await run(command as string, { cwd: process.cwd(), timeout: EXEC_TIMEOUT_MS })
       return [stdout, stderr ? `stderr: ${stderr}` : ''].filter(Boolean).join('\n').trim()
     },
   },
@@ -63,7 +64,7 @@ export const tools: Tool[] = [
     description: 'Create a directory (and any missing parents)',
     params: '{"path": "string"}',
     execute: async ({ path }) => {
-      createDir(path as string)
+      createDir(guardPath(path as string))
       return `created: ${path}`
     },
   },
@@ -72,7 +73,7 @@ export const tools: Tool[] = [
     description: 'Move or rename a file or directory',
     params: '{"from": "string", "to": "string"}',
     execute: async ({ from, to }) => {
-      moveFile(from as string, to as string)
+      moveFile(guardPath(from as string), guardPath(to as string))
       return `moved: ${from} → ${to}`
     },
   },

@@ -39,6 +39,10 @@ function walk(dir: string, out: string[], cwd: string, depth = 0): void {
   }
 }
 
+function xmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function build(input: Input): string {
   const parts: string[] = []
   for (const p of input.paths) {
@@ -46,13 +50,13 @@ function build(input: Input): string {
     const s = statSync(p)
     if (s.isFile()) {
       const content = safe(p)
-      if (content !== null) parts.push(`<file path="${relative(input.cwd, p)}">\n${content}\n</file>`)
+      if (content !== null) parts.push(`<file path="${xmlAttr(relative(input.cwd, p))}">\n${content}\n</file>`)
     } else if (s.isDirectory()) {
       const files: string[] = []
       walk(p, files, input.cwd)
       for (const f of files.slice(0, 100)) {
         const content = safe(f)
-        if (content !== null) parts.push(`<file path="${relative(input.cwd, f)}">\n${content}\n</file>`)
+        if (content !== null) parts.push(`<file path="${xmlAttr(relative(input.cwd, f))}">\n${content}\n</file>`)
       }
     }
   }

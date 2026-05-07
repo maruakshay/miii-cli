@@ -64,12 +64,12 @@ async function streamOllama(cfg) {
     }
 }
 async function streamOpenAI(cfg) {
-    const { model, messages, baseUrl, signal, onToken, onDone, onError } = cfg;
+    const { model, messages, baseUrl, apiKey, signal, onToken, onDone, onError } = cfg;
     let res;
     try {
         res = await fetch(`${baseUrl}/v1/chat/completions`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer local' },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey ?? 'local'}` },
             body: JSON.stringify({ model, messages, stream: true }),
             signal,
         });
