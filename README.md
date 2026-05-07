@@ -16,6 +16,12 @@
 
 ---
 
+## Why I built this
+
+I couldn't find a local CLI AI tool that actually worked well. The ones that existed were either too clunky to set up, required cloud APIs, or had terminal output that was genuinely painful to read — weird formatting, broken renders, text that ran together. I wanted something that felt as clean as Claude Code but ran entirely on local models. So I built miii.
+
+---
+
 ## What is miii?
 
 `miii` is a terminal-native AI coding assistant powered by local models via [Ollama](https://ollama.com) or any OpenAI-compatible API (LM Studio, vLLM, Groq, Together, etc.).

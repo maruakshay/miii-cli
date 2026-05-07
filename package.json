@@ -2,7 +2,7 @@
   "name": "miii-cli",
   "version": "0.1.5",
   "type": "module",
-  "description": "Local AI coding assistant for your terminal. No cloud. No API keys.",
+  "description": "Claude Code-level terminal workflows powered by your local models.",
   "license": "MIT",
   "engines": {
     "node": ">=18"

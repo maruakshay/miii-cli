@@ -1,4 +1,5 @@
 import { readFile, writeFile, deleteFile, listFiles, createDir, moveFile, guardPath } from '../files/ops.js';
+import { existsSync } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 const run = promisify(exec);
@@ -26,6 +27,18 @@ export const tools = [
             if (!entries.length)
                 return '(empty)';
             return entries.map(e => `${e.type === 'dir' ? 'd' : 'f'}  ${e.rel}`).join('\n');
+        },
+    },
+    {
+        name: 'create_file',
+        description: 'Create a new file — fails if file already exists',
+        params: '{"path": "string", "content": "string"}',
+        execute: async ({ path, content }) => {
+            const safe = guardPath(path);
+            if (existsSync(safe))
+                throw new Error(`file already exists: ${path}`);
+            writeFile(safe, content);
+            return `created: ${path}`;
         },
     },
     {
@@ -93,6 +106,9 @@ Rules:
 - Show the full content when creating or editing
 - Never delete without confirming
 - Be concise
-- Output plain text only — no markdown, no headers, no bold/italic, no bullet points with *, no fenced code blocks with backticks. Use indentation and plain labels instead. This is a CLI terminal, not a chat UI${extra}`;
+- Output plain text only — never use markdown formatting in your responses
+- No headers (no #, ##), no bold (**text**), no italic (*text*), no bullet points with *, no horizontal rules (---)
+- No fenced code blocks with backticks in prose — the ONLY exception is when writing actual file content (e.g. a .md file the user asked you to create or edit)
+- Use plain indentation and labels for structure. This is a terminal, not a chat UI${extra}`;
 }
 //# sourceMappingURL=index.js.map

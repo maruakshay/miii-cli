@@ -64,7 +64,7 @@ export function ModelPicker({ models, current, loading, error, pull, onSelect, o
             }
         }
     });
-    return (_jsxs(Box, { flexDirection: "column", borderStyle: "round", borderColor: "cyan", paddingX: 1, children: [_jsxs(Box, { marginBottom: 1, children: [_jsx(Text, { bold: true, color: "cyan", children: " models " }), loading && _jsx(Text, { color: "yellow", children: " loading..." }), error && _jsxs(Text, { color: "red", children: [" ", error] })] }), mode === 'list' && (_jsxs(_Fragment, { children: [models.map((m, i) => {
+    return (_jsxs(Box, { flexDirection: "column", flexGrow: 1, borderStyle: "round", borderColor: "cyan", paddingX: 1, children: [_jsxs(Box, { marginBottom: 1, children: [_jsx(Text, { bold: true, color: "cyan", children: " models " }), loading && _jsx(Text, { color: "yellow", children: " loading..." }), error && _jsxs(Text, { color: "red", children: [" ", error] })] }), mode === 'list' && (_jsxs(_Fragment, { children: [models.map((m, i) => {
                         const active = i === idx;
                         const isCurrent = m.name === current;
                         const age = new Date(m.modified_at).toLocaleDateString();
