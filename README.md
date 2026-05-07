@@ -1,13 +1,28 @@
-# miii
+# miii-cli
+
+> Local AI coding assistant for your terminal. No cloud. No API keys. No latency.
 
 ```
-╭─ MIII - CLI ───────────────────────────────────────────╮
-│  Claude Code-level terminal workflows, local models.   │
-╰────────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────────╮
+│  miii — Claude Code-level workflows, local models only  │
+╰─────────────────────────────────────────────────────────╯
 ```
 
-A fast, local AI coding assistant that runs entirely on your machine.
-No cloud. No API keys. Just you, your terminal, and whatever model you pull.
+[![npm version](https://img.shields.io/npm/v/miii-cli)](https://www.npmjs.com/package/miii-cli)
+[![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
+[![node](https://img.shields.io/node/v/miii-cli)](https://nodejs.org)
+
+---
+
+## What is miii?
+
+`miii` is a terminal-native AI coding assistant powered by local models via [Ollama](https://ollama.com) or any OpenAI-compatible API (LM Studio, vLLM, Groq, Together, etc.).
+
+- **Runs 100% locally** — your code never leaves your machine
+- **File-aware** — type `@filename` to inject any file into context instantly
+- **Tool-enabled** — reads, writes, edits, and runs shell commands autonomously
+- **Session memory** — conversations persist across launches
+- **Extensible** — add custom slash commands via Markdown or TypeScript skill files
 
 ---
 
@@ -17,104 +32,91 @@ No cloud. No API keys. Just you, your terminal, and whatever model you pull.
 npm install -g miii-cli
 ```
 
-Or run from source:
-
-```bash
-git clone https://github.com/maruakshay/miii-cli
-cd miii-cli
-npm install
-npm run build
-npm link
-```
+**Requirements:** Node.js 18+ and [Ollama](https://ollama.com) (or any OpenAI-compatible API)
 
 ---
 
 ## Quick start
 
 ```bash
-miii                        # start with default session
-miii --model codellama      # use a specific model
-miii --session myproject    # start in a named session
-miii -s work -m llama3.2    # short flags
+# Make sure Ollama is running
+ollama serve
+
+# Start miii
+miii
 ```
 
-On startup, miii opens the model picker — pick a model and start coding.
+On launch, miii opens a model picker. Select a model and start coding.
 
----
-
-## Commands
-
-Type `/` to open the command palette and browse everything.
-
-| Command | What it does |
-|---|---|
-| `/models` | Open model picker — switch or pull Ollama models |
-| `/clear` | Clear current session's chat history |
-| `/sessions` | List all saved sessions |
-| `/session <name>` | Switch to (or create) a named session |
-| `/list` | List all loaded skills |
-| `/exit` | Exit miii |
-
-Skills loaded from `~/.config/miii/skills/` appear in the palette too.
+```bash
+miii                          # default session
+miii --model codellama        # specific model
+miii --session myproject      # named session
+miii -s work -m llama3.2      # short flags
+```
 
 ---
 
 ## File context with `@`
 
-Type `@` anywhere in your message to fuzzy-find project files and inject their content into the LLM context.
+Type `@` anywhere in your message to fuzzy-search and inject project files into the model's context:
 
 ```
 ❯ review the auth logic in @src/auth/middleware.ts
+❯ refactor @src/utils/parser.ts to handle edge cases
 ```
 
-The file content is injected automatically — the model sees the full source.
+Automatically excluded: `node_modules`, `dist`, `.git`, lock files, binaries, images.
 
-Filtered automatically: `node_modules`, `dist`, `.git`, lock files, binaries, images.
+---
+
+## Built-in commands
+
+Type `/` to open the command palette.
+
+| Command | Description |
+|---|---|
+| `/models` | Switch or pull Ollama models |
+| `/session <name>` | Switch to or create a named session |
+| `/sessions` | List all sessions with message counts |
+| `/clear` | Clear current session history |
+| `/list` | Show loaded skills |
+| `/exit` | Exit miii |
+
+---
+
+## Built-in tools
+
+The model can call these tools automatically — no setup needed.
+
+| Tool | Description |
+|---|---|
+| `read_file` | Read any file |
+| `list_files` | List directory contents |
+| `edit_file` | Create or overwrite a file |
+| `delete_file` | Delete a file |
+| `run_command` | Run a shell command in the current directory |
+
+Tool calls chain up to 6 hops deep — the model reads, edits, runs, and verifies on its own.
 
 ---
 
 ## Sessions
 
-Every conversation is saved. Sessions persist between launches.
+Every conversation is saved and resumed automatically.
 
 ```bash
-miii                          # continues "default" session
-miii --session feature-auth   # continues or creates "feature-auth"
-```
-
-Mid-conversation:
-
-```
-/session feature-auth    switch sessions
-/sessions                see all sessions with message counts
-/clear                   wipe current session history
+miii                          # resumes "default" session
+miii --session feature-auth   # resumes or creates "feature-auth"
 ```
 
 Sessions stored at `~/.config/miii/sessions/`.
 
 ---
 
-## Tools
-
-miii has built-in file and shell tools the model can use automatically:
-
-| Tool | What it does |
-|---|---|
-| `read_file` | Read any file |
-| `list_files` | List directory contents |
-| `edit_file` | Create or overwrite a file |
-| `delete_file` | Delete a file |
-| `run_command` | Run a shell command in cwd |
-
-The model calls these via `<tool_call>` tags, miii executes them and feeds results back automatically — up to 6 hops deep.
-
----
-
 ## Skills
 
-Skills are custom commands you can invoke with `/`.
-
-Create `~/.config/miii/skills/review.md`:
+Skills are custom `/` commands. Create a Markdown file in `~/.config/miii/skills/`:
 
 ```markdown
 ---
@@ -126,7 +128,7 @@ Review the code I'm about to share. Look for bugs, edge cases, and improvements.
 Be direct and specific. No markdown.
 ```
 
-Then use it:
+Use it:
 
 ```
 /review
@@ -138,10 +140,11 @@ Skills can also be TypeScript files with an `execute` function for programmatic 
 
 ## Configuration
 
-miii looks for config in:
+Config is loaded from (in order):
 1. `.miii.json` in the current directory
 2. `~/.config/miii/config.json`
 
+**Ollama (default):**
 ```json
 {
   "model": "llama3.2",
@@ -150,8 +153,7 @@ miii looks for config in:
 }
 ```
 
-For OpenAI-compatible APIs:
-
+**OpenAI-compatible API:**
 ```json
 {
   "model": "gpt-4o",
@@ -160,14 +162,7 @@ For OpenAI-compatible APIs:
 }
 ```
 
-Works with any OpenAI-compatible server: LM Studio, vLLM, Groq, Together, etc.
-
----
-
-## Requirements
-
-- Node.js 18+
-- [Ollama](https://ollama.com) (or any OpenAI-compatible API)
+Works with LM Studio, vLLM, Groq, Together, and any other OpenAI-compatible server.
 
 ---
 
@@ -176,7 +171,19 @@ Works with any OpenAI-compatible server: LM Studio, vLLM, Groq, Together, etc.
 | Key | Action |
 |---|---|
 | `enter` | Send message |
-| `ctrl+c` | Abort streaming |
-| `ctrl+c` x2 | Exit |
-| `esc` | Close overlay / abort |
-| `↑ ↓` | Navigate command palette or file picker |
+| `ctrl+c` | Abort streaming response |
+| `ctrl+c` x2 | Exit miii |
+| `esc` | Close overlay or abort |
+| `↑ / ↓` | Navigate command palette or file picker |
+
+---
+
+## Source
+
+```bash
+git clone https://github.com/maruakshay/miii-cli
+cd miii-cli
+npm install
+npm run build
+npm link
+```

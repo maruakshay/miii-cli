@@ -1,9 +1,13 @@
 {
   "name": "miii-cli",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
-    "miii": "./dist/index.js"
+    "miii": "dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
@@ -12,17 +16,17 @@
     "link": "npm run build && npm link"
   },
   "dependencies": {
-    "ink": "^5.2.0",
-    "react": "^18.3.1",
     "diff": "^7.0.0",
     "glob": "^11.0.1",
-    "minimist": "^1.2.8"
+    "ink": "^5.2.0",
+    "minimist": "^1.2.8",
+    "react": "^18.3.1"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@types/react": "^18.3.1",
     "@types/diff": "^7.0.0",
     "@types/minimist": "^1.2.5",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.1",
     "tsx": "^4.19.1",
     "typescript": "^5.7.3"
   }
