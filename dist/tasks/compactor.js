@@ -66,4 +66,3 @@ export function fileEditContext(systemPrompt, goal, filePath, fileContent, instr
         },
     ];
 }
-//# sourceMappingURL=compactor.js.map

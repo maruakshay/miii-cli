@@ -51,4 +51,3 @@ export function deleteSession(name) {
     if (existsSync(p))
         unlinkSync(p);
 }
-//# sourceMappingURL=sessions.js.map

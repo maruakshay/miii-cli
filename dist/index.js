@@ -9,4 +9,3 @@ main().catch(err => {
     process.stderr.write(`fatal: ${err.message}\n`);
     process.exit(1);
 });
-//# sourceMappingURL=index.js.map

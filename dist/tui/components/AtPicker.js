@@ -16,4 +16,3 @@ export function AtPicker({ files, query, idx }) {
             return (_jsxs(Box, { paddingX: 1, children: [_jsxs(Text, { color: active ? 'cyan' : 'white', bold: active, children: [active ? '▶' : ' ', icon] }), _jsxs(Text, { color: active ? 'cyan' : f.type === 'dir' ? 'blue' : 'white', children: [' ', f.rel] }), f.size !== undefined && (_jsxs(Text, { color: "gray", dimColor: true, children: ['  ', f.size > 1024 ? `${(f.size / 1024).toFixed(0)}k` : `${f.size}b`] }))] }, f.path));
         }) }));
 }
-//# sourceMappingURL=AtPicker.js.map

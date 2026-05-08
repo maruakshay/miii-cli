@@ -214,4 +214,3 @@ Rules:
 - No fenced code blocks with backticks in prose
 - Use plain indentation and labels for structure. This is a terminal, not a chat UI${extra}`;
 }
-//# sourceMappingURL=index.js.map

@@ -125,4 +125,3 @@ export function MessageList({ messages, rows, cols, scrollOffset, streaming, thi
     const { visible, hiddenAbove, hiddenBelow } = useMemo(() => computeSlice(messages, availRows, scrollOffset, cols), [messages, availRows, scrollOffset, cols]);
     return (_jsxs(Box, { flexDirection: "column", flexGrow: 1, overflow: "hidden", paddingX: 1, children: [_jsx(ScrollHint, { hiddenAbove: hiddenAbove, hiddenBelow: hiddenBelow }), visible.length === 0 && hiddenAbove === 0 && (_jsx(Box, { paddingTop: 1, children: _jsx(Text, { color: "gray", dimColor: true, children: "start typing below \u2014 @ for files, / for commands" }) })), visible.map(msg => _jsx(MsgItem, { msg: msg, thinkingTick: thinkingTick }, msg.id)), streaming && scrollOffset === 0 && (_jsx(Box, { paddingLeft: 2, children: _jsx(Text, { color: "gray", dimColor: true, children: "\u258B" }) }))] }));
 }
-//# sourceMappingURL=MessageList.js.map

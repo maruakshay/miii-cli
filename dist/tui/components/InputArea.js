@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { listFiles } from '../../files/ops.js';
 import { CommandPalette } from './CommandPalette.js';
@@ -33,14 +33,8 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
     const [cursor, setCursor] = useState({ row: 0, col: 0 });
     const [overlay, setOverlay] = useState('none');
     const [overlayIdx, setOverlayIdx] = useState(0);
-    const [files] = useState(() => {
-        try {
-            return listFiles(cwd, true);
-        }
-        catch {
-            return [];
-        }
-    });
+    const [files, setFiles] = useState([]);
+    const filesLoadedRef = useRef(false);
     // built-ins first, then loaded skills (deduplicated by name)
     const allCommands = useMemo(() => {
         const builtinNames = new Set(BUILTIN_COMMANDS.map(b => b.name));
@@ -72,9 +66,17 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
     }, [commandQuery, allCommands]);
     const filteredFiles = useMemo(() => {
         if (!atQuery)
-            return files.slice(0, 8);
+            return [];
+        if (!filesLoadedRef.current) {
+            filesLoadedRef.current = true;
+            setTimeout(() => { try {
+                setFiles(listFiles(cwd, true));
+            }
+            catch { } }, 0);
+            return [];
+        }
         return files.filter(f => f.rel.toLowerCase().includes(atQuery.toLowerCase())).slice(0, 8);
-    }, [atQuery, files]);
+    }, [atQuery, files, cwd]);
     const overlayCount = overlay === 'command' ? filteredCommands.length : filteredFiles.length;
     function clearInput() {
         setLines(['']);
@@ -285,4 +287,3 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
 function renderLineWithCursor(line, col, showCursor) {
     return line.slice(0, col) + (showCursor ? '█' : '') + line.slice(col);
 }
-//# sourceMappingURL=InputArea.js.map

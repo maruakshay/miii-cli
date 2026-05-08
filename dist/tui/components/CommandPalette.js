@@ -24,4 +24,3 @@ export function CommandPalette({ skills, query, idx }) {
             return (_jsxs(Box, { paddingX: 1, children: [_jsxs(Text, { color: active ? 'cyan' : isBuiltin ? 'white' : 'magenta', bold: active, children: [active ? '▶ ' : '  ', name.padEnd(20)] }), _jsx(Text, { color: "gray", dimColor: true, children: s.description })] }, `${s.ns}:${s.name}`));
         }) }));
 }
-//# sourceMappingURL=CommandPalette.js.map

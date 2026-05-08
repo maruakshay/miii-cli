@@ -126,4 +126,3 @@ export class SkillLoader {
         return [...new Set(this.map.values())];
     }
 }
-//# sourceMappingURL=loader.js.map

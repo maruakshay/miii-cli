@@ -97,4 +97,3 @@ export function fmtSize(bytes) {
         return `${(bytes / 1e6).toFixed(0)}MB`;
     return `${(bytes / 1e3).toFixed(0)}KB`;
 }
-//# sourceMappingURL=ollama.js.map

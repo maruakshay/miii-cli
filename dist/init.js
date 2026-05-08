@@ -31,4 +31,3 @@ export async function lazyInit() {
     const { waitUntilExit } = render(React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName }), { exitOnCtrlC: false });
     await waitUntilExit();
 }
-//# sourceMappingURL=init.js.map

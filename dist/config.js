@@ -28,4 +28,3 @@ export function loadConfig() {
     }
     return { ...defaults };
 }
-//# sourceMappingURL=config.js.map

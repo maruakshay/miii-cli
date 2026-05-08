@@ -15,4 +15,3 @@ export function spawnWorker(name, data) {
         w.once('error', (e) => { w.terminate(); reject(e); });
     });
 }
-//# sourceMappingURL=spawn.js.map

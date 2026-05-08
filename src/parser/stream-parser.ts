@@ -1,5 +1,3 @@
-import { appendFileSync } from 'fs'
-
 export interface ParsedText { type: 'text'; content: string }
 export interface ParsedTool { type: 'tool_call'; content: string; toolName: string; toolArgs: Record<string, unknown> }
 export type ParsedItem = ParsedText | ParsedTool
@@ -12,12 +10,6 @@ const OLD_OPEN = '<old>'
 const OLD_CLOSE = '</old>'
 const NEW_OPEN = '<new>'
 const NEW_CLOSE = '</new>'
-const DEBUG_LOG = '/tmp/miii-debug.log'
-
-function dbg(msg: string) {
-  try { appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg}\n`) } catch {}
-}
-
 // Fix literal newlines/tabs inside JSON string values — common LLM output mistake
 function sanitizeJson(s: string): string {
   let result = ''
@@ -139,7 +131,6 @@ export class StreamParser {
         this.buf = this.buf.slice(end + CLOSE.length)
         this.inTool = false
         try {
-          dbg(`raw block (${raw.length} chars): ${raw.slice(0, 300)}`)
           // Extract named content blocks so file content never needs JSON escaping
           const extraArgs: Record<string, string> = {}
           let jsonPart = raw
@@ -162,10 +153,8 @@ export class StreamParser {
 
           const obj = parseToolJson(jsonPart)
           obj.args = { ...(obj.args ?? {}), ...extraArgs }
-          dbg(`parsed ok: name=${obj.name} args_keys=${Object.keys(obj.args).join(',')}`)
           out.push({ type: 'tool_call', content: raw, toolName: obj.name, toolArgs: obj.args })
-        } catch (e) {
-          dbg(`parse FAILED: ${e} | raw: ${raw.slice(0, 300)}`)
+        } catch {
           out.push({ type: 'text', content: `${OPEN}${raw}${CLOSE}` })
         }
       } else {

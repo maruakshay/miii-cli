@@ -78,4 +78,3 @@ export function listFiles(dir, recursive = false, cwd = process.cwd()) {
     }
     return entries;
 }
-//# sourceMappingURL=ops.js.map

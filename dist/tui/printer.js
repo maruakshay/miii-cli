@@ -111,4 +111,3 @@ export function divider() {
     const cols = process.stdout.columns ?? 80;
     process.stdout.write(`${gray('─'.repeat(cols))}\n`);
 }
-//# sourceMappingURL=printer.js.map

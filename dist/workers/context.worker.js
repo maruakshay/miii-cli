@@ -69,4 +69,3 @@ function build(input) {
     return parts.join('\n\n');
 }
 parentPort?.postMessage({ context: build(workerData) });
-//# sourceMappingURL=context.worker.js.map

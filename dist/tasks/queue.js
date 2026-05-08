@@ -70,4 +70,3 @@ export class MacroQueue {
     get size() { return this.tasks.length; }
     list() { return [...this.tasks]; }
 }
-//# sourceMappingURL=queue.js.map

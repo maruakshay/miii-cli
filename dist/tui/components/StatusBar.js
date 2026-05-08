@@ -12,4 +12,3 @@ export function StatusBar({ model, provider, status, tick }) {
 export function Divider({ cols }) {
     return _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) });
 }
-//# sourceMappingURL=StatusBar.js.map

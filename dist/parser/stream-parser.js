@@ -1,4 +1,3 @@
-import { appendFileSync } from 'fs';
 const OPEN = '<tool_call>';
 const CLOSE = '</tool_call>';
 const CTAG_OPEN = '<content>';
@@ -7,13 +6,6 @@ const OLD_OPEN = '<old>';
 const OLD_CLOSE = '</old>';
 const NEW_OPEN = '<new>';
 const NEW_CLOSE = '</new>';
-const DEBUG_LOG = '/tmp/miii-debug.log';
-function dbg(msg) {
-    try {
-        appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg}\n`);
-    }
-    catch { }
-}
 // Fix literal newlines/tabs inside JSON string values — common LLM output mistake
 function sanitizeJson(s) {
     let result = '';
@@ -157,7 +149,6 @@ export class StreamParser {
                 this.buf = this.buf.slice(end + CLOSE.length);
                 this.inTool = false;
                 try {
-                    dbg(`raw block (${raw.length} chars): ${raw.slice(0, 300)}`);
                     // Extract named content blocks so file content never needs JSON escaping
                     const extraArgs = {};
                     let jsonPart = raw;
@@ -181,11 +172,9 @@ export class StreamParser {
                     extractBlock(NEW_OPEN, NEW_CLOSE, 'new');
                     const obj = parseToolJson(jsonPart);
                     obj.args = { ...(obj.args ?? {}), ...extraArgs };
-                    dbg(`parsed ok: name=${obj.name} args_keys=${Object.keys(obj.args).join(',')}`);
                     out.push({ type: 'tool_call', content: raw, toolName: obj.name, toolArgs: obj.args });
                 }
-                catch (e) {
-                    dbg(`parse FAILED: ${e} | raw: ${raw.slice(0, 300)}`);
+                catch {
                     out.push({ type: 'text', content: `${OPEN}${raw}${CLOSE}` });
                 }
             }
@@ -218,4 +207,3 @@ export class StreamParser {
         return out;
     }
 }
-//# sourceMappingURL=stream-parser.js.map

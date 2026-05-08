@@ -18,6 +18,10 @@ import { MacroQueue, MicroQueue } from '../tasks/queue.js'
 import { TaskExecutor } from '../tasks/executor.js'
 import type { MacroTask, MicroTask } from '../tasks/types.js'
 import { generateId } from '../types.js'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const gitRun = promisify(exec)
 
 interface Props {
   config: Config
@@ -98,6 +102,21 @@ export function InputBar({ config, skills, cwd, session }: Props) {
   const currentModelRef = useRef(currentModel)
   const sessionNameRef = useRef(sessionName)
   const historyRef = useRef<ChatMessage[]>([])
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function scheduleSave() {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      saveSession(sessionNameRef.current, historyRef.current)
+      saveTimerRef.current = null
+    }, 2000)
+  }
+
+  function pushHistory(msg: ChatMessage) {
+    historyRef.current.push(msg)
+    if (historyRef.current.length > 100) historyRef.current = historyRef.current.slice(-100)
+    scheduleSave()
+  }
 
   useEffect(() => { currentModelRef.current = currentModel }, [currentModel])
   useEffect(() => { sessionNameRef.current = sessionName }, [sessionName])
@@ -153,33 +172,35 @@ export function InputBar({ config, skills, cwd, session }: Props) {
         }
 
         printer.assistantMsg(fullText)
-        historyRef.current.push({ role: 'assistant', content: fullText })
-        saveSession(sessionNameRef.current, historyRef.current)
+        pushHistory({ role: 'assistant', content: fullText })
 
         if (!pendingTools.length) { setStatus('idle'); return }
 
         setStatus('tool')
         const next: ChatMessage[] = [...msgs, { role: 'assistant', content: fullText }]
 
-        for (const tc of pendingTools) {
-          const tool = tools.find(t => t.name === tc.name)
-          setCurrentTool(tc.name)
-          if (tool) {
-            try {
-              const result = await tool.execute(tc.args)
-              printer.toolMsg(tc.name, result)
-              next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
-            } catch (e) {
-              const err = `Tool ${tc.name} error: ${e}`
-              printer.errorMsg(err)
-              next.push({ role: 'user', content: err })
+        try {
+          for (const tc of pendingTools) {
+            const tool = tools.find(t => t.name === tc.name)
+            setCurrentTool(tc.name)
+            if (tool) {
+              try {
+                const result = await tool.execute(tc.args)
+                printer.toolMsg(tc.name, result)
+                next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
+              } catch (e) {
+                const err = `Tool ${tc.name} error: ${e}`
+                printer.errorMsg(err)
+                next.push({ role: 'user', content: err })
+              }
+            } else {
+              printer.errorMsg(`unknown tool: ${tc.name}`)
+              next.push({ role: 'user', content: `unknown tool: ${tc.name}` })
             }
-          } else {
-            printer.errorMsg(`unknown tool: ${tc.name}`)
-            next.push({ role: 'user', content: `unknown tool: ${tc.name}` })
           }
+        } finally {
+          setCurrentTool(undefined)
         }
-        setCurrentTool(undefined)
 
         await runLoop(next, depth + 1, goal)
       },
@@ -354,18 +375,13 @@ export function InputBar({ config, skills, cwd, session }: Props) {
     setStatus('idle')
     printer.systemMsg(`refactor done — ${filePlan.length} file(s) processed`)
 
-    historyRef.current.push({ role: 'user', content: `[refactor] ${goal}` })
-    historyRef.current.push({ role: 'assistant', content: planText })
-    saveSession(sessionNameRef.current, historyRef.current)
+    pushHistory({ role: 'user', content: `[refactor] ${goal}` })
+    pushHistory({ role: 'assistant', content: planText })
   }, [config])
 
   // ─── git ───────────────────────────────────────────────────────────────────
 
   const handleGit = useCallback(async (sub: string) => {
-    const { exec } = await import('child_process')
-    const { promisify } = await import('util')
-    const gitRun = promisify(exec)
-
     const git = async (args: string): Promise<string> => {
       try {
         const { stdout, stderr } = await gitRun(`git ${args}`, { timeout: 15_000 })
@@ -411,8 +427,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
       const truncated = combined.length > 8000 ? combined.slice(0, 8000) + '\n…[truncated]' : combined
       const userMsg = `Review these git changes for bugs, issues, and improvements:\n\n${truncated}`
       printer.userMsg('/git review')
-      historyRef.current.push({ role: 'user', content: userMsg })
-      saveSession(sessionNameRef.current, historyRef.current)
+      pushHistory({ role: 'user', content: userMsg })
       await runLoop(buildContext())
       return
     }
@@ -455,6 +470,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
     if (cmd === '/models') { await openPicker(); return }
 
     if (cmd === '/new') {
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
       saveSession(sessionNameRef.current, historyRef.current)
       const newName = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
       historyRef.current = []
@@ -499,8 +515,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
         ? `I want to plan: ${topic}`
         : 'I want to start planning. Help me think through my goals step by step.'
       printer.userMsg(msg)
-      historyRef.current.push({ role: 'user', content: msg })
-      saveSession(sessionNameRef.current, historyRef.current)
+      pushHistory({ role: 'user', content: msg })
       await runLoop(buildContext())
       return
     }
@@ -522,8 +537,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
       const msg = subPrompts[subCmd]
       if (msg) {
         printer.userMsg(msg)
-        historyRef.current.push({ role: 'user', content: msg })
-        saveSession(sessionNameRef.current, historyRef.current)
+        pushHistory({ role: 'user', content: msg })
         await runLoop(buildContext())
         return
       }
@@ -544,6 +558,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
         printer.systemMsg(`current: ${sessionNameRef.current}`)
         return
       }
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
       saveSession(sessionNameRef.current, historyRef.current)
       historyRef.current = loadSession(arg)
       setSessionName(arg)
@@ -574,7 +589,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
         }
         if (skill.prompt) {
           printer.userMsg(skill.prompt)
-          historyRef.current.push({ role: 'user', content: skill.prompt })
+          pushHistory({ role: 'user', content: skill.prompt })
           await runLoop(buildContext())
           return
         }
@@ -585,8 +600,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
 
     const contextPrefix = buildAtContext(text)
     printer.userMsg(text)
-    historyRef.current.push({ role: 'user', content: contextPrefix + text })
-    saveSession(sessionNameRef.current, historyRef.current)
+    pushHistory({ role: 'user', content: contextPrefix + text })
     await runLoop(buildContext())
   }, [skills, runLoop, openPicker])
 

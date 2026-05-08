@@ -50,4 +50,3 @@ async function chatOpenAI(cfg) {
 function toError(e) {
     return e instanceof Error ? e : new Error(String(e));
 }
-//# sourceMappingURL=stream.js.map

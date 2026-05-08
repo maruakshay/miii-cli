@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import { Box, Text, useInput } from 'ink'
 import type { Key } from 'ink'
 import type { Status } from '../../types.js'
@@ -51,9 +51,8 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [overlayIdx, setOverlayIdx] = useState(0)
 
-  const [files] = useState<FileEntry[]>(() => {
-    try { return listFiles(cwd, true) } catch { return [] }
-  })
+  const [files, setFiles] = useState<FileEntry[]>([])
+  const filesLoadedRef = useRef(false)
 
   // built-ins first, then loaded skills (deduplicated by name)
   const allCommands = useMemo(() => {
@@ -92,9 +91,14 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
   }, [commandQuery, allCommands])
 
   const filteredFiles = useMemo(() => {
-    if (!atQuery) return files.slice(0, 8)
+    if (!atQuery) return []
+    if (!filesLoadedRef.current) {
+      filesLoadedRef.current = true
+      setTimeout(() => { try { setFiles(listFiles(cwd, true)) } catch {} }, 0)
+      return []
+    }
     return files.filter(f => f.rel.toLowerCase().includes(atQuery.toLowerCase())).slice(0, 8)
-  }, [atQuery, files])
+  }, [atQuery, files, cwd])
 
   const overlayCount = overlay === 'command' ? filteredCommands.length : filteredFiles.length
 
