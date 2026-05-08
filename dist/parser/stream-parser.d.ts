@@ -9,6 +9,10 @@ export interface ParsedTool {
     toolArgs: Record<string, unknown>;
 }
 export type ParsedItem = ParsedText | ParsedTool;
+export declare function extractBareToolCall(text: string): {
+    name: string;
+    args: Record<string, unknown>;
+} | null;
 export declare class StreamParser {
     private buf;
     private inTool;

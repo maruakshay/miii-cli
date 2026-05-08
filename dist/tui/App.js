@@ -1,13 +1,13 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Box, useStdout, useInput } from 'ink';
+import { Box, Text, useStdout, useInput } from 'ink';
 import { StatusBar, Divider } from './components/StatusBar.js';
 import { MessageList } from './components/MessageList.js';
 import { InputArea } from './components/InputArea.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { stream } from '../llm/stream.js';
 import { listModels, pullModel } from '../llm/ollama.js';
-import { StreamParser } from '../parser/stream-parser.js';
+import { StreamParser, extractBareToolCall } from '../parser/stream-parser.js';
 import { tools, getSystemPrompt } from '../tools/index.js';
 import { readFile, guardPath } from '../files/ops.js';
 import { generateId } from '../types.js';
@@ -54,9 +54,13 @@ export function App({ config, skills, cwd }) {
     const tokenBufRef = useRef('');
     const lastRenderRef = useRef(0);
     const messagesRef = useRef(messages);
+    const approvalResolveRef = useRef(null);
+    const [pendingApproval, setPendingApproval] = useState(null);
+    const pendingApprovalRef = useRef(pendingApproval);
     useEffect(() => { systemPromptRef.current = systemPrompt; }, [systemPrompt]);
     useEffect(() => { currentModelRef.current = currentModel; }, [currentModel]);
     useEffect(() => { messagesRef.current = messages; }, [messages]);
+    useEffect(() => { pendingApprovalRef.current = pendingApproval; }, [pendingApproval]);
     useEffect(() => {
         if (status === 'idle')
             return;
@@ -66,6 +70,21 @@ export function App({ config, skills, cwd }) {
     // Scroll keybindings — PageUp/PageDn scroll message history
     const SCROLL_STEP = 5;
     useInput((_input, key) => {
+        // approvalResolveRef is set synchronously in requestApproval — no useEffect needed
+        if (approvalResolveRef.current) {
+            const resolve = approvalResolveRef.current;
+            if (_input === 'y' || _input === 'Y') {
+                approvalResolveRef.current = null;
+                setPendingApproval(null);
+                resolve(true);
+            }
+            else if (_input === 'n' || _input === 'N' || key.escape) {
+                approvalResolveRef.current = null;
+                setPendingApproval(null);
+                resolve(false);
+            }
+            return;
+        }
         if (pickerOpen)
             return;
         if (key.pageUp) {
@@ -77,6 +96,17 @@ export function App({ config, skills, cwd }) {
     });
     const cols = stdout.columns ?? 80;
     const rows = stdout.rows ?? 24;
+    const APPROVAL_TOOLS = new Set(['delete_file']);
+    const requestApproval = useCallback((toolName, args) => {
+        return new Promise((resolve) => {
+            approvalResolveRef.current = resolve;
+            setPendingApproval({
+                toolName,
+                path: (args.path ?? args.from) ?? '',
+                content: args.content,
+            });
+        });
+    }, []);
     function addMsg(role, content, id) {
         const mid = id ?? generateId();
         setMessages(prev => [...prev, { id: mid, role, content, timestamp: Date.now() }]);
@@ -139,8 +169,18 @@ export function App({ config, skills, cwd }) {
                         pendingTools.push({ name: item.toolName, args: item.toolArgs });
                 }
                 if (!pendingTools.length) {
-                    setStatus('idle');
-                    return;
+                    // Fallback: LLM emitted bare JSON without <tool_call> wrapper
+                    const bare = extractBareToolCall(fullText);
+                    if (bare) {
+                        pendingTools.push(bare);
+                    }
+                    else {
+                        if (fullText.includes('{"name"')) {
+                            addMsg('tool', 'tool_call parse failed — could not extract tool call from model output');
+                        }
+                        setStatus('idle');
+                        return;
+                    }
                 }
                 setStatus('tool');
                 const next = [...contextMsgs, { role: 'assistant', content: fullText }];
@@ -148,6 +188,15 @@ export function App({ config, skills, cwd }) {
                     const tool = tools.find(t => t.name === tc.name);
                     const toolId = generateId();
                     if (tool) {
+                        if (APPROVAL_TOOLS.has(tc.name)) {
+                            const approved = await requestApproval(tc.name, tc.args);
+                            if (!approved) {
+                                const cancelled = `[${tc.name}] cancelled by user`;
+                                setMessages(prev => [...prev, { id: toolId, role: 'tool', content: cancelled, timestamp: Date.now() }]);
+                                next.push({ role: 'user', content: `Tool ${tc.name} was cancelled by user.` });
+                                continue;
+                            }
+                        }
                         try {
                             const result = await tool.execute(tc.args);
                             setMessages(prev => [...prev, { id: toolId, role: 'tool', content: `[${tc.name}]\n${result}`, timestamp: Date.now() }]);
@@ -256,6 +305,6 @@ export function App({ config, skills, cwd }) {
         tokenBufRef.current = '';
     }, []);
     const skillList = skills.list();
-    return (_jsxs(Box, { flexDirection: "column", height: rows, children: [_jsx(StatusBar, { model: currentModel, provider: config.provider, status: status, tick: tick }), _jsx(Divider, { cols: cols }), pickerOpen ? (_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } })) : (_jsx(MessageList, { messages: messages, rows: rows - 8, cols: cols, scrollOffset: scrollOffset, streaming: status === 'streaming' })), _jsx(Divider, { cols: cols }), _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, onSubmit: handleSubmit, onAbort: handleAbort })] }));
+    return (_jsxs(Box, { flexDirection: "column", height: rows, children: [_jsx(StatusBar, { model: currentModel, provider: config.provider, status: status, tick: tick }), _jsx(Divider, { cols: cols }), pickerOpen ? (_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } })) : (_jsx(MessageList, { messages: messages, rows: rows - 8, cols: cols, scrollOffset: scrollOffset, streaming: status === 'streaming' })), _jsx(Divider, { cols: cols }), pendingApproval && (_jsxs(Box, { flexDirection: "column", borderStyle: "round", borderColor: "yellow", paddingX: 1, marginBottom: 1, children: [_jsxs(Text, { color: "yellow", bold: true, children: ["Allow ", pendingApproval.toolName, "?"] }), _jsxs(Text, { children: ["  path: ", _jsx(Text, { color: "cyan", children: pendingApproval.path })] }), pendingApproval.content && (_jsx(Text, { color: "gray", dimColor: true, children: pendingApproval.content.split('\n').slice(0, 12).join('\n') })), _jsxs(Text, { color: "green", children: ["[y] approve  ", _jsx(Text, { color: "red", children: "[n] cancel" })] })] })), _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, onSubmit: handleSubmit, onAbort: handleAbort })] }));
 }
 //# sourceMappingURL=App.js.map

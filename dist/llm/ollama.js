@@ -1,3 +1,4 @@
+import { execSync, spawn } from 'child_process';
 export async function listModels(baseUrl) {
     const res = await fetch(`${baseUrl}/api/tags`);
     if (!res.ok)
@@ -39,6 +40,54 @@ export async function pullModel(baseUrl, name, onProgress, signal) {
     }
     finally {
         reader.releaseLock();
+    }
+}
+export async function ensureOllama(baseUrl) {
+    if (await isReachable(baseUrl))
+        return;
+    if (!isBinaryInstalled()) {
+        process.stderr.write('\nOllama not found. Install it:\n\n');
+        if (process.platform === 'darwin') {
+            process.stderr.write('  brew install ollama\n');
+            process.stderr.write('  — or download: https://ollama.ai/download\n');
+        }
+        else if (process.platform === 'linux') {
+            process.stderr.write('  curl -fsSL https://ollama.ai/install.sh | sh\n');
+        }
+        else {
+            process.stderr.write('  https://ollama.ai/download\n');
+        }
+        process.stderr.write('\nThen run: ollama serve\n\n');
+        process.exit(1);
+    }
+    process.stderr.write('Ollama not running — starting ollama serve...\n');
+    spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' }).unref();
+    for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        if (await isReachable(baseUrl)) {
+            process.stderr.write('Ollama ready.\n');
+            return;
+        }
+    }
+    process.stderr.write('Could not start Ollama. Run manually: ollama serve\n');
+    process.exit(1);
+}
+async function isReachable(baseUrl) {
+    try {
+        const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
+        return res.ok;
+    }
+    catch {
+        return false;
+    }
+}
+function isBinaryInstalled() {
+    try {
+        execSync(process.platform === 'win32' ? 'where ollama' : 'which ollama', { stdio: 'ignore' });
+        return true;
+    }
+    catch {
+        return false;
     }
 }
 export function fmtSize(bytes) {

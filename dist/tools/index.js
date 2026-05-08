@@ -43,11 +43,27 @@ export const tools = [
     },
     {
         name: 'edit_file',
-        description: 'Write/overwrite file content',
+        description: 'Overwrite entire file — use only for new files or full rewrites',
         params: '{"path": "string", "content": "string"}',
         execute: async ({ path, content }) => {
             writeFile(guardPath(path), content);
             return `written: ${path}`;
+        },
+    },
+    {
+        name: 'patch_file',
+        description: 'Replace an exact string in a file — use for targeted edits to existing files',
+        params: '{"path": "string", "old": "string", "new": "string"}',
+        execute: async ({ path, old: oldStr, new: newStr }) => {
+            const safe = guardPath(path);
+            const current = readFile(safe);
+            if (!current)
+                throw new Error(`file not found or empty: ${path}`);
+            if (!current.includes(oldStr))
+                throw new Error(`old text not found in ${path}`);
+            const updated = current.replace(oldStr, newStr);
+            writeFile(safe, updated);
+            return `patched: ${path}`;
         },
     },
     {
@@ -96,19 +112,39 @@ Use tools by emitting:
 {"name": "tool_name", "args": {...}}
 </tool_call>
 
+Put file content in named blocks (never inside JSON — avoids escaping errors):
+
+For edit_file / create_file use <content> block:
+<tool_call>
+{"name": "edit_file", "args": {"path": "src/foo.ts"}}
+<content>
+full file content here
+</content>
+</tool_call>
+
+For patch_file use <old> and <new> blocks:
+<tool_call>
+{"name": "patch_file", "args": {"path": "src/foo.ts"}}
+<old>
+exact text to replace
+</old>
+<new>
+replacement text
+</new>
+</tool_call>
+
 Tools:
 ${toolDocs}
 
 Rules:
-- Read existing files before editing them
-- For new files that do not exist yet, call edit_file directly — do not read first
-- read_file returns empty string for missing files, so a blank result means the file is new
-- Show the full content when creating or editing
+- To modify an existing file: use patch_file with the exact old text and new replacement — do NOT rewrite the whole file
+- To create a new file: use edit_file with full content in the <content> block
+- read_file before patch_file so you know the exact text to match
 - Never delete without confirming
 - Be concise
 - Output plain text only — never use markdown formatting in your responses
 - No headers (no #, ##), no bold (**text**), no italic (*text*), no bullet points with *, no horizontal rules (---)
-- No fenced code blocks with backticks in prose — the ONLY exception is when writing actual file content (e.g. a .md file the user asked you to create or edit)
+- No fenced code blocks with backticks in prose
 - Use plain indentation and labels for structure. This is a terminal, not a chat UI${extra}`;
 }
 //# sourceMappingURL=index.js.map

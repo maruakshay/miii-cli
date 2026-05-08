@@ -40,6 +40,7 @@ export function InputBar({ config, skills, cwd, session }) {
     const [currentModel, setCurrentModel] = useState(config.model);
     const [streamPreview, setStreamPreview] = useState('');
     const [sessionName, setSessionName] = useState(session);
+    const [planningMode, setPlanningMode] = useState(false);
     // picker opens on mount — force model selection every launch
     const [pickerOpen, setPickerOpen] = useState(true);
     const [pickerModels, setPickerModels] = useState([]);
@@ -207,17 +208,56 @@ export function InputBar({ config, skills, cwd, session }) {
             const newName = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
             historyRef.current = [];
             setSessionName(newName);
+            setPlanningMode(false);
+            systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`);
             printer.systemMsg(`new session → ${newName}`);
             return;
         }
         if (cmd === '/clear') {
             historyRef.current = [];
             saveSession(sessionNameRef.current, []);
+            setPlanningMode(false);
+            systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`);
             printer.systemMsg('chat cleared');
             return;
         }
         if (cmd === '/exit') {
             process.exit(0);
+        }
+        if (cmd === '/plan' || cmd.startsWith('/plan ')) {
+            const topic = cmd.slice(5).trim();
+            setPlanningMode(true);
+            systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}\n- MODE: Planning assistant. Help the user plan step by step. Ask clarifying questions. Suggest concrete next steps. Use plain text only — no markdown, no headers, no bold, no bullets with asterisks, no backtick blocks. Use numbered lists and plain indentation for structure.`);
+            const msg = topic
+                ? `I want to plan: ${topic}`
+                : 'I want to start planning. Help me think through my goals step by step.';
+            printer.userMsg(msg);
+            historyRef.current.push({ role: 'user', content: msg });
+            saveSession(sessionNameRef.current, historyRef.current);
+            await runLoop(buildContext());
+            return;
+        }
+        if (cmd === '/plan:done') {
+            setPlanningMode(false);
+            systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`);
+            printer.systemMsg('planning mode off');
+            return;
+        }
+        if (cmd.startsWith('/plan:')) {
+            const subCmd = cmd.slice(6);
+            const subPrompts = {
+                next: 'What are the next concrete steps I should take?',
+                breakdown: 'Can you break this down into specific subtasks?',
+                review: 'Please review and critique our plan so far. What are we missing?',
+            };
+            const msg = subPrompts[subCmd];
+            if (msg) {
+                printer.userMsg(msg);
+                historyRef.current.push({ role: 'user', content: msg });
+                saveSession(sessionNameRef.current, historyRef.current);
+                await runLoop(buildContext());
+                return;
+            }
         }
         if (cmd === '/sessions') {
             const sessions = listSessions();
@@ -284,6 +324,6 @@ export function InputBar({ config, skills, cwd, session }) {
     }, []);
     const skillList = skills.list();
     // ─── render ────────────────────────────────────────────────────────────────
-    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } }), _jsx(Divider, { cols: cols })] })) : streamPreview ? (_jsxs(_Fragment, { children: [_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), lastLines(streamPreview, PREVIEW_LINES).map((line, i) => (_jsx(Text, { color: "gray", wrap: "wrap", children: line || ' ' }, i)))] }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, onSubmit: handleSubmit, onAbort: handleAbort })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } }), _jsx(Divider, { cols: cols })] })) : streamPreview ? (_jsxs(_Fragment, { children: [_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), lastLines(streamPreview, PREVIEW_LINES).map((line, i) => (_jsx(Text, { color: "gray", wrap: "wrap", children: line || ' ' }, i)))] }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, onSubmit: handleSubmit, onAbort: handleAbort })] }));
 }
 //# sourceMappingURL=InputBar.js.map

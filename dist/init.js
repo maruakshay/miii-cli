@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import { SkillLoader } from './skills/loader.js';
 import { InputBar } from './tui/InputBar.js';
 import { welcome } from './tui/printer.js';
+import { ensureOllama } from './llm/ollama.js';
 export async function lazyInit() {
     const argv = minimist(process.argv.slice(2), {
         string: ['model', 'url', 'provider', 'session'],
@@ -17,6 +18,9 @@ export async function lazyInit() {
         config.baseUrl = argv.url;
     if (argv.provider)
         config.provider = argv.provider;
+    if (config.provider === 'ollama') {
+        await ensureOllama(config.baseUrl);
+    }
     const skills = new SkillLoader();
     await skills.loadAll();
     // Print welcome banner to scrollback BEFORE Ink starts

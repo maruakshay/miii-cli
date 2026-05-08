@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, useStdout, useInput } from 'ink'
+import { Box, Text, useStdout, useInput } from 'ink'
 import { StatusBar, Divider } from './components/StatusBar.js'
 import { MessageList } from './components/MessageList.js'
 import { InputArea } from './components/InputArea.js'
@@ -7,7 +7,7 @@ import { ModelPicker } from './components/ModelPicker.js'
 import { stream } from '../llm/stream.js'
 import { listModels, pullModel } from '../llm/ollama.js'
 import type { OllamaModel } from '../llm/ollama.js'
-import { StreamParser } from '../parser/stream-parser.js'
+import { StreamParser, extractBareToolCall } from '../parser/stream-parser.js'
 import { tools, getSystemPrompt } from '../tools/index.js'
 import { readFile, guardPath } from '../files/ops.js'
 import type { SkillLoader } from '../skills/loader.js'
@@ -66,10 +66,18 @@ export function App({ config, skills, cwd }: Props) {
   const tokenBufRef = useRef('')
   const lastRenderRef = useRef(0)
   const messagesRef = useRef(messages)
+  const approvalResolveRef = useRef<((ok: boolean) => void) | null>(null)
+  const [pendingApproval, setPendingApproval] = useState<{
+    toolName: string
+    path: string
+    content?: string
+  } | null>(null)
+  const pendingApprovalRef = useRef(pendingApproval)
 
   useEffect(() => { systemPromptRef.current = systemPrompt }, [systemPrompt])
   useEffect(() => { currentModelRef.current = currentModel }, [currentModel])
   useEffect(() => { messagesRef.current = messages }, [messages])
+  useEffect(() => { pendingApprovalRef.current = pendingApproval }, [pendingApproval])
 
   useEffect(() => {
     if (status === 'idle') return
@@ -80,6 +88,20 @@ export function App({ config, skills, cwd }: Props) {
   // Scroll keybindings — PageUp/PageDn scroll message history
   const SCROLL_STEP = 5
   useInput((_input, key) => {
+    // approvalResolveRef is set synchronously in requestApproval — no useEffect needed
+    if (approvalResolveRef.current) {
+      const resolve = approvalResolveRef.current
+      if (_input === 'y' || _input === 'Y') {
+        approvalResolveRef.current = null
+        setPendingApproval(null)
+        resolve(true)
+      } else if (_input === 'n' || _input === 'N' || key.escape) {
+        approvalResolveRef.current = null
+        setPendingApproval(null)
+        resolve(false)
+      }
+      return
+    }
     if (pickerOpen) return
     if (key.pageUp) {
       setScrollOffset(n => Math.min(n + SCROLL_STEP, Math.max(0, messages.length - 1)))
@@ -91,6 +113,19 @@ export function App({ config, skills, cwd }: Props) {
 
   const cols = stdout.columns ?? 80
   const rows = stdout.rows ?? 24
+
+  const APPROVAL_TOOLS = new Set(['delete_file'])
+
+  const requestApproval = useCallback((toolName: string, args: Record<string, unknown>): Promise<boolean> => {
+    return new Promise((resolve) => {
+      approvalResolveRef.current = resolve
+      setPendingApproval({
+        toolName,
+        path: ((args.path ?? args.from) as string) ?? '',
+        content: args.content as string | undefined,
+      })
+    })
+  }, [])
 
   function addMsg(role: Message['role'], content: string, id?: string): string {
     const mid = id ?? generateId()
@@ -154,7 +189,19 @@ export function App({ config, skills, cwd }: Props) {
           if (item.type === 'tool_call') pendingTools.push({ name: item.toolName, args: item.toolArgs })
         }
 
-        if (!pendingTools.length) { setStatus('idle'); return }
+        if (!pendingTools.length) {
+          // Fallback: LLM emitted bare JSON without <tool_call> wrapper
+          const bare = extractBareToolCall(fullText)
+          if (bare) {
+            pendingTools.push(bare)
+          } else {
+            if (fullText.includes('{"name"')) {
+              addMsg('tool', 'tool_call parse failed — could not extract tool call from model output')
+            }
+            setStatus('idle')
+            return
+          }
+        }
 
         setStatus('tool')
         const next: ChatMessage[] = [...contextMsgs, { role: 'assistant', content: fullText }]
@@ -163,6 +210,15 @@ export function App({ config, skills, cwd }: Props) {
           const tool = tools.find(t => t.name === tc.name)
           const toolId = generateId()
           if (tool) {
+            if (APPROVAL_TOOLS.has(tc.name)) {
+              const approved = await requestApproval(tc.name, tc.args)
+              if (!approved) {
+                const cancelled = `[${tc.name}] cancelled by user`
+                setMessages(prev => [...prev, { id: toolId, role: 'tool', content: cancelled, timestamp: Date.now() }])
+                next.push({ role: 'user', content: `Tool ${tc.name} was cancelled by user.` })
+                continue
+              }
+            }
             try {
               const result = await tool.execute(tc.args)
               setMessages(prev => [...prev, { id: toolId, role: 'tool', content: `[${tc.name}]\n${result}`, timestamp: Date.now() }])
@@ -298,6 +354,18 @@ export function App({ config, skills, cwd }: Props) {
         />
       )}
       <Divider cols={cols} />
+      {pendingApproval && (
+        <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginBottom={1}>
+          <Text color="yellow" bold>Allow {pendingApproval.toolName}?</Text>
+          <Text>  path: <Text color="cyan">{pendingApproval.path}</Text></Text>
+          {pendingApproval.content && (
+            <Text color="gray" dimColor>
+              {pendingApproval.content.split('\n').slice(0, 12).join('\n')}
+            </Text>
+          )}
+          <Text color="green">[y] approve  <Text color="red">[n] cancel</Text></Text>
+        </Box>
+      )}
       <InputArea
         status={status}
         skills={skillList}

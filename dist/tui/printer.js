@@ -13,6 +13,14 @@ const yellow = (s) => col(93, s);
 function indent(text, pad = '  ') {
     return text.split('\n').map(l => pad + l).join('\n');
 }
+function stripMarkdown(s) {
+    return s
+        .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/^#{1,6} /gm, '');
+}
 function formatContent(text) {
     const lines = text.split('\n');
     let inCode = false;
@@ -28,7 +36,7 @@ function formatContent(text) {
             out.push('  ' + yellow(line || ' '));
         }
         else {
-            out.push('  ' + (line || ''));
+            out.push('  ' + stripMarkdown(line || ''));
         }
     }
     return out.join('\n');

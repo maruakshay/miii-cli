@@ -12,8 +12,15 @@ const BUILTIN_COMMANDS = [
     { ns: 'builtin', name: 'session', description: 'switch session  /session <name>' },
     { ns: 'builtin', name: 'exit', description: 'exit miii' },
     { ns: 'builtin', name: 'list', description: 'list all loaded skills' },
+    { ns: 'builtin', name: 'plan', description: 'start planning mode  /plan [topic]' },
 ];
-export function InputArea({ status, skills, cwd, onSubmit, onAbort }) {
+const PLANNING_COMMANDS = [
+    { ns: 'plan', name: 'next', description: 'suggest next concrete steps' },
+    { ns: 'plan', name: 'breakdown', description: 'break current topic into subtasks' },
+    { ns: 'plan', name: 'review', description: 'review and critique the plan so far' },
+    { ns: 'plan', name: 'done', description: 'exit planning mode' },
+];
+export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort }) {
     const [lines, setLines] = useState(['']);
     const [cursor, setCursor] = useState({ row: 0, col: 0 });
     const [overlay, setOverlay] = useState('none');
@@ -30,8 +37,9 @@ export function InputArea({ status, skills, cwd, onSubmit, onAbort }) {
     const allCommands = useMemo(() => {
         const builtinNames = new Set(BUILTIN_COMMANDS.map(b => b.name));
         const userSkills = skills.filter(s => !builtinNames.has(s.name));
-        return [...BUILTIN_COMMANDS, ...userSkills];
-    }, [skills]);
+        const base = [...BUILTIN_COMMANDS, ...userSkills];
+        return planningMode ? [...PLANNING_COMMANDS, ...base] : base;
+    }, [skills, planningMode]);
     const isActive = status === 'idle';
     const fullInput = lines.join('\n');
     const commandQuery = useMemo(() => fullInput.startsWith('/') ? fullInput.slice(1) : '', [fullInput]);
@@ -257,7 +265,9 @@ export function InputArea({ status, skills, cwd, onSubmit, onAbort }) {
             ? '↑↓ navigate  enter select  esc close'
             : overlay === 'at'
                 ? '↑↓ navigate  enter select  esc close'
-                : '@ file  / command  enter send  ctrl+c exit';
+                : planningMode
+                    ? '📋 planning mode  / suggestions  enter send  /plan:done to exit'
+                    : '@ file  / command  enter send  ctrl+c exit';
     return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsxs(Box, { borderStyle: "round", borderColor: borderColor, paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { color: borderColor, bold: true, children: '❯ ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: lines.length === 1 && !lines[0] ? (_jsx(Text, { color: isActive ? 'white' : 'gray', dimColor: isProcessing, children: isActive ? '█' : 'processing...' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
                                         ? renderLineWithCursor(line, cursor.col, isActive)
                                         : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: hint })] })] }));
