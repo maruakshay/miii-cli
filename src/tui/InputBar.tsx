@@ -58,6 +58,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
   const [tick, setTick] = useState(0)
   const [currentModel, setCurrentModel] = useState(config.model)
   const [sessionName, setSessionName] = useState(session)
+  const [currentTool, setCurrentTool] = useState<string | undefined>()
   const [planningMode, setPlanningMode] = useState(false)
 
   // picker opens on mount — force model selection every launch
@@ -134,6 +135,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
 
         for (const tc of pendingTools) {
           const tool = tools.find(t => t.name === tc.name)
+          setCurrentTool(tc.name)
           if (tool) {
             try {
               const result = await tool.execute(tc.args)
@@ -149,6 +151,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
             next.push({ role: 'user', content: `unknown tool: ${tc.name}` })
           }
         }
+        setCurrentTool(undefined)
 
         await runLoop(next, depth + 1)
       },
@@ -357,7 +360,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
             <Box paddingLeft={2}>
               {status === 'thinking'
                 ? <><Text color="yellow">{SPARKLE[tick % SPARKLE.length]} </Text><Text color="gray" dimColor italic>{THINKING_PHRASES[Math.floor(tick / 62) % THINKING_PHRASES.length]}</Text></>
-                : <Text color="yellow" dimColor>running tool…</Text>
+                : <Text color="yellow" dimColor>⚙ running {currentTool ?? 'tool'}…</Text>
               }
             </Box>
           </Box>

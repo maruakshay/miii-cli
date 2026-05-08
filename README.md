@@ -107,10 +107,33 @@ The model can call these tools automatically — no setup needed.
 | `edit_file` | Create or overwrite a file (auto-creates parent dirs) |
 | `create_folder` | Create a directory and any missing parents |
 | `move_file` | Move or rename a file or directory |
-| `delete_file` | Delete a file |
+| `delete_file` | Delete a file (requires confirmation) |
 | `run_command` | Run a shell command in the current directory |
 
 Tool calls chain up to 6 hops deep — the model reads, edits, runs, and verifies on its own.
+
+---
+
+## Thinking indicator
+
+While miii processes your request, a rotating sparkle icon and sarcastic phrase appear so you always know something's happening:
+
+```
+miii
+  ✦ staring into the abyss (it blinked)…
+```
+
+The phrase rotates every 5 seconds. When a tool call is in flight, the display updates to show exactly which tool is running:
+
+```
+miii
+  ⚙ running read_file…
+
+miii
+  ⚙ running run_command…
+```
+
+Each tool in a chain updates live as execution moves through them.
 
 ---
 
@@ -170,8 +193,9 @@ Config is loaded from (in order):
 ```json
 {
   "model": "gpt-4o",
-  "provider": "openai",
-  "baseUrl": "https://api.openai.com/v1"
+  "provider": "openai-compat",
+  "baseUrl": "https://api.openai.com/v1",
+  "apiKey": "sk-..."
 }
 ```
 
@@ -184,27 +208,38 @@ Works with LM Studio, vLLM, Groq, Together, and any other OpenAI-compatible serv
 | Key | Action |
 |---|---|
 | `enter` | Send message |
-| `ctrl+c` | Abort streaming response |
+| `ctrl+c` | Abort current request |
 | `ctrl+c` x2 | Exit miii |
-| `esc` | Close overlay or abort |
+| `esc` | Close overlay or cancel |
 | `↑ / ↓` | Navigate command palette or file picker |
 
 ---
 
 ## Security
 
-miii **0.1.5** addresses the following OWASP issues:
+miii **0.1.5+** addresses the following OWASP issues:
 
 | Issue | Fix |
 |---|---|
-| Path traversal (A01) | All file tool operations are now restricted to the current working directory via `guardPath()` |
+| Path traversal (A01) | All file tool operations restricted to cwd via `guardPath()` |
 | Path traversal (A01) | `@filename` references validated against `cwd` before reading |
 | Path traversal (A01) | `/mv`, `/mkdir`, `/touch` commands restricted to `cwd` |
 | Path traversal (A01) | Session names sanitized to alphanumeric + hyphens only |
 | Injection (A03) | `run_command` tool enforces a 30-second execution timeout |
 | Insecure deserialization (A08) | Config loading whitelists allowed keys; session data validated as array |
 | XML injection | File paths in context XML attributes are properly escaped |
-| Configurable API key | OpenAI-compatible provider token now configurable via `apiKey` in config (no longer hardcoded) |
+| Configurable API key | OpenAI-compatible provider token configurable via `apiKey` in config |
+
+`delete_file` requires explicit user confirmation (`y/n`) before executing.
+
+---
+
+## What's new in 0.2.0
+
+- **No streaming** — responses delivered in full, no partial renders or flickering
+- **Thinking indicator** — rotating sarcastic phrases + sparkle icon while model processes
+- **Tool status** — live indicator when a tool call is in flight
+- **Status renamed** — internal status `streaming` → `thinking` throughout
 
 ---
 
