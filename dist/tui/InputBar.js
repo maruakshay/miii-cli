@@ -9,6 +9,7 @@ import { listModels, pullModel } from '../llm/ollama.js';
 import { StreamParser } from '../parser/stream-parser.js';
 import { tools, getSystemPrompt } from '../tools/index.js';
 import { readFile } from '../files/ops.js';
+import { resolve } from 'path';
 import * as printer from './printer.js';
 import { loadSession, saveSession, listSessions } from '../sessions.js';
 import { shouldCompact, compactContext, fileEditContext } from '../tasks/compactor.js';
@@ -62,6 +63,60 @@ function buildAtContext(text) {
     }
     return parts.length ? parts.join('\n\n') + '\n\n' : '';
 }
+const CODE_PATTERN = /\.(ts|js|tsx|jsx|py|go|rs|java|rb|sh|css|html|json|yaml|yml)\b|function|class|import|export|const|let|var|def |async|await|error|bug|fix|refactor|implement|`[^`]+`/i;
+function looksCodeRelated(text) {
+    return text.length >= 10 && CODE_PATTERN.test(text);
+}
+async function buildGitContext(cwd, lastStatusRef) {
+    try {
+        const { stdout } = await gitRun('git status --short', { cwd, timeout: 5000 });
+        const status = stdout.trim();
+        if (!status || status === lastStatusRef.current)
+            return { prefix: '', label: '' };
+        lastStatusRef.current = status;
+        const MAX_TOTAL = 40_000;
+        const MAX_FILE = 15_000;
+        let total = 0;
+        const parts = [];
+        const skipped = [];
+        for (const line of status.split('\n')) {
+            const code = line.slice(0, 2);
+            if (code.includes('D'))
+                continue;
+            const raw = line.slice(3).trim().replace(/^"|"$/g, '');
+            const rel = raw.includes(' -> ') ? raw.split(' -> ')[1] : raw;
+            if (!rel)
+                continue;
+            try {
+                const content = readFile(resolve(cwd, rel));
+                if (!content || content.length > MAX_FILE) {
+                    skipped.push(rel);
+                    continue;
+                }
+                total += content.length;
+                if (total > MAX_TOTAL) {
+                    skipped.push(rel);
+                    continue;
+                }
+                parts.push(`<file path="${rel}">\n${content}\n</file>`);
+            }
+            catch {
+                skipped.push(rel);
+            }
+        }
+        if (!parts.length && !skipped.length)
+            return { prefix: '', label: '' };
+        let prefix = '[Auto-context: git-changed files]\n' + parts.join('\n') + '\n';
+        if (skipped.length)
+            prefix += `Files changed but too large to auto-load: ${skipped.join(', ')}\n`;
+        prefix += '\n';
+        const label = `auto-loaded ${parts.length} changed file(s)${skipped.length ? `, skipped ${skipped.length} (too large)` : ''}`;
+        return { prefix, label };
+    }
+    catch {
+        return { prefix: '', label: '' };
+    }
+}
 export function InputBar({ config, skills, cwd, session }) {
     const { stdout } = useStdout();
     const cols = stdout.columns ?? 80;
@@ -88,6 +143,7 @@ export function InputBar({ config, skills, cwd, session }) {
     const sessionNameRef = useRef(sessionName);
     const historyRef = useRef([]);
     const saveTimerRef = useRef(null);
+    const lastGitStatusRef = useRef('');
     function scheduleSave() {
         if (saveTimerRef.current)
             clearTimeout(saveTimerRef.current);
@@ -99,7 +155,7 @@ export function InputBar({ config, skills, cwd, session }) {
     function pushHistory(msg) {
         historyRef.current.push(msg);
         if (historyRef.current.length > 100)
-            historyRef.current = historyRef.current.slice(-100);
+            historyRef.current.splice(0, historyRef.current.length - 100);
         scheduleSave();
     }
     useEffect(() => { currentModelRef.current = currentModel; }, [currentModel]);
@@ -442,6 +498,16 @@ export function InputBar({ config, skills, cwd, session }) {
     // ─── submit ────────────────────────────────────────────────────────────────
     const handleSubmit = useCallback(async (text) => {
         const cmd = text.trim();
+        if (cmd === '/model' || cmd.startsWith('/model ')) {
+            const name = cmd.slice(6).trim();
+            if (!name) {
+                printer.systemMsg(`current model: ${currentModelRef.current}`);
+                return;
+            }
+            setCurrentModel(name);
+            printer.systemMsg(`model → ${name}`);
+            return;
+        }
         if (cmd === '/models') {
             await openPicker();
             return;
@@ -574,8 +640,14 @@ export function InputBar({ config, skills, cwd, session }) {
             return;
         }
         const contextPrefix = buildAtContext(text);
+        const shouldInjectGit = config.gitContext !== false && looksCodeRelated(text);
+        const { prefix: gitPrefix, label: gitLabel } = shouldInjectGit
+            ? await buildGitContext(cwd, lastGitStatusRef)
+            : { prefix: '', label: '' };
+        if (gitLabel)
+            printer.systemMsg(gitLabel);
         printer.userMsg(text);
-        pushHistory({ role: 'user', content: contextPrefix + text });
+        pushHistory({ role: 'user', content: gitPrefix + contextPrefix + text });
         await runLoop(buildContext());
     }, [skills, runLoop, openPicker]);
     const handleAbort = useCallback(() => {

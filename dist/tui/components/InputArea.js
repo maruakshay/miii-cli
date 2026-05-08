@@ -11,6 +11,7 @@ const BUILTIN_COMMANDS = [
     { ns: 'builtin', name: 'sessions', description: 'list all saved sessions' },
     { ns: 'builtin', name: 'session', description: 'switch session  /session <name>' },
     { ns: 'builtin', name: 'exit', description: 'exit miii' },
+    { ns: 'builtin', name: 'model', description: 'switch model mid-session  /model <name>' },
     { ns: 'builtin', name: 'list', description: 'list all loaded skills' },
     { ns: 'builtin', name: 'plan', description: 'start planning mode  /plan [topic]' },
     { ns: 'builtin', name: 'refactor', description: 'multi-file AI refactor  /refactor <goal>' },

@@ -1,5 +1,6 @@
 import { readFile, writeFile, deleteFile, listFiles, createDir, moveFile, guardPath } from '../files/ops.js';
 import { existsSync } from 'fs';
+import { join } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 const run = promisify(exec);
@@ -59,10 +60,13 @@ export const tools = [
             const current = readFile(safe);
             if (!current)
                 throw new Error(`file not found or empty: ${path}`);
-            if (!current.includes(oldStr))
+            const old = oldStr;
+            const count = current.split(old).length - 1;
+            if (count === 0)
                 throw new Error(`old text not found in ${path}`);
-            const updated = current.replace(oldStr, newStr);
-            writeFile(safe, updated);
+            if (count > 1)
+                throw new Error(`ambiguous: ${count} matches found in ${path} — add more surrounding context to make unique`);
+            writeFile(safe, current.replace(old, newStr));
             return `patched: ${path}`;
         },
     },
@@ -166,6 +170,37 @@ export const tools = [
             }
         },
     },
+    {
+        name: 'run_tests',
+        description: 'Run the test suite. Detects jest/vitest/mocha from package.json scripts.test. Pass path to run a specific file.',
+        params: '{"path": "string (optional)"}',
+        execute: async ({ path = '' }) => {
+            const pkgPath = join(process.cwd(), 'package.json');
+            if (!existsSync(pkgPath))
+                return '(no package.json found)';
+            let testScript = '';
+            try {
+                const pkg = JSON.parse(readFile(pkgPath));
+                testScript = pkg?.scripts?.test ?? '';
+            }
+            catch {
+                return '(could not parse package.json)';
+            }
+            if (!testScript || testScript === 'echo "Error: no test specified" && exit 1') {
+                return '(no test script configured in package.json)';
+            }
+            const cmd = path ? `npm test -- ${path}` : 'npm test';
+            try {
+                const { stdout, stderr } = await run(cmd, { cwd: process.cwd(), timeout: 60_000 });
+                const out = (stdout + (stderr ? '\nstderr: ' + stderr : '')).trim();
+                return out.length > 4000 ? '…[truncated]\n' + out.slice(-4000) : out;
+            }
+            catch (e) {
+                const out = ((e.stdout ?? '') + (e.stderr ? '\n' + e.stderr : '') || String(e)).trim();
+                return out.length > 4000 ? '…[truncated]\n' + out.slice(-4000) : out;
+            }
+        },
+    },
 ];
 export function getSystemPrompt(extra = '') {
     const toolDocs = tools.map(t => `- ${t.name}(${t.params}): ${t.description}`).join('\n');
@@ -212,5 +247,7 @@ Rules:
 - Output plain text only — never use markdown formatting in your responses
 - No headers (no #, ##), no bold (**text**), no italic (*text*), no bullet points with *, no horizontal rules (---)
 - No fenced code blocks with backticks in prose
-- Use plain indentation and labels for structure. This is a terminal, not a chat UI${extra}`;
+- Use plain indentation and labels for structure. This is a terminal, not a chat UI
+- After editing files that have tests, call run_tests to verify nothing broke
+- If run_tests fails, read the failing test output and fix the code, then run_tests again (max 3 retries)${extra}`;
 }

@@ -35,6 +35,16 @@ const SKIP_NAMES = new Set([
   '.DS_Store', 'Thumbs.db', '.env.local', 'LICENSE', 'LICENSE.md',
 ])
 
+function loadIgnorePatterns(cwd: string): Set<string> {
+  const p = join(cwd, '.miiiignore')
+  if (!existsSync(p)) return new Set()
+  return new Set(
+    readFileSync(p, 'utf-8').split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('#'))
+  )
+}
+
 export function readFile(p: string): string {
   if (!existsSync(p)) return ''
   return readFileSync(p, 'utf-8')
@@ -66,8 +76,9 @@ export interface FileEntry {
   size?: number
 }
 
-export function listFiles(dir: string, recursive = false, cwd = process.cwd()): FileEntry[] {
+export function listFiles(dir: string, recursive = false, cwd = process.cwd(), _ignore?: Set<string>): FileEntry[] {
   if (!existsSync(dir)) return []
+  const ignore = _ignore ?? loadIgnorePatterns(cwd)
   const entries: FileEntry[] = []
   for (const name of readdirSync(dir)) {
     if (name.startsWith('.')) continue
@@ -79,10 +90,18 @@ export function listFiles(dir: string, recursive = false, cwd = process.cwd()): 
     let stat
     try { stat = statSync(join(dir, name)) } catch { continue }
     const full = join(dir, name)
+    const rel = relative(cwd, full)
     const type = stat.isDirectory() ? 'dir' : 'file'
-    entries.push({ name, path: full, rel: relative(cwd, full), type, size: stat.isFile() ? stat.size : undefined })
+    // check ignore patterns: match by name, rel path, or name/ for dirs
+    if (ignore.size) {
+      const dirSuffix = type === 'dir' ? name + '/' : ''
+      if (ignore.has(name) || ignore.has(rel) || (dirSuffix && ignore.has(dirSuffix))) continue
+      // *.ext pattern
+      if ([...ignore].some(p => p.startsWith('*.') && name.endsWith(p.slice(1)))) continue
+    }
+    entries.push({ name, path: full, rel, type, size: stat.isFile() ? stat.size : undefined })
     if (recursive && type === 'dir') {
-      entries.push(...listFiles(full, true, cwd))
+      entries.push(...listFiles(full, true, cwd, ignore))
     }
   }
   return entries

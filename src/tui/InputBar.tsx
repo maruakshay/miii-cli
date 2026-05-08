@@ -9,6 +9,7 @@ import type { OllamaModel } from '../llm/ollama.js'
 import { StreamParser } from '../parser/stream-parser.js'
 import { tools, getSystemPrompt } from '../tools/index.js'
 import { readFile } from '../files/ops.js'
+import { resolve } from 'path'
 import type { SkillLoader } from '../skills/loader.js'
 import type { Status, ChatMessage, Config } from '../types.js'
 import * as printer from './printer.js'
@@ -74,6 +75,51 @@ function buildAtContext(text: string): string {
   return parts.length ? parts.join('\n\n') + '\n\n' : ''
 }
 
+const CODE_PATTERN = /\.(ts|js|tsx|jsx|py|go|rs|java|rb|sh|css|html|json|yaml|yml)\b|function|class|import|export|const|let|var|def |async|await|error|bug|fix|refactor|implement|`[^`]+`/i
+
+function looksCodeRelated(text: string): boolean {
+  return text.length >= 10 && CODE_PATTERN.test(text)
+}
+
+async function buildGitContext(cwd: string, lastStatusRef: { current: string }): Promise<{ prefix: string; label: string }> {
+  try {
+    const { stdout } = await gitRun('git status --short', { cwd, timeout: 5000 })
+    const status = stdout.trim()
+    if (!status || status === lastStatusRef.current) return { prefix: '', label: '' }
+    lastStatusRef.current = status
+
+    const MAX_TOTAL = 40_000
+    const MAX_FILE  = 15_000
+    let total = 0
+    const parts: string[] = []
+    const skipped: string[] = []
+
+    for (const line of status.split('\n')) {
+      const code = line.slice(0, 2)
+      if (code.includes('D')) continue
+      const raw = line.slice(3).trim().replace(/^"|"$/g, '')
+      const rel  = raw.includes(' -> ') ? raw.split(' -> ')[1]! : raw
+      if (!rel) continue
+      try {
+        const content = readFile(resolve(cwd, rel))
+        if (!content || content.length > MAX_FILE) { skipped.push(rel); continue }
+        total += content.length
+        if (total > MAX_TOTAL) { skipped.push(rel); continue }
+        parts.push(`<file path="${rel}">\n${content}\n</file>`)
+      } catch { skipped.push(rel) }
+    }
+
+    if (!parts.length && !skipped.length) return { prefix: '', label: '' }
+    let prefix = '[Auto-context: git-changed files]\n' + parts.join('\n') + '\n'
+    if (skipped.length) prefix += `Files changed but too large to auto-load: ${skipped.join(', ')}\n`
+    prefix += '\n'
+    const label = `auto-loaded ${parts.length} changed file(s)${skipped.length ? `, skipped ${skipped.length} (too large)` : ''}`
+    return { prefix, label }
+  } catch {
+    return { prefix: '', label: '' }
+  }
+}
+
 export function InputBar({ config, skills, cwd, session }: Props) {
   const { stdout } = useStdout()
   const cols = stdout.columns ?? 80
@@ -103,6 +149,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
   const sessionNameRef = useRef(sessionName)
   const historyRef = useRef<ChatMessage[]>([])
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastGitStatusRef = useRef<string>('')
 
   function scheduleSave() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -114,7 +161,7 @@ export function InputBar({ config, skills, cwd, session }: Props) {
 
   function pushHistory(msg: ChatMessage) {
     historyRef.current.push(msg)
-    if (historyRef.current.length > 100) historyRef.current = historyRef.current.slice(-100)
+    if (historyRef.current.length > 100) historyRef.current.splice(0, historyRef.current.length - 100)
     scheduleSave()
   }
 
@@ -467,6 +514,14 @@ export function InputBar({ config, skills, cwd, session }: Props) {
   const handleSubmit = useCallback(async (text: string) => {
     const cmd = text.trim()
 
+    if (cmd === '/model' || cmd.startsWith('/model ')) {
+      const name = cmd.slice(6).trim()
+      if (!name) { printer.systemMsg(`current model: ${currentModelRef.current}`); return }
+      setCurrentModel(name)
+      printer.systemMsg(`model → ${name}`)
+      return
+    }
+
     if (cmd === '/models') { await openPicker(); return }
 
     if (cmd === '/new') {
@@ -599,8 +654,13 @@ export function InputBar({ config, skills, cwd, session }: Props) {
     }
 
     const contextPrefix = buildAtContext(text)
+    const shouldInjectGit = config.gitContext !== false && looksCodeRelated(text)
+    const { prefix: gitPrefix, label: gitLabel } = shouldInjectGit
+      ? await buildGitContext(cwd, lastGitStatusRef)
+      : { prefix: '', label: '' }
+    if (gitLabel) printer.systemMsg(gitLabel)
     printer.userMsg(text)
-    pushHistory({ role: 'user', content: contextPrefix + text })
+    pushHistory({ role: 'user', content: gitPrefix + contextPrefix + text })
     await runLoop(buildContext())
   }, [skills, runLoop, openPicker])
 

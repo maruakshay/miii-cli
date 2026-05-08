@@ -27,6 +27,14 @@ const SKIP_NAMES = new Set([
     'poetry.lock', 'Gemfile.lock', 'composer.lock',
     '.DS_Store', 'Thumbs.db', '.env.local', 'LICENSE', 'LICENSE.md',
 ]);
+function loadIgnorePatterns(cwd) {
+    const p = join(cwd, '.miiiignore');
+    if (!existsSync(p))
+        return new Set();
+    return new Set(readFileSync(p, 'utf-8').split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#')));
+}
 export function readFile(p) {
     if (!existsSync(p))
         return '';
@@ -46,9 +54,10 @@ export function moveFile(from, to) {
     mkdirSync(dirname(to), { recursive: true });
     renameSync(from, to);
 }
-export function listFiles(dir, recursive = false, cwd = process.cwd()) {
+export function listFiles(dir, recursive = false, cwd = process.cwd(), _ignore) {
     if (!existsSync(dir))
         return [];
+    const ignore = _ignore ?? loadIgnorePatterns(cwd);
     const entries = [];
     for (const name of readdirSync(dir)) {
         if (name.startsWith('.'))
@@ -70,10 +79,20 @@ export function listFiles(dir, recursive = false, cwd = process.cwd()) {
             continue;
         }
         const full = join(dir, name);
+        const rel = relative(cwd, full);
         const type = stat.isDirectory() ? 'dir' : 'file';
-        entries.push({ name, path: full, rel: relative(cwd, full), type, size: stat.isFile() ? stat.size : undefined });
+        // check ignore patterns: match by name, rel path, or name/ for dirs
+        if (ignore.size) {
+            const dirSuffix = type === 'dir' ? name + '/' : '';
+            if (ignore.has(name) || ignore.has(rel) || (dirSuffix && ignore.has(dirSuffix)))
+                continue;
+            // *.ext pattern
+            if ([...ignore].some(p => p.startsWith('*.') && name.endsWith(p.slice(1))))
+                continue;
+        }
+        entries.push({ name, path: full, rel, type, size: stat.isFile() ? stat.size : undefined });
         if (recursive && type === 'dir') {
-            entries.push(...listFiles(full, true, cwd));
+            entries.push(...listFiles(full, true, cwd, ignore));
         }
     }
     return entries;

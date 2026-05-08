@@ -14,6 +14,7 @@ export interface Config {
   baseUrl: string
   systemPrompt?: string
   apiKey?: string
+  gitContext?: boolean  // default true — set false to disable auto git context injection
 }
 
 export interface ChatMessage {
