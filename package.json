@@ -1,6 +1,6 @@
 {
   "name": "miii-cli",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "type": "module",
   "description": "Claude Code-level terminal workflows powered by your local models.",
   "license": "MIT",

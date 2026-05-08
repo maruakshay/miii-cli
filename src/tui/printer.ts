@@ -90,7 +90,7 @@ export function welcome(provider: string, model: string, cwd: string): void {
     row('',                                            rcmd('/session',  'manage sessions')),
     blank(),
     row(`  ${gray(provider + '/' + model)}`,          `  ${bold(yellow('Tips'))}`),
-    row(`  ${gray(shortCwd)}`,                         rcmd('ctrl+c',   'stop streaming')),
+    row(`  ${gray(shortCwd)}`,                         rcmd('ctrl+c',   'stop thinking')),
     row('',                                            rcmd('ctrl+c x2','exit')),
     blank(),
     bottom,

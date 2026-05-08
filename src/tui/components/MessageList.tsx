@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 import { Box, Text } from 'ink'
 import type { Message } from '../../types.js'
 
@@ -8,6 +8,7 @@ interface Props {
   cols: number
   scrollOffset: number  // 0 = pinned at bottom; N = N msgs hidden from bottom
   streaming?: boolean
+  thinkingTick?: number
 }
 
 // ─── height estimation ───────────────────────────────────────────────────────
@@ -104,7 +105,33 @@ function UserMsg({ msg }: { msg: Message }) {
   )
 }
 
-function AssistantMsg({ msg }: { msg: Message }) {
+const THINKING_PHRASES = [
+  'oh wow, a question. let me pretend to care…',
+  'consulting the void…',
+  'making something up, just a sec…',
+  'definitely not hallucinating right now…',
+  'running 47 mental tabs…',
+  'staring into the abyss (it blinked)…',
+  'calculating your fate, no pressure…',
+  'doing the thinking you pay me for…',
+  'processing your questionable life choices…',
+  'summoning coherent thoughts, rarely works…',
+]
+const SPARKLE = ['✦', '✧', '✶', '✷', '✸', '✹']
+
+function AssistantMsg({ msg, thinkingTick }: { msg: Message; thinkingTick?: number }) {
+  if (!msg.content && thinkingTick !== undefined) {
+    const phrase = THINKING_PHRASES[Math.floor(thinkingTick / 62) % THINKING_PHRASES.length]
+    const icon = SPARKLE[thinkingTick % SPARKLE.length]
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Text bold color="green">miii</Text>
+        <Box paddingLeft={2}>
+          <Text color="yellow">{icon} </Text><Text color="gray" dimColor italic>{phrase}</Text>
+        </Box>
+      </Box>
+    )
+  }
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold color="green">miii</Text>
@@ -139,10 +166,10 @@ function SystemMsg({ msg }: { msg: Message }) {
   )
 }
 
-function MsgItem({ msg }: { msg: Message }) {
+function MsgItem({ msg, thinkingTick }: { msg: Message; thinkingTick?: number }) {
   switch (msg.role) {
     case 'user':      return <UserMsg msg={msg} />
-    case 'assistant': return <AssistantMsg msg={msg} />
+    case 'assistant': return <AssistantMsg msg={msg} thinkingTick={thinkingTick} />
     case 'tool':      return <ToolMsg msg={msg} />
     case 'system':    return <SystemMsg msg={msg} />
     default:          return null
@@ -165,7 +192,7 @@ function ScrollHint({ hiddenAbove, hiddenBelow }: { hiddenAbove: number; hiddenB
 
 // ─── main export ─────────────────────────────────────────────────────────────
 
-export function MessageList({ messages, rows, cols, scrollOffset, streaming }: Props) {
+export function MessageList({ messages, rows, cols, scrollOffset, streaming, thinkingTick }: Props) {
   const availRows = Math.max(rows - 2, 4)
   const { visible, hiddenAbove, hiddenBelow } = useMemo(
     () => computeSlice(messages, availRows, scrollOffset, cols),
@@ -182,7 +209,7 @@ export function MessageList({ messages, rows, cols, scrollOffset, streaming }: P
         </Box>
       )}
 
-      {visible.map(msg => <MsgItem key={msg.id} msg={msg} />)}
+      {visible.map(msg => <MsgItem key={msg.id} msg={msg} thinkingTick={thinkingTick} />)}
 
       {streaming && scrollOffset === 0 && (
         <Box paddingLeft={2}><Text color="gray" dimColor>▋</Text></Box>

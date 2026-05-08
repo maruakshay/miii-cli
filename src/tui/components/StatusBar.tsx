@@ -17,7 +17,7 @@ export function StatusBar({ model, provider, status, tick }: Props) {
 
   const statusNode =
     status === 'idle' ? <Text color="green">● <Text color="gray">ready</Text></Text>
-    : status === 'streaming' ? <Text color="yellow">{spinner} <Text color="gray">streaming</Text></Text>
+    : status === 'thinking' ? <Text color="yellow">{spinner} <Text color="gray">thinking</Text></Text>
     : <Text color="yellow">{spinner} <Text color="gray">tool</Text></Text>
 
   return (

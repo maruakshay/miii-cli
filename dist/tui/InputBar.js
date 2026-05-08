@@ -4,7 +4,7 @@ import { Box, Text, useStdout } from 'ink';
 import { InputArea } from './components/InputArea.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { Divider } from './components/StatusBar.js';
-import { stream } from '../llm/stream.js';
+import { chat } from '../llm/stream.js';
 import { listModels, pullModel } from '../llm/ollama.js';
 import { StreamParser } from '../parser/stream-parser.js';
 import { tools, getSystemPrompt } from '../tools/index.js';
@@ -12,11 +12,19 @@ import { readFile } from '../files/ops.js';
 import * as printer from './printer.js';
 import { loadSession, saveSession, listSessions } from '../sessions.js';
 const MAX_TOOL_DEPTH = 6;
-const THROTTLE_MS = 40;
-const PREVIEW_LINES = 8;
-function lastLines(text, n) {
-    return text.split('\n').slice(-n);
-}
+const THINKING_PHRASES = [
+    'oh wow, a question. let me pretend to care…',
+    'consulting the void…',
+    'making something up, just a sec…',
+    'definitely not hallucinating right now…',
+    'running 47 mental tabs…',
+    'staring into the abyss (it blinked)…',
+    'calculating your fate, no pressure…',
+    'doing the thinking you pay me for…',
+    'processing your questionable life choices…',
+    'summoning coherent thoughts, rarely works…',
+];
+const SPARKLE = ['✦', '✧', '✶', '✷', '✸', '✹'];
 function buildAtContext(text) {
     const refs = [...text.matchAll(/@([\w./\-]+)/g)];
     if (!refs.length)
@@ -38,7 +46,6 @@ export function InputBar({ config, skills, cwd, session }) {
     const [status, setStatus] = useState('idle');
     const [tick, setTick] = useState(0);
     const [currentModel, setCurrentModel] = useState(config.model);
-    const [streamPreview, setStreamPreview] = useState('');
     const [sessionName, setSessionName] = useState(session);
     const [planningMode, setPlanningMode] = useState(false);
     // picker opens on mount — force model selection every launch
@@ -49,8 +56,6 @@ export function InputBar({ config, skills, cwd, session }) {
     const [pullState, setPullState] = useState();
     const abortRef = useRef(null);
     const pullAbortRef = useRef(null);
-    const tokenBufRef = useRef('');
-    const lastRenderRef = useRef(0);
     const systemPromptRef = useRef(getSystemPrompt(`\n- CWD: ${cwd}`));
     const currentModelRef = useRef(currentModel);
     const sessionNameRef = useRef(sessionName);
@@ -87,40 +92,22 @@ export function InputBar({ config, skills, cwd, session }) {
             setStatus('idle');
             return;
         }
-        setStatus('streaming');
-        setStreamPreview('');
-        const parser = new StreamParser();
-        const pendingTools = [];
-        let fullText = '';
+        setStatus('thinking');
         abortRef.current = new AbortController();
-        await stream({
+        await chat({
             provider: config.provider,
             model: currentModelRef.current,
             baseUrl: config.baseUrl,
             messages: contextMsgs,
             signal: abortRef.current.signal,
-            onToken(token) {
-                fullText += token;
-                tokenBufRef.current += token;
-                const now = Date.now();
-                if (now - lastRenderRef.current >= THROTTLE_MS) {
-                    setStreamPreview(fullText);
-                    tokenBufRef.current = '';
-                    lastRenderRef.current = now;
-                }
-                for (const item of parser.feed(token)) {
-                    if (item.type === 'tool_call')
-                        pendingTools.push({ name: item.toolName, args: item.toolArgs });
-                }
-            },
-            async onDone() {
-                setStreamPreview(fullText);
-                for (const item of parser.flush()) {
+            async onDone(fullText) {
+                const pendingTools = [];
+                const parser = new StreamParser();
+                for (const item of [...parser.feed(fullText), ...parser.flush()]) {
                     if (item.type === 'tool_call')
                         pendingTools.push({ name: item.toolName, args: item.toolArgs });
                 }
                 printer.assistantMsg(fullText);
-                setStreamPreview('');
                 historyRef.current.push({ role: 'assistant', content: fullText });
                 saveSession(sessionNameRef.current, historyRef.current);
                 if (!pendingTools.length) {
@@ -154,7 +141,6 @@ export function InputBar({ config, skills, cwd, session }) {
                 if (err.name !== 'AbortError')
                     printer.errorMsg(err.message);
                 setStatus('idle');
-                setStreamPreview('');
             },
         });
     }, [config]);
@@ -319,11 +305,11 @@ export function InputBar({ config, skills, cwd, session }) {
     const handleAbort = useCallback(() => {
         abortRef.current?.abort();
         setStatus('idle');
-        setStreamPreview('');
-        tokenBufRef.current = '';
     }, []);
     const skillList = skills.list();
     // ─── render ────────────────────────────────────────────────────────────────
-    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } }), _jsx(Divider, { cols: cols })] })) : streamPreview ? (_jsxs(_Fragment, { children: [_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), lastLines(streamPreview, PREVIEW_LINES).map((line, i) => (_jsx(Text, { color: "gray", wrap: "wrap", children: line || ' ' }, i)))] }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, onSubmit: handleSubmit, onAbort: handleAbort })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } }), _jsx(Divider, { cols: cols })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(_Fragment, { children: [_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), _jsx(Box, { paddingLeft: 2, children: status === 'thinking'
+                                    ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[Math.floor(tick / 62) % THINKING_PHRASES.length] })] })
+                                    : _jsx(Text, { color: "yellow", dimColor: true, children: "running tool\u2026" }) })] }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, onSubmit: handleSubmit, onAbort: handleAbort })] }));
 }
 //# sourceMappingURL=InputBar.js.map

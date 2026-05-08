@@ -57,7 +57,25 @@ function UserMsg({ msg }) {
                         ? _jsx(Text, { color: "cyan", children: p }, i)
                         : _jsx(Text, { children: p }, i)) }) })] }));
 }
-function AssistantMsg({ msg }) {
+const THINKING_PHRASES = [
+    'oh wow, a question. let me pretend to care…',
+    'consulting the void…',
+    'making something up, just a sec…',
+    'definitely not hallucinating right now…',
+    'running 47 mental tabs…',
+    'staring into the abyss (it blinked)…',
+    'calculating your fate, no pressure…',
+    'doing the thinking you pay me for…',
+    'processing your questionable life choices…',
+    'summoning coherent thoughts, rarely works…',
+];
+const SPARKLE = ['✦', '✧', '✶', '✷', '✸', '✹'];
+function AssistantMsg({ msg, thinkingTick }) {
+    if (!msg.content && thinkingTick !== undefined) {
+        const phrase = THINKING_PHRASES[Math.floor(thinkingTick / 62) % THINKING_PHRASES.length];
+        const icon = SPARKLE[thinkingTick % SPARKLE.length];
+        return (_jsxs(Box, { flexDirection: "column", marginBottom: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), _jsxs(Box, { paddingLeft: 2, children: [_jsxs(Text, { color: "yellow", children: [icon, " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: phrase })] })] }));
+    }
     return (_jsxs(Box, { flexDirection: "column", marginBottom: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), _jsx(ContentBlock, { content: msg.content })] }));
 }
 function ToolMsg({ msg }) {
@@ -69,10 +87,10 @@ function ToolMsg({ msg }) {
 function SystemMsg({ msg }) {
     return (_jsx(Box, { marginBottom: 1, paddingLeft: 1, children: _jsxs(Text, { color: "gray", dimColor: true, children: ["\u2500 ", msg.content] }) }));
 }
-function MsgItem({ msg }) {
+function MsgItem({ msg, thinkingTick }) {
     switch (msg.role) {
         case 'user': return _jsx(UserMsg, { msg: msg });
-        case 'assistant': return _jsx(AssistantMsg, { msg: msg });
+        case 'assistant': return _jsx(AssistantMsg, { msg: msg, thinkingTick: thinkingTick });
         case 'tool': return _jsx(ToolMsg, { msg: msg });
         case 'system': return _jsx(SystemMsg, { msg: msg });
         default: return null;
@@ -90,9 +108,9 @@ function ScrollHint({ hiddenAbove, hiddenBelow }) {
     return (_jsx(Box, { justifyContent: "center", children: _jsxs(Text, { color: "gray", dimColor: true, children: [parts.join('  '), "  \u00B7 PgUp/PgDn"] }) }));
 }
 // ─── main export ─────────────────────────────────────────────────────────────
-export function MessageList({ messages, rows, cols, scrollOffset, streaming }) {
+export function MessageList({ messages, rows, cols, scrollOffset, streaming, thinkingTick }) {
     const availRows = Math.max(rows - 2, 4);
     const { visible, hiddenAbove, hiddenBelow } = useMemo(() => computeSlice(messages, availRows, scrollOffset, cols), [messages, availRows, scrollOffset, cols]);
-    return (_jsxs(Box, { flexDirection: "column", flexGrow: 1, overflow: "hidden", paddingX: 1, children: [_jsx(ScrollHint, { hiddenAbove: hiddenAbove, hiddenBelow: hiddenBelow }), visible.length === 0 && hiddenAbove === 0 && (_jsx(Box, { paddingTop: 1, children: _jsx(Text, { color: "gray", dimColor: true, children: "start typing below \u2014 @ for files, / for commands" }) })), visible.map(msg => _jsx(MsgItem, { msg: msg }, msg.id)), streaming && scrollOffset === 0 && (_jsx(Box, { paddingLeft: 2, children: _jsx(Text, { color: "gray", dimColor: true, children: "\u258B" }) }))] }));
+    return (_jsxs(Box, { flexDirection: "column", flexGrow: 1, overflow: "hidden", paddingX: 1, children: [_jsx(ScrollHint, { hiddenAbove: hiddenAbove, hiddenBelow: hiddenBelow }), visible.length === 0 && hiddenAbove === 0 && (_jsx(Box, { paddingTop: 1, children: _jsx(Text, { color: "gray", dimColor: true, children: "start typing below \u2014 @ for files, / for commands" }) })), visible.map(msg => _jsx(MsgItem, { msg: msg, thinkingTick: thinkingTick }, msg.id)), streaming && scrollOffset === 0 && (_jsx(Box, { paddingLeft: 2, children: _jsx(Text, { color: "gray", dimColor: true, children: "\u258B" }) }))] }));
 }
 //# sourceMappingURL=MessageList.js.map

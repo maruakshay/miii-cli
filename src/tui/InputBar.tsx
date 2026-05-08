@@ -3,7 +3,7 @@ import { Box, Text, useStdout } from 'ink'
 import { InputArea } from './components/InputArea.js'
 import { ModelPicker } from './components/ModelPicker.js'
 import { Divider } from './components/StatusBar.js'
-import { stream } from '../llm/stream.js'
+import { chat } from '../llm/stream.js'
 import { listModels, pullModel } from '../llm/ollama.js'
 import type { OllamaModel } from '../llm/ollama.js'
 import { StreamParser } from '../parser/stream-parser.js'
@@ -22,12 +22,20 @@ interface Props {
 }
 
 const MAX_TOOL_DEPTH = 6
-const THROTTLE_MS = 40
-const PREVIEW_LINES = 8
 
-function lastLines(text: string, n: number): string[] {
-  return text.split('\n').slice(-n)
-}
+const THINKING_PHRASES = [
+  'oh wow, a question. let me pretend to care…',
+  'consulting the void…',
+  'making something up, just a sec…',
+  'definitely not hallucinating right now…',
+  'running 47 mental tabs…',
+  'staring into the abyss (it blinked)…',
+  'calculating your fate, no pressure…',
+  'doing the thinking you pay me for…',
+  'processing your questionable life choices…',
+  'summoning coherent thoughts, rarely works…',
+]
+const SPARKLE = ['✦', '✧', '✶', '✷', '✸', '✹']
 
 function buildAtContext(text: string): string {
   const refs = [...text.matchAll(/@([\w./\-]+)/g)]
@@ -49,7 +57,6 @@ export function InputBar({ config, skills, cwd, session }: Props) {
   const [status, setStatus] = useState<Status>('idle')
   const [tick, setTick] = useState(0)
   const [currentModel, setCurrentModel] = useState(config.model)
-  const [streamPreview, setStreamPreview] = useState('')
   const [sessionName, setSessionName] = useState(session)
   const [planningMode, setPlanningMode] = useState(false)
 
@@ -62,8 +69,6 @@ export function InputBar({ config, skills, cwd, session }: Props) {
 
   const abortRef = useRef<AbortController | null>(null)
   const pullAbortRef = useRef<AbortController | null>(null)
-  const tokenBufRef = useRef('')
-  const lastRenderRef = useRef(0)
   const systemPromptRef = useRef(getSystemPrompt(`\n- CWD: ${cwd}`))
   const currentModelRef = useRef(currentModel)
   const sessionNameRef = useRef(sessionName)
@@ -100,45 +105,25 @@ export function InputBar({ config, skills, cwd, session }: Props) {
 
   const runLoop = useCallback(async (contextMsgs: ChatMessage[], depth = 0) => {
     if (depth >= MAX_TOOL_DEPTH) { setStatus('idle'); return }
-    setStatus('streaming')
-    setStreamPreview('')
-
-    const parser = new StreamParser()
-    const pendingTools: Array<{ name: string; args: Record<string, unknown> }> = []
-    let fullText = ''
+    setStatus('thinking')
 
     abortRef.current = new AbortController()
 
-    await stream({
+    await chat({
       provider: config.provider,
       model: currentModelRef.current,
       baseUrl: config.baseUrl,
       messages: contextMsgs,
       signal: abortRef.current.signal,
 
-      onToken(token) {
-        fullText += token
-        tokenBufRef.current += token
-        const now = Date.now()
-        if (now - lastRenderRef.current >= THROTTLE_MS) {
-          setStreamPreview(fullText)
-          tokenBufRef.current = ''
-          lastRenderRef.current = now
-        }
-        for (const item of parser.feed(token)) {
-          if (item.type === 'tool_call') pendingTools.push({ name: item.toolName, args: item.toolArgs })
-        }
-      },
-
-      async onDone() {
-        setStreamPreview(fullText)
-        for (const item of parser.flush()) {
+      async onDone(fullText) {
+        const pendingTools: Array<{ name: string; args: Record<string, unknown> }> = []
+        const parser = new StreamParser()
+        for (const item of [...parser.feed(fullText), ...parser.flush()]) {
           if (item.type === 'tool_call') pendingTools.push({ name: item.toolName, args: item.toolArgs })
         }
 
         printer.assistantMsg(fullText)
-        setStreamPreview('')
-
         historyRef.current.push({ role: 'assistant', content: fullText })
         saveSession(sessionNameRef.current, historyRef.current)
 
@@ -171,7 +156,6 @@ export function InputBar({ config, skills, cwd, session }: Props) {
       onError(err) {
         if (err.name !== 'AbortError') printer.errorMsg(err.message)
         setStatus('idle')
-        setStreamPreview('')
       },
     })
   }, [config])
@@ -344,8 +328,6 @@ export function InputBar({ config, skills, cwd, session }: Props) {
   const handleAbort = useCallback(() => {
     abortRef.current?.abort()
     setStatus('idle')
-    setStreamPreview('')
-    tokenBufRef.current = ''
   }, [])
 
   const skillList = skills.list()
@@ -368,13 +350,16 @@ export function InputBar({ config, skills, cwd, session }: Props) {
           />
           <Divider cols={cols} />
         </>
-      ) : streamPreview ? (
+      ) : (status === 'thinking' || status === 'tool') ? (
         <>
           <Box flexDirection="column" paddingX={1}>
             <Text bold color="green">miii</Text>
-            {lastLines(streamPreview, PREVIEW_LINES).map((line, i) => (
-              <Text key={i} color="gray" wrap="wrap">{line || ' '}</Text>
-            ))}
+            <Box paddingLeft={2}>
+              {status === 'thinking'
+                ? <><Text color="yellow">{SPARKLE[tick % SPARKLE.length]} </Text><Text color="gray" dimColor italic>{THINKING_PHRASES[Math.floor(tick / 62) % THINKING_PHRASES.length]}</Text></>
+                : <Text color="yellow" dimColor>running tool…</Text>
+              }
+            </Box>
           </Box>
           <Divider cols={cols} />
         </>

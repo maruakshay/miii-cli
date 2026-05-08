@@ -4,7 +4,7 @@ import { StatusBar, Divider } from './components/StatusBar.js'
 import { MessageList } from './components/MessageList.js'
 import { InputArea } from './components/InputArea.js'
 import { ModelPicker } from './components/ModelPicker.js'
-import { stream } from '../llm/stream.js'
+import { chat } from '../llm/stream.js'
 import { listModels, pullModel } from '../llm/ollama.js'
 import type { OllamaModel } from '../llm/ollama.js'
 import { StreamParser, extractBareToolCall } from '../parser/stream-parser.js'
@@ -21,7 +21,6 @@ interface Props {
 }
 
 const MAX_TOOL_DEPTH = 6
-const RENDER_THROTTLE_MS = 40
 
 function expandAtRefs(text: string, cwd: string): { displayText: string; contextPrefix: string } {
   const refs = [...text.matchAll(/@([\w./\-]+)/g)]
@@ -63,8 +62,6 @@ export function App({ config, skills, cwd }: Props) {
   const currentModelRef = useRef(currentModel)
   const abortRef = useRef<AbortController | null>(null)
   const pullAbortRef = useRef<AbortController | null>(null)
-  const tokenBufRef = useRef('')
-  const lastRenderRef = useRef(0)
   const messagesRef = useRef(messages)
   const approvalResolveRef = useRef<((ok: boolean) => void) | null>(null)
   const [pendingApproval, setPendingApproval] = useState<{
@@ -145,18 +142,14 @@ export function App({ config, skills, cwd }: Props) {
 
   const runLoop = useCallback(async (contextMsgs: ChatMessage[], depth = 0) => {
     if (depth >= MAX_TOOL_DEPTH) { setStatus('idle'); return }
-    setStatus('streaming')
+    setStatus('thinking')
 
     const assistantId = generateId()
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', timestamp: Date.now() }])
 
-    const parser = new StreamParser()
-    const pendingTools: Array<{ name: string; args: Record<string, unknown> }> = []
-    let fullText = ''
-
     abortRef.current = new AbortController()
 
-    await stream({
+    await chat({
       provider: config.provider,
       model: currentModelRef.current,
       baseUrl: config.baseUrl,
@@ -164,33 +157,16 @@ export function App({ config, skills, cwd }: Props) {
       messages: contextMsgs,
       signal: abortRef.current.signal,
 
-      onToken(token) {
-        fullText += token
-        tokenBufRef.current += token
-        const now = Date.now()
-        if (now - lastRenderRef.current >= RENDER_THROTTLE_MS) {
-          const flush = tokenBufRef.current
-          tokenBufRef.current = ''
-          lastRenderRef.current = now
-          setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + flush } : m))
-        }
-        for (const item of parser.feed(token)) {
-          if (item.type === 'tool_call') pendingTools.push({ name: item.toolName, args: item.toolArgs })
-        }
-      },
+      async onDone(fullText) {
+        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullText } : m))
 
-      async onDone() {
-        if (tokenBufRef.current) {
-          const flush = tokenBufRef.current
-          tokenBufRef.current = ''
-          setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + flush } : m))
-        }
-        for (const item of parser.flush()) {
+        const pendingTools: Array<{ name: string; args: Record<string, unknown> }> = []
+        const parser = new StreamParser()
+        for (const item of [...parser.feed(fullText), ...parser.flush()]) {
           if (item.type === 'tool_call') pendingTools.push({ name: item.toolName, args: item.toolArgs })
         }
 
         if (!pendingTools.length) {
-          // Fallback: LLM emitted bare JSON without <tool_call> wrapper
           const bare = extractBareToolCall(fullText)
           if (bare) {
             pendingTools.push(bare)
@@ -239,6 +215,7 @@ export function App({ config, skills, cwd }: Props) {
       },
 
       onError(err) {
+        setMessages(prev => prev.filter(m => m.id !== assistantId))
         addMsg('system', `error: ${err.message}`)
         setStatus('idle')
       },
@@ -324,7 +301,6 @@ export function App({ config, skills, cwd }: Props) {
   const handleAbort = useCallback(() => {
     abortRef.current?.abort()
     setStatus('idle')
-    tokenBufRef.current = ''
   }, [])
 
   const skillList = skills.list()
@@ -350,7 +326,8 @@ export function App({ config, skills, cwd }: Props) {
           rows={rows - 8}
           cols={cols}
           scrollOffset={scrollOffset}
-          streaming={status === 'streaming'}
+          streaming={false}
+          thinkingTick={status === 'thinking' ? tick : undefined}
         />
       )}
       <Divider cols={cols} />

@@ -5,14 +5,13 @@ import { StatusBar, Divider } from './components/StatusBar.js';
 import { MessageList } from './components/MessageList.js';
 import { InputArea } from './components/InputArea.js';
 import { ModelPicker } from './components/ModelPicker.js';
-import { stream } from '../llm/stream.js';
+import { chat } from '../llm/stream.js';
 import { listModels, pullModel } from '../llm/ollama.js';
 import { StreamParser, extractBareToolCall } from '../parser/stream-parser.js';
 import { tools, getSystemPrompt } from '../tools/index.js';
 import { readFile, guardPath } from '../files/ops.js';
 import { generateId } from '../types.js';
 const MAX_TOOL_DEPTH = 6;
-const RENDER_THROTTLE_MS = 40;
 function expandAtRefs(text, cwd) {
     const refs = [...text.matchAll(/@([\w./\-]+)/g)];
     if (!refs.length)
@@ -51,8 +50,6 @@ export function App({ config, skills, cwd }) {
     const currentModelRef = useRef(currentModel);
     const abortRef = useRef(null);
     const pullAbortRef = useRef(null);
-    const tokenBufRef = useRef('');
-    const lastRenderRef = useRef(0);
     const messagesRef = useRef(messages);
     const approvalResolveRef = useRef(null);
     const [pendingApproval, setPendingApproval] = useState(null);
@@ -129,47 +126,26 @@ export function App({ config, skills, cwd }) {
             setStatus('idle');
             return;
         }
-        setStatus('streaming');
+        setStatus('thinking');
         const assistantId = generateId();
         setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', timestamp: Date.now() }]);
-        const parser = new StreamParser();
-        const pendingTools = [];
-        let fullText = '';
         abortRef.current = new AbortController();
-        await stream({
+        await chat({
             provider: config.provider,
             model: currentModelRef.current,
             baseUrl: config.baseUrl,
             apiKey: config.apiKey,
             messages: contextMsgs,
             signal: abortRef.current.signal,
-            onToken(token) {
-                fullText += token;
-                tokenBufRef.current += token;
-                const now = Date.now();
-                if (now - lastRenderRef.current >= RENDER_THROTTLE_MS) {
-                    const flush = tokenBufRef.current;
-                    tokenBufRef.current = '';
-                    lastRenderRef.current = now;
-                    setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + flush } : m));
-                }
-                for (const item of parser.feed(token)) {
-                    if (item.type === 'tool_call')
-                        pendingTools.push({ name: item.toolName, args: item.toolArgs });
-                }
-            },
-            async onDone() {
-                if (tokenBufRef.current) {
-                    const flush = tokenBufRef.current;
-                    tokenBufRef.current = '';
-                    setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + flush } : m));
-                }
-                for (const item of parser.flush()) {
+            async onDone(fullText) {
+                setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullText } : m));
+                const pendingTools = [];
+                const parser = new StreamParser();
+                for (const item of [...parser.feed(fullText), ...parser.flush()]) {
                     if (item.type === 'tool_call')
                         pendingTools.push({ name: item.toolName, args: item.toolArgs });
                 }
                 if (!pendingTools.length) {
-                    // Fallback: LLM emitted bare JSON without <tool_call> wrapper
                     const bare = extractBareToolCall(fullText);
                     if (bare) {
                         pendingTools.push(bare);
@@ -217,6 +193,7 @@ export function App({ config, skills, cwd }) {
                 await runLoop(next, depth + 1);
             },
             onError(err) {
+                setMessages(prev => prev.filter(m => m.id !== assistantId));
                 addMsg('system', `error: ${err.message}`);
                 setStatus('idle');
             },
@@ -302,9 +279,8 @@ export function App({ config, skills, cwd }) {
     const handleAbort = useCallback(() => {
         abortRef.current?.abort();
         setStatus('idle');
-        tokenBufRef.current = '';
     }, []);
     const skillList = skills.list();
-    return (_jsxs(Box, { flexDirection: "column", height: rows, children: [_jsx(StatusBar, { model: currentModel, provider: config.provider, status: status, tick: tick }), _jsx(Divider, { cols: cols }), pickerOpen ? (_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } })) : (_jsx(MessageList, { messages: messages, rows: rows - 8, cols: cols, scrollOffset: scrollOffset, streaming: status === 'streaming' })), _jsx(Divider, { cols: cols }), pendingApproval && (_jsxs(Box, { flexDirection: "column", borderStyle: "round", borderColor: "yellow", paddingX: 1, marginBottom: 1, children: [_jsxs(Text, { color: "yellow", bold: true, children: ["Allow ", pendingApproval.toolName, "?"] }), _jsxs(Text, { children: ["  path: ", _jsx(Text, { color: "cyan", children: pendingApproval.path })] }), pendingApproval.content && (_jsx(Text, { color: "gray", dimColor: true, children: pendingApproval.content.split('\n').slice(0, 12).join('\n') })), _jsxs(Text, { color: "green", children: ["[y] approve  ", _jsx(Text, { color: "red", children: "[n] cancel" })] })] })), _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, onSubmit: handleSubmit, onAbort: handleAbort })] }));
+    return (_jsxs(Box, { flexDirection: "column", height: rows, children: [_jsx(StatusBar, { model: currentModel, provider: config.provider, status: status, tick: tick }), _jsx(Divider, { cols: cols }), pickerOpen ? (_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } })) : (_jsx(MessageList, { messages: messages, rows: rows - 8, cols: cols, scrollOffset: scrollOffset, streaming: false, thinkingTick: status === 'thinking' ? tick : undefined })), _jsx(Divider, { cols: cols }), pendingApproval && (_jsxs(Box, { flexDirection: "column", borderStyle: "round", borderColor: "yellow", paddingX: 1, marginBottom: 1, children: [_jsxs(Text, { color: "yellow", bold: true, children: ["Allow ", pendingApproval.toolName, "?"] }), _jsxs(Text, { children: ["  path: ", _jsx(Text, { color: "cyan", children: pendingApproval.path })] }), pendingApproval.content && (_jsx(Text, { color: "gray", dimColor: true, children: pendingApproval.content.split('\n').slice(0, 12).join('\n') })), _jsxs(Text, { color: "green", children: ["[y] approve  ", _jsx(Text, { color: "red", children: "[n] cancel" })] })] })), _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, onSubmit: handleSubmit, onAbort: handleAbort })] }));
 }
 //# sourceMappingURL=App.js.map

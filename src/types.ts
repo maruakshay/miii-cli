@@ -1,5 +1,5 @@
 export type Role = 'user' | 'assistant' | 'system' | 'tool'
-export type Status = 'idle' | 'streaming' | 'tool'
+export type Status = 'idle' | 'thinking' | 'tool'
 
 export interface Message {
   id: string
