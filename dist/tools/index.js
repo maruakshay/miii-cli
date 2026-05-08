@@ -246,7 +246,9 @@ Rules:
 - Be concise
 - Output plain text only — never use markdown formatting in your responses
 - No headers (no #, ##), no bold (**text**), no italic (*text*), no bullet points with *, no horizontal rules (---)
-- No fenced code blocks with backticks in prose
+- NEVER show file content or code in your text response — always use edit_file, patch_file, or create_file tools to write code to files
+- If you want to show the user code, write it to the file with a tool call instead
+- No fenced code blocks (no \`\`\`). If you find yourself about to write a code block, use a tool call instead
 - Use plain indentation and labels for structure. This is a terminal, not a chat UI
 - After editing files that have tests, call run_tests to verify nothing broke
 - If run_tests fails, read the failing test output and fix the code, then run_tests again (max 3 retries)${extra}`;

@@ -6,7 +6,7 @@ import { Divider } from './components/StatusBar.js'
 import { chat } from '../llm/stream.js'
 import { listModels, pullModel } from '../llm/ollama.js'
 import type { OllamaModel } from '../llm/ollama.js'
-import { StreamParser } from '../parser/stream-parser.js'
+import { StreamParser, extractBareToolCall } from '../parser/stream-parser.js'
 import { tools, getSystemPrompt } from '../tools/index.js'
 import { readFile } from '../files/ops.js'
 import { resolve } from 'path'
@@ -218,10 +218,30 @@ export function InputBar({ config, skills, cwd, session }: Props) {
           if (item.type === 'tool_call') pendingTools.push({ name: item.toolName, args: item.toolArgs })
         }
 
+        // Fallback: bare JSON tool call without <tool_call> wrapper
+        if (!pendingTools.length) {
+          const bare = extractBareToolCall(fullText)
+          if (bare) pendingTools.push({ name: bare.name, args: bare.args })
+        }
+
         printer.assistantMsg(fullText)
         pushHistory({ role: 'assistant', content: fullText })
 
-        if (!pendingTools.length) { setStatus('idle'); return }
+        if (!pendingTools.length) {
+          // Model printed code as text instead of using tools — nudge it
+          const hasFencedCode = /```[\w]*\n[\s\S]{50,}?\n```/.test(fullText)
+          if (hasFencedCode && depth < MAX_TOOL_DEPTH - 1) {
+            const nudge: ChatMessage = {
+              role: 'user',
+              content: 'You showed code in your response but did not use any file tools. Use edit_file or patch_file to actually write the changes to disk.',
+            }
+            const next: ChatMessage[] = [...msgs, { role: 'assistant', content: fullText }, nudge]
+            await runLoop(next, depth + 1, goal)
+            return
+          }
+          setStatus('idle')
+          return
+        }
 
         setStatus('tool')
         const next: ChatMessage[] = [...msgs, { role: 'assistant', content: fullText }]
