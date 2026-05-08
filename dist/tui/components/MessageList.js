@@ -68,6 +68,18 @@ const THINKING_PHRASES = [
     'doing the thinking you pay me for…',
     'processing your questionable life choices…',
     'summoning coherent thoughts, rarely works…',
+    'asking my imaginary friend for help…',
+    'pretending this is a hard problem…',
+    'yes, yes, very interesting. anyway…',
+    'simulating intelligence… please wait…',
+    'having a brief existential crisis…',
+    'cross-referencing vibes…',
+    'totally not making this up…',
+    'the answer is 42. now finding the question…',
+    'channelling the spirit of stack overflow…',
+    'trying not to confidently be wrong…',
+    'applying artificial to the intelligence…',
+    'checking if this is even my problem to solve…',
 ];
 const SPARKLE = ['✦', '✧', '✶', '✷', '✸', '✹'];
 function AssistantMsg({ msg, thinkingTick }) {

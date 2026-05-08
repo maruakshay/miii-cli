@@ -9,6 +9,7 @@ export interface ChatConfig {
   signal?: AbortSignal
   onDone: (fullText: string) => void | Promise<void>
   onError: (err: Error) => void
+  onUsage?: (promptTokens: number, completionTokens: number) => void
 }
 
 export async function chat(cfg: ChatConfig): Promise<void> {
@@ -17,7 +18,7 @@ export async function chat(cfg: ChatConfig): Promise<void> {
 }
 
 async function chatOllama(cfg: ChatConfig): Promise<void> {
-  const { model, messages, baseUrl, signal, onDone, onError } = cfg
+  const { model, messages, baseUrl, signal, onDone, onError, onUsage } = cfg
   try {
     const res = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
@@ -27,6 +28,7 @@ async function chatOllama(cfg: ChatConfig): Promise<void> {
     })
     if (!res.ok) { onError(new Error(`Ollama ${res.status}: ${await res.text()}`)); return }
     const obj = await res.json()
+    onUsage?.(obj?.prompt_eval_count ?? 0, obj?.eval_count ?? 0)
     await onDone(obj?.message?.content ?? '')
   } catch (err) {
     if ((err as Error)?.name !== 'AbortError') onError(toError(err))
@@ -34,7 +36,7 @@ async function chatOllama(cfg: ChatConfig): Promise<void> {
 }
 
 async function chatOpenAI(cfg: ChatConfig): Promise<void> {
-  const { model, messages, baseUrl, apiKey, signal, onDone, onError } = cfg
+  const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage } = cfg
   try {
     const res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -44,6 +46,7 @@ async function chatOpenAI(cfg: ChatConfig): Promise<void> {
     })
     if (!res.ok) { onError(new Error(`LLM ${res.status}: ${await res.text()}`)); return }
     const obj = await res.json()
+    onUsage?.(obj?.usage?.prompt_tokens ?? 0, obj?.usage?.completion_tokens ?? 0)
     await onDone(obj?.choices?.[0]?.message?.content ?? '')
   } catch (err) {
     if ((err as Error)?.name !== 'AbortError') onError(toError(err))

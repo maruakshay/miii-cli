@@ -15,10 +15,12 @@ export function CommandPalette({ skills, query, idx }) {
     }
     return (_jsx(Box, { flexDirection: "column", borderStyle: "round", borderColor: "gray", marginX: 1, children: filtered.map((s, i) => {
             const active = i === idx;
-            const isBuiltin = s.ns === 'builtin';
+            const isBuiltin = s.ns === 'builtin' || s.ns === 'git';
             const name = (s.ns === 'default' || s.ns === 'builtin')
                 ? `/${s.name}`
-                : `/${s.ns}:${s.name}`;
+                : s.ns === 'git'
+                    ? `/git ${s.name}`
+                    : `/${s.ns}:${s.name}`;
             return (_jsxs(Box, { paddingX: 1, children: [_jsxs(Text, { color: active ? 'cyan' : isBuiltin ? 'white' : 'magenta', bold: active, children: [active ? '▶ ' : '  ', name.padEnd(20)] }), _jsx(Text, { color: "gray", dimColor: true, children: s.description })] }, `${s.ns}:${s.name}`));
         }) }));
 }

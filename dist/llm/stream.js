@@ -4,7 +4,7 @@ export async function chat(cfg) {
     return chatOllama(cfg);
 }
 async function chatOllama(cfg) {
-    const { model, messages, baseUrl, signal, onDone, onError } = cfg;
+    const { model, messages, baseUrl, signal, onDone, onError, onUsage } = cfg;
     try {
         const res = await fetch(`${baseUrl}/api/chat`, {
             method: 'POST',
@@ -17,6 +17,7 @@ async function chatOllama(cfg) {
             return;
         }
         const obj = await res.json();
+        onUsage?.(obj?.prompt_eval_count ?? 0, obj?.eval_count ?? 0);
         await onDone(obj?.message?.content ?? '');
     }
     catch (err) {
@@ -25,7 +26,7 @@ async function chatOllama(cfg) {
     }
 }
 async function chatOpenAI(cfg) {
-    const { model, messages, baseUrl, apiKey, signal, onDone, onError } = cfg;
+    const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage } = cfg;
     try {
         const res = await fetch(`${baseUrl}/v1/chat/completions`, {
             method: 'POST',
@@ -38,6 +39,7 @@ async function chatOpenAI(cfg) {
             return;
         }
         const obj = await res.json();
+        onUsage?.(obj?.usage?.prompt_tokens ?? 0, obj?.usage?.completion_tokens ?? 0);
         await onDone(obj?.choices?.[0]?.message?.content ?? '');
     }
     catch (err) {

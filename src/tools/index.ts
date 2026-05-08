@@ -103,6 +103,56 @@ export const tools: Tool[] = [
       return `moved: ${from} → ${to}`
     },
   },
+  {
+    name: 'git_status',
+    description: 'Show git working tree status',
+    params: '{}',
+    execute: async () => {
+      try {
+        const { stdout } = await run('git status --short', { timeout: EXEC_TIMEOUT_MS })
+        return stdout.trim() || '(clean — no changes)'
+      } catch (e) { throw new Error(`git_status: ${e}`) }
+    },
+  },
+  {
+    name: 'git_diff',
+    description: 'Show git diff. staged=true for staged changes, path for specific file',
+    params: '{"staged": "boolean (optional)", "path": "string (optional)"}',
+    execute: async ({ staged = false, path = '' }) => {
+      const args = staged ? '--staged' : ''
+      const target = path ? `-- "${path}"` : ''
+      try {
+        const { stdout } = await run(`git diff ${args} ${target}`.trim(), { timeout: EXEC_TIMEOUT_MS })
+        const out = stdout.trim()
+        if (!out) return '(no diff)'
+        return out.length > 8000 ? out.slice(0, 8000) + '\n…[diff truncated at 8k chars]' : out
+      } catch (e) { throw new Error(`git_diff: ${e}`) }
+    },
+  },
+  {
+    name: 'git_log',
+    description: 'Show recent git commits',
+    params: '{"n": "number (optional, default 10)"}',
+    execute: async ({ n = 10 }) => {
+      try {
+        const { stdout } = await run(`git log --oneline -${Math.min(Number(n), 50)}`, { timeout: EXEC_TIMEOUT_MS })
+        return stdout.trim() || '(no commits)'
+      } catch (e) { throw new Error(`git_log: ${e}`) }
+    },
+  },
+  {
+    name: 'git_commit',
+    description: 'Stage files and create a git commit. Use files="-A" to stage all.',
+    params: '{"message": "string", "files": "string (optional, default -A)"}',
+    execute: async ({ message, files = '-A' }) => {
+      if (!message) throw new Error('git_commit: message required')
+      try {
+        await run(`git add ${files}`, { timeout: EXEC_TIMEOUT_MS })
+        const { stdout } = await run(`git commit -m ${JSON.stringify(String(message))}`, { timeout: EXEC_TIMEOUT_MS })
+        return stdout.trim()
+      } catch (e) { throw new Error(`git_commit: ${e}`) }
+    },
+  },
 ]
 
 export function getSystemPrompt(extra = ''): string {
@@ -143,6 +193,9 @@ Rules:
 - To create a new file: use edit_file with full content in the <content> block
 - read_file before patch_file so you know the exact text to match
 - Never delete without confirming
+- Use git_status and git_diff before any refactor to understand what has already changed
+- Use git_log to understand recent history before suggesting changes
+- Always call git_status before git_commit to verify what will be staged
 - Be concise
 - Output plain text only — never use markdown formatting in your responses
 - No headers (no #, ##), no bold (**text**), no italic (*text*), no bullet points with *, no horizontal rules (---)

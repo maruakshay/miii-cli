@@ -31,10 +31,12 @@ export function CommandPalette({ skills, query, idx }: Props) {
     <Box flexDirection="column" borderStyle="round" borderColor="gray" marginX={1}>
       {filtered.map((s, i) => {
         const active = i === idx
-        const isBuiltin = s.ns === 'builtin'
+        const isBuiltin = s.ns === 'builtin' || s.ns === 'git'
         const name = (s.ns === 'default' || s.ns === 'builtin')
           ? `/${s.name}`
-          : `/${s.ns}:${s.name}`
+          : s.ns === 'git'
+            ? `/git ${s.name}`
+            : `/${s.ns}:${s.name}`
         return (
           <Box key={`${s.ns}:${s.name}`} paddingX={1}>
             <Text color={active ? 'cyan' : isBuiltin ? 'white' : 'magenta'} bold={active}>

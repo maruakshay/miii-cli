@@ -13,6 +13,14 @@ const BUILTIN_COMMANDS = [
     { ns: 'builtin', name: 'exit', description: 'exit miii' },
     { ns: 'builtin', name: 'list', description: 'list all loaded skills' },
     { ns: 'builtin', name: 'plan', description: 'start planning mode  /plan [topic]' },
+    { ns: 'builtin', name: 'refactor', description: 'multi-file AI refactor  /refactor <goal>' },
+    { ns: 'git', name: 'status', description: 'show git working tree status' },
+    { ns: 'git', name: 'diff', description: 'show unstaged diff' },
+    { ns: 'git', name: 'diff --staged', description: 'show staged diff' },
+    { ns: 'git', name: 'log', description: 'show recent commits' },
+    { ns: 'git', name: 'review', description: 'review current changes with AI' },
+    { ns: 'git', name: 'branch', description: 'list branches' },
+    { ns: 'git', name: 'commit', description: 'stage all and commit  /git commit <msg>' },
 ];
 const PLANNING_COMMANDS = [
     { ns: 'plan', name: 'next', description: 'suggest next concrete steps' },
@@ -104,7 +112,9 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
     function selectCommand(skill) {
         const name = (skill.ns === 'default' || skill.ns === 'builtin')
             ? `/${skill.name}`
-            : `/${skill.ns}:${skill.name}`;
+            : skill.ns === 'git'
+                ? `/git ${skill.name}`
+                : `/${skill.ns}:${skill.name}`;
         clearInput();
         onSubmit(name);
     }

@@ -9,14 +9,22 @@ import { CommandPalette } from './CommandPalette.js'
 import { AtPicker } from './AtPicker.js'
 
 const BUILTIN_COMMANDS: Skill[] = [
-  { ns: 'builtin', name: 'new',      description: 'start a fresh session (auto-named)' },
-  { ns: 'builtin', name: 'models',   description: 'switch or pull Ollama models' },
-  { ns: 'builtin', name: 'clear',    description: 'clear chat history for current session' },
-  { ns: 'builtin', name: 'sessions', description: 'list all saved sessions' },
-  { ns: 'builtin', name: 'session',  description: 'switch session  /session <name>' },
-  { ns: 'builtin', name: 'exit',     description: 'exit miii' },
-  { ns: 'builtin', name: 'list',     description: 'list all loaded skills' },
-  { ns: 'builtin', name: 'plan',     description: 'start planning mode  /plan [topic]' },
+  { ns: 'builtin', name: 'new',         description: 'start a fresh session (auto-named)' },
+  { ns: 'builtin', name: 'models',      description: 'switch or pull Ollama models' },
+  { ns: 'builtin', name: 'clear',       description: 'clear chat history for current session' },
+  { ns: 'builtin', name: 'sessions',    description: 'list all saved sessions' },
+  { ns: 'builtin', name: 'session',     description: 'switch session  /session <name>' },
+  { ns: 'builtin', name: 'exit',        description: 'exit miii' },
+  { ns: 'builtin', name: 'list',        description: 'list all loaded skills' },
+  { ns: 'builtin', name: 'plan',        description: 'start planning mode  /plan [topic]' },
+  { ns: 'builtin', name: 'refactor',    description: 'multi-file AI refactor  /refactor <goal>' },
+  { ns: 'git',     name: 'status',      description: 'show git working tree status' },
+  { ns: 'git',     name: 'diff',        description: 'show unstaged diff' },
+  { ns: 'git',     name: 'diff --staged', description: 'show staged diff' },
+  { ns: 'git',     name: 'log',         description: 'show recent commits' },
+  { ns: 'git',     name: 'review',      description: 'review current changes with AI' },
+  { ns: 'git',     name: 'branch',      description: 'list branches' },
+  { ns: 'git',     name: 'commit',      description: 'stage all and commit  /git commit <msg>' },
 ]
 
 const PLANNING_COMMANDS: Skill[] = [
@@ -127,7 +135,9 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
   function selectCommand(skill: Skill) {
     const name = (skill.ns === 'default' || skill.ns === 'builtin')
       ? `/${skill.name}`
-      : `/${skill.ns}:${skill.name}`
+      : skill.ns === 'git'
+        ? `/git ${skill.name}`
+        : `/${skill.ns}:${skill.name}`
     clearInput()
     onSubmit(name)
   }

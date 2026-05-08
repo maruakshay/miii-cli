@@ -11,6 +11,10 @@ import { tools, getSystemPrompt } from '../tools/index.js';
 import { readFile } from '../files/ops.js';
 import * as printer from './printer.js';
 import { loadSession, saveSession, listSessions } from '../sessions.js';
+import { shouldCompact, compactContext, fileEditContext } from '../tasks/compactor.js';
+import { MacroQueue, MicroQueue } from '../tasks/queue.js';
+import { TaskExecutor } from '../tasks/executor.js';
+import { generateId } from '../types.js';
 const MAX_TOOL_DEPTH = 6;
 const THINKING_PHRASES = [
     'oh wow, a question. let me pretend to care…',
@@ -23,6 +27,21 @@ const THINKING_PHRASES = [
     'doing the thinking you pay me for…',
     'processing your questionable life choices…',
     'summoning coherent thoughts, rarely works…',
+    'asking my imaginary friend for help…',
+    'pretending this is a hard problem…',
+    'yes, yes, very interesting. anyway…',
+    'googling it (not really, I can\'t)…',
+    'simulating intelligence… please wait…',
+    'having a brief existential crisis…',
+    'cross-referencing vibes…',
+    'totally not making this up…',
+    'the answer is 42. now finding the question…',
+    'my other tab is loading…',
+    'channelling the spirit of stack overflow…',
+    'trying not to confidently be wrong…',
+    'applying artificial to the intelligence…',
+    'phoning a friend who also doesn\'t know…',
+    'checking if this is even my problem to solve…',
 ];
 const SPARKLE = ['✦', '✧', '✶', '✷', '✸', '✹'];
 function buildAtContext(text) {
@@ -47,6 +66,8 @@ export function InputBar({ config, skills, cwd, session }) {
     const [tick, setTick] = useState(0);
     const [currentModel, setCurrentModel] = useState(config.model);
     const [sessionName, setSessionName] = useState(session);
+    const [currentTool, setCurrentTool] = useState();
+    const [taskLabel, setTaskLabel] = useState();
     const [planningMode, setPlanningMode] = useState(false);
     // picker opens on mount — force model selection every launch
     const [pickerOpen, setPickerOpen] = useState(true);
@@ -56,6 +77,9 @@ export function InputBar({ config, skills, cwd, session }) {
     const [pullState, setPullState] = useState();
     const abortRef = useRef(null);
     const pullAbortRef = useRef(null);
+    const thinkingStartRef = useRef(0);
+    const macroQueueRef = useRef(new MacroQueue());
+    const executorRef = useRef(new TaskExecutor(tools));
     const systemPromptRef = useRef(getSystemPrompt(`\n- CWD: ${cwd}`));
     const currentModelRef = useRef(currentModel);
     const sessionNameRef = useRef(sessionName);
@@ -87,18 +111,22 @@ export function InputBar({ config, skills, cwd, session }) {
             ctx.push(extra);
         return ctx;
     }
-    const runLoop = useCallback(async (contextMsgs, depth = 0) => {
+    const runLoop = useCallback(async (contextMsgs, depth = 0, goal) => {
         if (depth >= MAX_TOOL_DEPTH) {
             setStatus('idle');
             return;
         }
         setStatus('thinking');
+        if (depth === 0)
+            thinkingStartRef.current = Date.now();
+        // Auto-compact context when local model starts losing the thread
+        const msgs = shouldCompact(contextMsgs) ? compactContext(contextMsgs, goal) : contextMsgs;
         abortRef.current = new AbortController();
         await chat({
             provider: config.provider,
             model: currentModelRef.current,
             baseUrl: config.baseUrl,
-            messages: contextMsgs,
+            messages: msgs,
             signal: abortRef.current.signal,
             async onDone(fullText) {
                 const pendingTools = [];
@@ -115,9 +143,10 @@ export function InputBar({ config, skills, cwd, session }) {
                     return;
                 }
                 setStatus('tool');
-                const next = [...contextMsgs, { role: 'assistant', content: fullText }];
+                const next = [...msgs, { role: 'assistant', content: fullText }];
                 for (const tc of pendingTools) {
                     const tool = tools.find(t => t.name === tc.name);
+                    setCurrentTool(tc.name);
                     if (tool) {
                         try {
                             const result = await tool.execute(tc.args);
@@ -135,7 +164,8 @@ export function InputBar({ config, skills, cwd, session }) {
                         next.push({ role: 'user', content: `unknown tool: ${tc.name}` });
                     }
                 }
-                await runLoop(next, depth + 1);
+                setCurrentTool(undefined);
+                await runLoop(next, depth + 1, goal);
             },
             onError(err) {
                 if (err.name !== 'AbortError')
@@ -182,6 +212,217 @@ export function InputBar({ config, skills, cwd, session }) {
             setPickerError(`pull failed: ${e}`);
         }
     }, [config.baseUrl]);
+    // ─── refactor ─────────────────────────────────────────────────────────────
+    const runRefactor = useCallback(async (goal) => {
+        printer.systemMsg(`refactor: ${goal}`);
+        setTaskLabel(`planning: ${goal}`);
+        setStatus('thinking');
+        // Phase 1 — planning: ask model to list files and describe changes
+        const planCtx = [
+            { role: 'system', content: systemPromptRef.current },
+            {
+                role: 'user',
+                content: `Refactor goal: ${goal}\n\nList every file that needs to change. For each file output:\nFILE: <path>\nCHANGE: <one sentence describing the edit>\n\nUse list_files and read_file to discover relevant files first. Only list files that genuinely need changes.`,
+            },
+        ];
+        abortRef.current = new AbortController();
+        let planText = '';
+        await chat({
+            provider: config.provider,
+            model: currentModelRef.current,
+            baseUrl: config.baseUrl,
+            messages: planCtx,
+            signal: abortRef.current.signal,
+            async onDone(text) { planText = text; },
+            onError(err) { printer.errorMsg(err.message); },
+        });
+        if (!planText) {
+            setStatus('idle');
+            setTaskLabel(undefined);
+            return;
+        }
+        printer.assistantMsg(planText);
+        // Parse FILE:/CHANGE: pairs from plan
+        const filePlan = [];
+        const lines = planText.split('\n');
+        let lastPath = '';
+        for (const line of lines) {
+            const fm = line.match(/^FILE:\s*(.+)/);
+            const cm = line.match(/^CHANGE:\s*(.+)/);
+            if (fm)
+                lastPath = fm[1].trim();
+            if (cm && lastPath) {
+                filePlan.push({ path: lastPath, change: cm[1].trim() });
+                lastPath = '';
+            }
+        }
+        if (!filePlan.length) {
+            printer.systemMsg('no files identified in plan — done');
+            setStatus('idle');
+            setTaskLabel(undefined);
+            return;
+        }
+        printer.systemMsg(`plan: ${filePlan.length} file(s) to change`);
+        // Phase 2 — execute via macro/micro queue
+        const micro = new MicroQueue();
+        // P1: read all files in parallel
+        for (const fp of filePlan) {
+            const t = { id: `read:${fp.path}`, priority: 1, tool: 'read_file', args: { path: fp.path }, deps: [], status: 'pending' };
+            micro.push(t);
+        }
+        const macro = {
+            id: generateId(),
+            goal,
+            priority: 0,
+            microtasks: micro.toArray(),
+            status: 'running',
+        };
+        macroQueueRef.current.enqueue(macro);
+        setTaskLabel(`reading ${filePlan.length} file(s)…`);
+        const readResults = await executorRef.current.drain(micro, ({ task, result, error }) => {
+            if (error)
+                printer.errorMsg(`read failed: ${task.args.path} — ${error}`);
+            else
+                printer.systemMsg(`read: ${task.args.path}`);
+        });
+        // Phase 3 — per-file LLM call with isolated context → patch
+        setTaskLabel(`applying changes…`);
+        const writeMicro = new MicroQueue();
+        for (const fp of filePlan) {
+            const readId = `read:${fp.path}`;
+            const fileContent = readResults.get(readId) ?? '';
+            if (!fileContent) {
+                printer.systemMsg(`skip (unreadable): ${fp.path}`);
+                continue;
+            }
+            setCurrentTool(`edit ${fp.path}`);
+            setTaskLabel(`editing: ${fp.path}`);
+            // Isolated context per file keeps model focused
+            const editCtx = fileEditContext(systemPromptRef.current, goal, fp.path, fileContent, fp.change);
+            let editText = '';
+            await chat({
+                provider: config.provider,
+                model: currentModelRef.current,
+                baseUrl: config.baseUrl,
+                messages: editCtx,
+                signal: abortRef.current?.signal,
+                async onDone(text) { editText = text; },
+                onError(err) { printer.errorMsg(`edit LLM error: ${err.message}`); },
+            });
+            if (!editText)
+                continue;
+            printer.assistantMsg(editText);
+            // Queue write tasks from LLM's tool calls (P2)
+            const parser = new StreamParser();
+            for (const item of [...parser.feed(editText), ...parser.flush()]) {
+                if (item.type === 'tool_call') {
+                    writeMicro.push({ id: generateId(), priority: 2, tool: item.toolName, args: item.toolArgs, deps: [], status: 'pending' });
+                }
+            }
+        }
+        // Execute all writes
+        if (writeMicro.size > 0) {
+            setTaskLabel(`writing ${writeMicro.size} change(s)…`);
+            await executorRef.current.drain(writeMicro, ({ task, result, error }) => {
+                if (error)
+                    printer.errorMsg(`${task.tool} failed: ${error}`);
+                else
+                    printer.toolMsg(task.tool, result ?? '');
+            });
+        }
+        macro.status = 'done';
+        macroQueueRef.current.dequeue();
+        setCurrentTool(undefined);
+        setTaskLabel(undefined);
+        setStatus('idle');
+        printer.systemMsg(`refactor done — ${filePlan.length} file(s) processed`);
+        historyRef.current.push({ role: 'user', content: `[refactor] ${goal}` });
+        historyRef.current.push({ role: 'assistant', content: planText });
+        saveSession(sessionNameRef.current, historyRef.current);
+    }, [config]);
+    // ─── git ───────────────────────────────────────────────────────────────────
+    const handleGit = useCallback(async (sub) => {
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const gitRun = promisify(exec);
+        const git = async (args) => {
+            try {
+                const { stdout, stderr } = await gitRun(`git ${args}`, { timeout: 15_000 });
+                return (stdout + stderr).trim();
+            }
+            catch (e) {
+                return e.message ?? String(e);
+            }
+        };
+        // /git  or  /git status
+        if (!sub || sub === 'status') {
+            const out = await git('status');
+            printer.systemMsg(out);
+            return;
+        }
+        // /git log [n]
+        if (sub === 'log' || sub.startsWith('log ')) {
+            const n = parseInt(sub.split(' ')[1] ?? '10', 10) || 10;
+            const out = await git(`log --oneline --decorate -${Math.min(n, 50)}`);
+            printer.systemMsg(out);
+            return;
+        }
+        // /git diff [--staged] [file]
+        if (sub === 'diff' || sub.startsWith('diff ')) {
+            const args = sub.slice(4).trim();
+            const out = await git(`diff ${args}`.trim());
+            const display = out.length > 6000 ? out.slice(0, 6000) + '\n…[truncated]' : out;
+            printer.systemMsg(display || '(no diff)');
+            return;
+        }
+        // /git review  — inject diff into context, ask model to review
+        if (sub === 'review') {
+            const diff = await git('diff HEAD');
+            const staged = await git('diff --staged');
+            const combined = [diff, staged].filter(Boolean).join('\n').trim();
+            if (!combined || combined === '(no diff)') {
+                printer.systemMsg('no changes to review');
+                return;
+            }
+            const truncated = combined.length > 8000 ? combined.slice(0, 8000) + '\n…[truncated]' : combined;
+            const userMsg = `Review these git changes for bugs, issues, and improvements:\n\n${truncated}`;
+            printer.userMsg('/git review');
+            historyRef.current.push({ role: 'user', content: userMsg });
+            saveSession(sessionNameRef.current, historyRef.current);
+            await runLoop(buildContext());
+            return;
+        }
+        // /git branch
+        if (sub === 'branch' || sub.startsWith('branch ')) {
+            const args = sub.slice(6).trim();
+            const out = await git(`branch ${args}`.trim());
+            printer.systemMsg(out || '(done)');
+            return;
+        }
+        // /git commit <msg>
+        if (sub.startsWith('commit ')) {
+            const msg = sub.slice(7).trim();
+            if (!msg) {
+                printer.systemMsg('usage: /git commit <message>');
+                return;
+            }
+            const status = await git('status --short');
+            if (!status || status === '(clean — no changes)') {
+                printer.systemMsg('nothing to commit — working tree clean');
+                return;
+            }
+            printer.systemMsg(`staging and committing:\n${status}`);
+            const stageOut = await git('add -A');
+            if (stageOut)
+                printer.systemMsg(stageOut);
+            const commitOut = await git(`commit -m ${JSON.stringify(msg)}`);
+            printer.systemMsg(commitOut);
+            return;
+        }
+        // fallthrough — run arbitrary git subcommand
+        const out = await git(sub);
+        printer.systemMsg(out || '(done)');
+    }, []);
     // ─── submit ────────────────────────────────────────────────────────────────
     const handleSubmit = useCallback(async (text) => {
         const cmd = text.trim();
@@ -209,6 +450,20 @@ export function InputBar({ config, skills, cwd, session }) {
         }
         if (cmd === '/exit') {
             process.exit(0);
+        }
+        if (cmd === '/git' || cmd.startsWith('/git ')) {
+            const sub = cmd.slice(4).trim();
+            await handleGit(sub);
+            return;
+        }
+        if (cmd.startsWith('/refactor ') || cmd === '/refactor') {
+            const goal = cmd.slice(9).trim();
+            if (!goal) {
+                printer.systemMsg('usage: /refactor <goal>');
+                return;
+            }
+            await runRefactor(goal);
+            return;
         }
         if (cmd === '/plan' || cmd.startsWith('/plan ')) {
             const topic = cmd.slice(5).trim();
@@ -308,8 +563,8 @@ export function InputBar({ config, skills, cwd, session }) {
     }, []);
     const skillList = skills.list();
     // ─── render ────────────────────────────────────────────────────────────────
-    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } }), _jsx(Divider, { cols: cols })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(_Fragment, { children: [_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), _jsx(Box, { paddingLeft: 2, children: status === 'thinking'
-                                    ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[Math.floor(tick / 62) % THINKING_PHRASES.length] })] })
-                                    : _jsx(Text, { color: "yellow", dimColor: true, children: "running tool\u2026" }) })] }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, onSubmit: handleSubmit, onAbort: handleAbort })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); setPullState(undefined); } }), _jsx(Divider, { cols: cols })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(_Fragment, { children: [_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), _jsxs(Box, { paddingLeft: 2, flexDirection: "column", children: [_jsx(Box, { children: status === 'thinking'
+                                            ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[Math.floor(tick / 62) % THINKING_PHRASES.length] })] })
+                                            : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsxs(Text, { color: "gray", dimColor: true, children: [Math.floor((Date.now() - thinkingStartRef.current) / 1000), "s"] }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] })] }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, onSubmit: handleSubmit, onAbort: handleAbort })] }));
 }
 //# sourceMappingURL=InputBar.js.map
