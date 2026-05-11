@@ -1,42 +1,53 @@
 # miii
 
-> A local AI coding assistant that actually works. No cloud. No Python. No API keys required.
+> Claude Code-level terminal AI — runs on your machine, zero cloud required.
 
 ```
-╭──────────────────────────────────────────────────────────────╮
-│  miii — Claude Code-level workflows, fully offline           │
-╰──────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────╮
+│  miii  v0.2.5                                                        │
+│  model: qwen2.5-coder:7b                                             │
+├──────────────────────────────────────────────────────────────────────┤
+│  ✦ cross-referencing vibes…                              12s         │
+│  ⚙ running patch_file…                                              │
+│  ⚙ running run_tests…                                               │
+├──────────────────────────────────────────────────────────────────────┤
+│  ❯ █                                                                 │
+│  @ file  / command  enter send  ctrl+c exit                          │
+╰──────────────────────────────────────────────────────────────────────╯
 ```
 
 [![npm version](https://img.shields.io/npm/v/miii-cli)](https://www.npmjs.com/package/miii-cli)
+[![npm downloads](https://img.shields.io/npm/dm/miii-cli)](https://www.npmjs.com/package/miii-cli)
 [![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
 [![node](https://img.shields.io/node/v/miii-cli)](https://nodejs.org)
 
-![miii demo](mii-cli.gif)
+---
+
+## What is this
+
+A local AI coding assistant with the workflow depth of Claude Code — file editing, multi-file refactors, test running, git integration, web search — except it runs entirely on your machine using Ollama, or any OpenAI-compatible API.
+
+No Python. No cloud. No API key required to start. 176K bundle.
 
 ---
 
-## Why miii exists
-
-Every local AI coding tool is either too clunky to set up, requires cloud APIs, or has terminal output that's genuinely painful to read. miii is what happens when you build a local coding assistant that takes UX seriously — real Ink-based terminal UI, automatic git context, multi-file refactors with task queues, and a context compactor that keeps local models on-track.
-
-Your code never leaves your machine.
-
----
-
-## What makes it different
+## Why it beats the alternatives
 
 | Feature | miii | aider | shell_gpt | open-interpreter |
-|---|---|---|---|---|
-| Ink terminal UI | ✅ | ❌ | ❌ | ❌ |
+|---|:---:|:---:|:---:|:---:|
+| Ink terminal UI (not raw text) | ✅ | ❌ | ❌ | ❌ |
 | Zero Python | ✅ | ❌ | ❌ | ❌ |
-| Auto git context | ✅ | ✅ | ❌ | ❌ |
-| Context compaction | ✅ | ✅ | ❌ | ❌ |
+| Auto git context injection | ✅ | ✅ | ❌ | ❌ |
 | Multi-file refactor queue | ✅ | partial | ❌ | ❌ |
-| `.miiiignore` | ✅ | ✅ | ❌ | ❌ |
-| Session persistence | ✅ | ❌ | ❌ | ❌ |
+| Context compaction (keeps local models on-track) | ✅ | ✅ | ❌ | ❌ |
+| Auto-runs tests after file edits | ✅ | ❌ | ❌ | ❌ |
+| Web search + extract (Tavily) | ✅ | ❌ | ❌ | partial |
+| npm skill plugin system | ✅ | ❌ | ❌ | ❌ |
 | Planning mode | ✅ | ❌ | ❌ | ❌ |
-| Bundle size | 176K | ~50MB | ~40MB | ~100MB |
+| Named sessions + persistence | ✅ | ❌ | ❌ | ❌ |
+| `.miiiignore` | ✅ | ✅ | ❌ | ❌ |
+| Live model switching mid-session | ✅ | ❌ | ❌ | ❌ |
+| Bundle size | **176K** | ~50MB | ~40MB | ~100MB |
 
 ---
 
@@ -46,24 +57,21 @@ Your code never leaves your machine.
 npm install -g miii-cli
 ```
 
-**Requirements:** Node.js 18+ and [Ollama](https://ollama.com) (or any OpenAI-compatible API)
+**Requires:** Node.js 18+  and [Ollama](https://ollama.com)
+
+Or any OpenAI-compatible API — see [configuration](#configuration).
 
 ---
 
 ## Quick start
 
 ```bash
-# Start Ollama
 ollama serve
-
-# Pull a model
 ollama pull qwen2.5-coder:7b
-
-# Launch miii
 miii
 ```
 
-A model picker opens on launch. Select a model and start coding.
+Model picker opens on launch. Select a model. Start coding.
 
 ```bash
 miii                          # default session
@@ -72,11 +80,17 @@ miii --session myproject      # named session
 miii -s work -m codellama     # short flags
 ```
 
+miii checks for updates on startup and lets you know when a new version is available:
+
+```
+├── miii v0.2.5 → v0.2.6 available  run: npm install -g miii-cli ───┤
+```
+
 ---
 
 ## Auto git context
 
-miii automatically detects changed files via `git status` and injects their contents into the model's context — no `@file` needed for files you're actively working on.
+miii watches `git status` and silently injects your changed files into context — before you even type `@file`.
 
 ```
 ❯ fix the type error in the auth middleware
@@ -84,31 +98,118 @@ miii automatically detects changed files via `git status` and injects their cont
 [auto-loaded 3 changed file(s)]
 ```
 
-Only fires for code-related messages. Pure questions ("what is a closure?") skip the git scan entirely. Deduped — same files don't re-inject unless they change.
+Smart enough to skip it for non-code questions. Deduped — same files don't re-inject unless they change on disk. Disable per-project:
 
-Disable per-project:
 ```json
 { "gitContext": false }
 ```
 
 ---
 
+## Multi-file refactor
+
+One goal, executed across the whole codebase:
+
+```
+/refactor extract all database queries into a repository layer
+/refactor rename UserService to AccountService everywhere
+/refactor add input validation to all API route handlers
+```
+
+How it works: model plans which files change → reads all in parallel → per-file LLM call with isolated context → writes queued changes → runs tests. Each file gets its own fresh context so local models never lose the thread.
+
+---
+
+## Auto-test after edits
+
+Every time the model edits a file, miii runs your test suite automatically and feeds results back into the conversation — without you asking.
+
+```
+⚙ running run_tests…
+● src/auth/middleware.test.ts — 2 tests failed
+```
+
+Model sees the failures and fixes them on the next hop. Supports jest, vitest, mocha — auto-detected from `package.json`.
+
+---
+
+## Web search
+
+Add a Tavily key and the model can search the web and scrape pages as tools, mid-conversation:
+
+```bash
+/tavily-key tvly-your-key-here
+```
+
+Get a free key at [tavily.com](https://tavily.com) — 1000 free searches/month.
+
+```
+❯ what's the latest breaking change in React 19?
+❯ find the docs for the Hono.js routing API and implement it here
+❯ search for the error: "Cannot read properties of undefined (reading 'map')"
+```
+
+Tools available to the model: `web_search` (semantic search, configurable depth) and `web_extract` (scrape and summarize any URL). API key stored at `~/.config/miii/tavily.key` with mode 600.
+
+---
+
+## npm skill ecosystem
+
+Write your own:
+
+```typescript
+// miii-skill-mytool/index.js
+export default {
+  name: 'mytool',
+  ns: 'custom',
+  description: 'does something useful',
+  execute: async (args, ctx) => {
+    ctx.setSystemPrompt(ctx.getSystemPrompt() + '\nExtra context here.')
+    return 'skill activated'
+  }
+}
+```
+
+Markdown skills still work too — drop a `.md` file in `~/.config/miii/skills/` and it becomes a `/command` instantly.
+
+---
+
+## Planning mode
+
+Think before you code:
+
+```
+/plan add OAuth2 to this Express app
+/plan refactor the frontend to use React Query
+```
+
+Switches the model into a structured planning mode — no code, just questions, breakdowns, and concrete steps. Then:
+
+```
+/plan:next        next concrete steps
+/plan:breakdown   break into subtasks
+/plan:review      critique the plan so far
+/plan:done        exit, go build
+```
+
+---
+
 ## File context with `@`
 
-Type `@` to fuzzy-search and inject any project file:
+Type `@` anywhere to fuzzy-search and inject any project file into context:
 
 ```
 ❯ review the auth logic in @src/auth/middleware.ts
 ❯ what does @src/utils/parser.ts return when input is empty?
 ```
 
-Automatically excluded: `node_modules`, `dist`, `.git`, lock files, binaries, images.
+Files auto-excluded: `node_modules`, `dist`, `.git`, lock files, binaries, images.
 
 ---
 
 ## `.miiiignore`
 
-Create `.miiiignore` in your project root to exclude files from `@` picker and auto-context:
+Exclude files from `@` fuzzy picker and git auto-context:
 
 ```
 # .miiiignore
@@ -124,161 +225,101 @@ Supports exact names, relative paths, and `*.ext` glob patterns.
 
 ## Git integration
 
-Full git workflow from the terminal:
-
 ```
-/git status          show working tree
+/git status          working tree
 /git diff            unstaged changes
-/git diff --staged   staged changes
-/git log             recent commits
+/git diff --staged   staged diff
+/git log             recent commits  (n optional: /git log 20)
 /git review          AI reviews current changes for bugs + improvements
 /git branch          list branches
 /git commit <msg>    stage all and commit
 ```
 
-The model also has access to git tools directly — it can check status, read diffs, and commit as part of autonomous workflows.
+The model also has `git_status`, `git_diff`, `git_log`, `git_commit` as autonomous tools — it checks status and commits without being asked.
 
 ---
 
-## Multi-file refactor
+## All built-in tools
 
-Describe a goal, miii plans and executes across multiple files with isolated context per file:
+The model calls these autonomously as needed:
 
-```
-/refactor extract all database queries into a repository layer
-/refactor rename UserService to AccountService everywhere
-/refactor add input validation to all API route handlers
-```
-
-Uses a priority task queue (P0=blocking, P1=reads parallel, P2=writes sequential, P3=verify). Each file gets its own fresh context — the local model never loses the thread on large codebases.
-
----
-
-## Planning mode
-
-Structured step-by-step planning before writing any code:
-
-```
-/plan add OAuth2 to this Express app
-/plan refactor the frontend to use React Query
-```
-
-In planning mode:
-```
-/plan:next        suggest next concrete steps
-/plan:breakdown   break topic into subtasks
-/plan:review      critique the plan so far
-/plan:done        exit planning mode
-```
-
----
-
-## Built-in commands
-
-Type `/` to open the command palette with fuzzy search.
-
-| Command | Description |
+| Tool | What it does |
 |---|---|
-| `/model <name>` | Switch model mid-session — no restart needed |
-| `/models` | Open model picker, pull new Ollama models |
-| `/session <name>` | Switch to or create a named session |
-| `/sessions` | List all sessions with message counts |
-| `/new` | Start a fresh auto-named session |
-| `/clear` | Clear current session history |
-| `/plan [topic]` | Enter planning mode |
-| `/refactor <goal>` | Multi-file AI refactor |
-| `/git <subcommand>` | Git commands (see above) |
-| `/list` | Show all loaded skills |
-| `/exit` | Exit miii |
-
----
-
-## Built-in tools
-
-The model calls these autonomously — reads, writes, edits, runs, tests, and commits on its own.
-
-| Tool | Description |
-|---|---|
-| `read_file` | Read any file |
-| `list_files` | List directory contents |
-| `create_file` | Create a new file (fails if exists) |
+| `read_file` | Read any file in cwd |
+| `list_files` | List directory, respects `.miiiignore` |
+| `create_file` | Create new file — throws if already exists |
 | `edit_file` | Create or fully rewrite a file |
-| `patch_file` | Targeted string replacement — throws if match is ambiguous |
+| `patch_file` | Targeted string replace — throws on ambiguous match |
 | `delete_file` | Delete a file |
-| `move_file` | Move or rename a file or directory |
-| `create_folder` | Create directory with parents |
-| `run_command` | Run shell command in cwd (30s timeout) |
-| `run_tests` | Run test suite, auto-detects jest/vitest/mocha from package.json |
+| `move_file` | Move or rename |
+| `create_folder` | mkdir -p |
+| `run_command` | Shell command, cwd, 30s timeout |
+| `run_tests` | Run test suite (jest/vitest/mocha auto-detected) |
 | `git_status` | Working tree status |
-| `git_diff` | Unstaged or staged diff (truncated at 8K) |
-| `git_log` | Recent commit history |
-| `git_commit` | Stage files and commit |
+| `git_diff` | Diff, staged or unstaged, 8K truncated |
+| `git_log` | Commit history |
+| `git_commit` | Stage + commit |
+| `web_search` | Tavily semantic search (requires API key) |
+| `web_extract` | Scrape + summarize URLs (requires API key) |
 
-Tool calls chain up to 6 hops — model reads, edits, runs tests, and verifies autonomously.
-
----
-
-## Context compaction
-
-Local models lose the thread after ~15-20 messages. miii auto-compacts context at threshold: keeps system prompt + original goal + tool result summary + last 6 exchanges. The session history is preserved on disk — only the LLM context window gets trimmed.
-
----
-
-## Thinking indicator
-
-```
-✦ staring into the abyss (it blinked)…   [0:12]
-
-⚙ running patch_file…
-⚙ running run_tests…
-```
-
-Phrase rotates every 5 seconds. Tool name updates live as each call fires. Elapsed time shown throughout.
+Chains up to 6 tool hops per response — read, edit, test, verify, commit in one shot.
 
 ---
 
 ## Sessions
 
-Every conversation persists automatically.
+Every conversation persists automatically to disk.
 
 ```bash
-miii                          # resumes "default" session
+miii                          # resumes last session
 miii --session feature-auth   # resumes or creates "feature-auth"
 ```
 
-Sessions stored at `~/.config/miii/sessions/`. History capped at 100 messages in memory, full history on disk.
+```
+/session <name>     switch to a session (creates if new)
+/sessions           list all sessions with message counts
+/new                fresh auto-named session
+/clear              clear current session
+```
+
+Sessions at `~/.config/miii/sessions/`. History capped at 100 messages in-context, full history on disk. Debounced writes — no I/O on every message.
 
 ---
 
-## Skills
+## Context compaction
 
-Custom `/` commands via Markdown in `~/.config/miii/skills/`:
+Local models lose coherence around 15–20 messages. miii auto-compacts when context gets long: keeps system prompt + original goal + tool result summary + last 6 exchanges. You keep going without restarting. Session history always preserved on disk — only the LLM window gets trimmed.
 
-```markdown
----
-name: review
-description: review current changes for bugs and improvements
 ---
 
-Review the code I'm about to share. Look for bugs, edge cases, and improvements.
-Be direct and specific. No markdown.
-```
+## All commands
 
-```
-/review
-```
+Type `/` to open the command palette with fuzzy search.
 
-TypeScript skills with `execute` functions available for programmatic behavior.
+| Command | Description |
+|---|---|
+| `/model <name>` | Switch model mid-session — no restart |
+| `/models` | Model picker, pull new Ollama models |
+| `/session <name>` | Switch or create session |
+| `/sessions` | List all sessions |
+| `/new` | Fresh auto-named session |
+| `/clear` | Clear current history |
+| `/plan [topic]` | Planning mode |
+| `/refactor <goal>` | Multi-file refactor |
+| `/git <sub>` | Git commands |
+| `/skills <sub>` | Install / uninstall / list npm skills |
+| `/tavily-key <key>` | Set web search API key |
+| `/version` | Show current version |
+| `/list` | List all loaded skills |
+| `/exit` | Exit |
 
 ---
 
 ## Configuration
 
-Config loaded from (in order):
-1. `.miii.json` in current directory
-2. `~/.config/miii/config.json`
+Loaded in order from `.miii.json` (project) → `~/.config/miii/config.json` (global).
 
-**Ollama:**
+**Ollama (default):**
 ```json
 {
   "model": "qwen2.5-coder:7b",
@@ -287,7 +328,7 @@ Config loaded from (in order):
 }
 ```
 
-**OpenAI-compatible (LM Studio, vLLM, Groq, Together, etc.):**
+**Any OpenAI-compatible API** (LM Studio, vLLM, Groq, Together, OpenRouter…):
 ```json
 {
   "model": "gpt-4o",
@@ -305,9 +346,23 @@ Config loaded from (in order):
   "baseUrl": "http://localhost:11434",
   "apiKey": "",
   "gitContext": true,
+  "tavilyApiKey": "tvly-...",
   "systemPrompt": "optional override"
 }
 ```
+
+---
+
+## Security
+
+| Threat | Defense |
+|---|---|
+| Path traversal (OWASP A01) | All file ops restricted to cwd via `guardPath()` |
+| `@file` injection | Refs validated against cwd before reading |
+| Session name injection | Names sanitized to alphanumeric + hyphens |
+| Shell injection (OWASP A03) | `run_command` enforces 30s hard timeout |
+| Config injection (OWASP A08) | Config key whitelist; session data validated as array |
+| API key exposure | Tavily key stored at `~/.config/miii/tavily.key` mode 600 |
 
 ---
 
@@ -315,22 +370,10 @@ Config loaded from (in order):
 
 | Key | Action |
 |---|---|
-| `enter` | Send message |
+| `enter` | Send |
 | `↑ / ↓` | Navigate command palette or file picker |
-| `esc` | Close overlay / abort request |
+| `esc` | Close overlay / abort in-flight request |
 | `ctrl+c` | Abort current request or exit |
-
----
-
-## Security
-
-| Issue | Fix |
-|---|---|
-| Path traversal (OWASP A01) | All file operations restricted to cwd via `guardPath()` |
-| Path traversal (OWASP A01) | `@file` refs validated against cwd before reading |
-| Path traversal (OWASP A01) | Session names sanitized to alphanumeric + hyphens |
-| Injection (OWASP A03) | `run_command` enforces 30s execution timeout |
-| Insecure deserialization (OWASP A08) | Config whitelists allowed keys; session data validated as array |
 
 ---
 
@@ -342,20 +385,18 @@ cd miii-cli
 npm install
 npm run build
 npm link
+npm test          # 8 integration tests
 ```
 
 ---
 
-## What's in 0.2.x
+## What's new in 0.2.5
 
-- **Auto git context** — changed files injected automatically, code-gated heuristic
-- **`.miiiignore`** — per-project file exclusions
-- **Multi-file refactor** — macro/micro task queue, isolated context per file
-- **Planning mode** — structured `/plan` workflow
-- **Git integration** — full git toolkit in commands and model tools
-- **`run_tests` tool** — model runs and retries tests autonomously
-- **`/model` live switch** — change models mid-session
-- **Context compaction** — auto-trim at 18 messages, keep goal + summary + recent
-- **Ambiguous patch detection** — `patch_file` throws on multiple matches instead of silently corrupting
-- **176K bundle** — removed dead workers, sourcemaps, unused deps (was 468K)
-- **Debounced session saves** — writes at most once per 2s, no I/O on every keypress
+- **Web search** — `web_search` + `web_extract` tools powered by Tavily
+- **npm skill ecosystem** — install/uninstall `miii-skill-*` packages, write your own
+- **Auto-test after edits** — model runs test suite after every file change, feeds failures back
+- **Live model switching** — `/model <name>` mid-session, no restart
+- **Update check** — startup banner when a new version is available
+- **Hook architecture** — `useSession`, `useModelPicker`, `useRunLoop` for clean internals
+- **Ambiguous patch detection** — `patch_file` throws on multiple matches
+- **176K bundle** — vs ~50MB for the Python alternatives
