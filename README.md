@@ -8,8 +8,8 @@
 │  model: qwen2.5-coder:7b                                             │
 ├──────────────────────────────────────────────────────────────────────┤
 │  ✦ cross-referencing vibes…                              12s         │
-│  ⚙ running patch_file…                                              │
-│  ⚙ running run_tests…                                               │
+│  ⚙ running patch_file…                                               │
+│  ⚙ running run_tests…                                                │
 ├──────────────────────────────────────────────────────────────────────┤
 │  ❯ █                                                                 │
 │  @ file  / command  enter send  ctrl+c exit                          │
