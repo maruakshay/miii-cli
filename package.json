@@ -1,6 +1,6 @@
 {
   "name": "miii-cli",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "type": "module",
   "description": "Claude Code-level terminal workflows powered by your local models.",
   "license": "MIT",
@@ -36,7 +36,8 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "link": "npm run build && npm link"
+    "link": "npm run build && npm link",
+    "test": "vitest run"
   },
   "dependencies": {
     "ink": "^5.2.0",
@@ -49,6 +50,7 @@
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.1",
     "tsx": "^4.19.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.6"
   }
 }

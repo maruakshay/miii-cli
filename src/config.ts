@@ -9,7 +9,7 @@ const defaults: Config = {
   baseUrl: 'http://localhost:11434',
 }
 
-const ALLOWED_KEYS = new Set<keyof Config>(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey'])
+const ALLOWED_KEYS = new Set<keyof Config>(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey', 'gitContext', 'tavilyApiKey'])
 
 export function loadConfig(): Config {
   const candidates = [

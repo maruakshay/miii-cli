@@ -41,7 +41,7 @@ function formatContent(text) {
     }
     return out.join('\n');
 }
-export function welcome(provider, model, cwd) {
+export function welcome(provider, model, cwd, version, updateAvailable, linked) {
     const cols = Math.min(process.stdout.columns ?? 80, 100);
     const innerW = cols - 2;
     const leftW = Math.floor(innerW * 0.44);
@@ -64,11 +64,17 @@ export function welcome(provider, model, cwd) {
     function rcmd(key, desc, keyW = 10) {
         return '  ' + cyan(key) + ' '.repeat(Math.max(1, keyW - key.length)) + gray(desc);
     }
-    const titleStr = '─ MIII - CLI ';
+    const versionStr = version ? ` v${version}` : '';
+    const titleStr = `─ MIII - CLI${versionStr} `;
     const dashCount = Math.max(0, cols - 2 - titleStr.length);
-    const top = gray('╭') + gray('─') + bold(cyan(' MIII - CLI ')) + gray('─'.repeat(dashCount) + '╮');
+    const top = gray('╭') + gray('─') + bold(cyan(` MIII - CLI${versionStr} `)) + gray('─'.repeat(dashCount) + '╮');
     const bottom = gray('╰' + '─'.repeat(innerW) + '╯');
     const shortCwd = cwd.replace(process.env.HOME ?? '', '~');
+    const upgradeCmd = linked ? 'cd <miii-dir> && npm run build' : 'npm install -g miii-cli';
+    const separator = gray('│') + bold(yellow(' ⬆ update available: v' + updateAvailable + ' — run: ' + upgradeCmd)).padEnd(innerW - 1) + gray('│');
+    const updateRow = updateAvailable
+        ? [gray('├' + '─'.repeat(innerW) + '┤'), separator, gray('├' + '─'.repeat(innerW) + '┤')]
+        : [];
     const lines = [
         top,
         blank(),
@@ -82,6 +88,7 @@ export function welcome(provider, model, cwd) {
         row(`  ${gray(provider + '/' + model)}`, `  ${bold(yellow('Tips'))}`),
         row(`  ${gray(shortCwd)}`, rcmd('ctrl+c', 'stop thinking')),
         row('', rcmd('ctrl+c x2', 'exit')),
+        ...updateRow,
         blank(),
         bottom,
     ];

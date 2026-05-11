@@ -2,6 +2,11 @@ import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
 import { createDir, moveFile, writeFile, guardPath } from '../files/ops.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+const run = promisify(exec);
+export const MIII_HOME = join(homedir(), '.config', 'miii');
+const NPM_SKILLS_DIR = MIII_HOME;
 const builtin = [
     {
         name: 'caveman',
@@ -47,7 +52,7 @@ const builtin = [
         name: 'models',
         ns: 'default',
         description: 'Choose or pull Ollama models',
-        // execute handled specially in App.tsx before skill lookup
+        // execute handled specially in InputBar before skill lookup
     },
     {
         name: 'mkdir',
@@ -96,6 +101,7 @@ export class SkillLoader {
         }
     }
     async loadAll() {
+        // 1. Markdown skills from ~/.config/miii/skills/ and .miii/skills/
         const dirs = [
             join(homedir(), '.config', 'miii', 'skills'),
             join(process.cwd(), '.miii', 'skills'),
@@ -118,6 +124,64 @@ export class SkillLoader {
                 this.map.set(`custom:${name}`, skill);
             }
         }
+        // 2. npm skill packages: miii-skill-* installed in ~/.config/miii/node_modules/
+        const nmDir = join(NPM_SKILLS_DIR, 'node_modules');
+        if (existsSync(nmDir)) {
+            for (const pkg of readdirSync(nmDir)) {
+                if (!pkg.startsWith('miii-skill-'))
+                    continue;
+                const pkgDir = join(nmDir, pkg);
+                try {
+                    const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf-8'));
+                    const main = pkgJson.main ?? 'index.js';
+                    const entry = join(pkgDir, main);
+                    if (!existsSync(entry))
+                        continue;
+                    const mod = await import(entry);
+                    const exported = mod.default ?? mod.skill ?? mod.skills;
+                    const skillList = Array.isArray(exported) ? exported : [exported];
+                    for (const s of skillList) {
+                        if (!s?.name || !s?.description)
+                            continue;
+                        const ns = s.ns ?? 'npm';
+                        const skill = { ...s, ns };
+                        this.map.set(s.name, skill);
+                        this.map.set(`${ns}:${s.name}`, skill);
+                    }
+                }
+                catch { }
+            }
+        }
+    }
+    async installSkill(nameOrPkg) {
+        const pkg = nameOrPkg.includes('/') || nameOrPkg.startsWith('miii-skill-')
+            ? nameOrPkg
+            : `miii-skill-${nameOrPkg}`;
+        createDir(NPM_SKILLS_DIR);
+        const { stdout, stderr } = await run(`npm install --prefix ${JSON.stringify(NPM_SKILLS_DIR)} ${pkg}`);
+        const out = (stdout + stderr).trim();
+        // Reload newly installed skill
+        await this.loadAll();
+        return `installed ${pkg}\n${out}`;
+    }
+    async uninstallSkill(nameOrPkg) {
+        const pkg = nameOrPkg.includes('/') || nameOrPkg.startsWith('miii-skill-')
+            ? nameOrPkg
+            : `miii-skill-${nameOrPkg}`;
+        const { stdout, stderr } = await run(`npm uninstall --prefix ${JSON.stringify(NPM_SKILLS_DIR)} ${pkg}`);
+        const out = (stdout + stderr).trim();
+        // Remove from map
+        const shortName = pkg.replace(/^miii-skill-/, '');
+        this.map.delete(shortName);
+        this.map.delete(`npm:${shortName}`);
+        this.map.delete(pkg);
+        return `uninstalled ${pkg}\n${out}`;
+    }
+    listNpmSkills() {
+        const nmDir = join(NPM_SKILLS_DIR, 'node_modules');
+        if (!existsSync(nmDir))
+            return [];
+        return readdirSync(nmDir).filter(p => p.startsWith('miii-skill-'));
     }
     get(ref) {
         return this.map.get(ref);

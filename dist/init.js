@@ -1,11 +1,68 @@
 import { render } from 'ink';
 import React from 'react';
 import minimist from 'minimist';
+import { createRequire } from 'module';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+import { execSync } from 'child_process';
 import { loadConfig } from './config.js';
 import { SkillLoader } from './skills/loader.js';
 import { InputBar } from './tui/InputBar.js';
 import { welcome } from './tui/printer.js';
 import { ensureOllama } from './llm/ollama.js';
+const require = createRequire(import.meta.url);
+const UPDATE_CACHE = join(homedir(), '.config', 'miii', 'update-check.json');
+const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+function semverGt(a, b) {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        const x = pa[i] ?? 0, y = pb[i] ?? 0;
+        if (x > y)
+            return true;
+        if (x < y)
+            return false;
+    }
+    return false;
+}
+function isLinkedInstall() {
+    try {
+        const bin = execSync('which miii', { encoding: 'utf-8' }).trim();
+        const resolved = execSync(`readlink "${bin}"`, { encoding: 'utf-8' }).trim();
+        return resolved.includes('node_modules') && !resolved.includes('npm/lib');
+    }
+    catch {
+        return false;
+    }
+}
+async function checkLatestVersion(current) {
+    // Return cached result if checked within 24h
+    try {
+        if (existsSync(UPDATE_CACHE)) {
+            const cache = JSON.parse(readFileSync(UPDATE_CACHE, 'utf-8'));
+            if (Date.now() - cache.ts < CHECK_INTERVAL_MS) {
+                return semverGt(cache.latest, current) ? cache.latest : undefined;
+            }
+        }
+    }
+    catch { }
+    try {
+        const res = await fetch('https://registry.npmjs.org/miii-cli/latest', { signal: AbortSignal.timeout(3000) });
+        if (!res.ok)
+            return undefined;
+        const data = await res.json();
+        const latest = data.version;
+        if (!latest)
+            return undefined;
+        // Cache result
+        mkdirSync(join(homedir(), '.config', 'miii'), { recursive: true });
+        writeFileSync(UPDATE_CACHE, JSON.stringify({ ts: Date.now(), latest }));
+        return semverGt(latest, current) ? latest : undefined;
+    }
+    catch { }
+    return undefined;
+}
 export async function lazyInit() {
     const argv = minimist(process.argv.slice(2), {
         string: ['model', 'url', 'provider', 'session'],
@@ -18,16 +75,21 @@ export async function lazyInit() {
         config.baseUrl = argv.url;
     if (argv.provider)
         config.provider = argv.provider;
+    const pkg = require('../package.json');
+    const currentVersion = pkg.version;
     if (config.provider === 'ollama') {
         await ensureOllama(config.baseUrl);
     }
     const skills = new SkillLoader();
-    await skills.loadAll();
+    // Run version check + skill load in parallel — don't block startup
+    const linked = isLinkedInstall();
+    const [, updateAvailable] = await Promise.all([
+        skills.loadAll(),
+        checkLatestVersion(currentVersion),
+    ]);
     // Print welcome banner to scrollback BEFORE Ink starts
-    welcome(config.provider, config.model, process.cwd());
-    // Ink renders ONLY the input bar (small footprint at bottom)
-    // patchConsole: true (default) ensures console.log output appears above Ink
+    welcome(config.provider, config.model, process.cwd(), currentVersion, updateAvailable, linked);
     const sessionName = argv.session || 'default';
-    const { waitUntilExit } = render(React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName }), { exitOnCtrlC: false });
+    const { waitUntilExit } = render(React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName, version: currentVersion }), { exitOnCtrlC: false });
     await waitUntilExit();
 }

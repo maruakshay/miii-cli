@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { getTavilyKey, tavilySearch, tavilyExtract } from '../tavily/client.js';
 const run = promisify(exec);
 const EXEC_TIMEOUT_MS = 30_000;
 export const tools = [
@@ -201,6 +202,36 @@ export const tools = [
             }
         },
     },
+    {
+        name: 'web_search',
+        description: 'Search the web using Tavily. Returns relevant results and a direct answer.',
+        params: '{"query": "string", "max_results": "number (optional, 1-10, default 5)", "search_depth": "string (optional: basic|advanced)", "include_domains": "string[] (optional)", "exclude_domains": "string[] (optional)"}',
+        execute: async ({ query, max_results, search_depth, include_domains, exclude_domains }) => {
+            const key = getTavilyKey();
+            if (!key)
+                throw new Error('Tavily API key not set — user must run /tavily-key <key> first');
+            return tavilySearch({
+                apiKey: key,
+                query: String(query),
+                maxResults: typeof max_results === 'number' ? max_results : undefined,
+                searchDepth: search_depth,
+                includeDomains: include_domains,
+                excludeDomains: exclude_domains,
+            });
+        },
+    },
+    {
+        name: 'web_extract',
+        description: 'Extract and scrape full content from one or more URLs using Tavily.',
+        params: '{"urls": "string[]"}',
+        execute: async ({ urls }) => {
+            const key = getTavilyKey();
+            if (!key)
+                throw new Error('Tavily API key not set — user must run /tavily-key <key> first');
+            const list = Array.isArray(urls) ? urls : [String(urls)];
+            return tavilyExtract({ apiKey: key, urls: list });
+        },
+    },
 ];
 export function getSystemPrompt(extra = '') {
     const toolDocs = tools.map(t => `- ${t.name}(${t.params}): ${t.description}`).join('\n');
@@ -251,5 +282,7 @@ Rules:
 - No fenced code blocks (no \`\`\`). If you find yourself about to write a code block, use a tool call instead
 - Use plain indentation and labels for structure. This is a terminal, not a chat UI
 - After editing files that have tests, call run_tests to verify nothing broke
-- If run_tests fails, read the failing test output and fix the code, then run_tests again (max 3 retries)${extra}`;
+- If run_tests fails, read the failing test output and fix the code, then run_tests again (max 3 retries)
+- You have web_search and web_extract tools — use them whenever the user asks about anything requiring internet access, current information, documentation, library versions, news, or external URLs
+- NEVER say you cannot search the web — always call web_search instead${extra}`;
 }

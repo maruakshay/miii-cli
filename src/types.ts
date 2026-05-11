@@ -15,6 +15,7 @@ export interface Config {
   systemPrompt?: string
   apiKey?: string
   gitContext?: boolean  // default true — set false to disable auto git context injection
+  tavilyApiKey?: string
 }
 
 export interface ChatMessage {
