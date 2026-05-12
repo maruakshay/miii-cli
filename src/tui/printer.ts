@@ -30,9 +30,12 @@ function stripMarkdown(s: string): string {
 function formatContent(text: string): string {
   const lines = text.split('\n')
   let inCode = false
+  let inToolCall = false
   const out: string[] = []
   for (const line of lines) {
-    if (line.startsWith('<tool_call>') || line.startsWith('</tool_call>')) continue
+    if (line.startsWith('<tool_call>')) { inToolCall = true; continue }
+    if (line.startsWith('</tool_call>')) { inToolCall = false; continue }
+    if (inToolCall) continue
     if (line.startsWith('```')) {
       inCode = !inCode
       out.push('  ' + dim(gray(line)))
@@ -43,6 +46,20 @@ function formatContent(text: string): string {
     }
   }
   return out.join('\n')
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) + '…' : s
+}
+
+function toolArgSummary(args: Record<string, unknown>): string {
+  if (args.message) return `"${truncate(String(args.message), 60)}"`
+  if (args.path) return String(args.path)
+  if (args.command) return truncate(String(args.command), 60)
+  if (args.query) return `"${truncate(String(args.query), 60)}"`
+  if (args.from) return `${args.from} → ${args.to}`
+  const first = Object.values(args)[0]
+  return first ? truncate(String(first), 60) : ''
 }
 
 export function welcome(provider: string, model: string, cwd: string, version?: string, updateAvailable?: string, linked?: boolean): void {
@@ -116,12 +133,17 @@ export function assistantMsg(text: string): void {
   console.log(`\n${bold(green('miii'))}\n${formatContent(text)}`)
 }
 
+export function toolCallStart(name: string, args: Record<string, unknown>): void {
+  const summary = toolArgSummary(args)
+  process.stdout.write(`  ${gray('⎿')} ${cyan(name)}${summary ? gray('(' + summary + ')') : ''}\n`)
+}
+
 export function toolMsg(name: string, result: string): void {
   const preview = result.length > 250 ? result.slice(0, 250) + '…' : result
   const body = preview.trim()
     ? preview.split('\n').map(l => gray('    ' + l)).join('\n')
     : ''
-  console.log(`  ${green('✓')} ${cyan(name)}${body ? '\n' + body : ''}`)
+  if (body) console.log(body)
 }
 
 export function systemMsg(text: string): void {

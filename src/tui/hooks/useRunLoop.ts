@@ -9,6 +9,7 @@ import * as printer from '../printer.js'
 
 const MAX_TOOL_DEPTH = 6
 const FILE_EDIT_TOOLS = new Set(['edit_file', 'create_file', 'patch_file', 'delete_file'])
+const SHOW_RESULT_TOOLS = new Set(['run_tests', 'git_commit'])
 
 export function useRunLoop(
   config: Config,
@@ -47,16 +48,19 @@ export function useRunLoop(
 
       async onDone(fullText) {
         const pendingTools: Array<{ name: string; args: Record<string, unknown> }> = []
+        const textParts: string[] = []
         const parser = new StreamParser()
         for (const item of [...parser.feed(fullText), ...parser.flush()]) {
           if (item.type === 'tool_call') pendingTools.push({ name: item.toolName, args: item.toolArgs })
+          else textParts.push(item.content)
         }
         if (!pendingTools.length) {
           const bare = extractBareToolCall(fullText)
           if (bare) pendingTools.push({ name: bare.name, args: bare.args })
         }
 
-        printer.assistantMsg(fullText)
+        const displayText = textParts.join('').trim()
+        if (displayText) printer.assistantMsg(displayText)
         pushHistoryRef.current({ role: 'assistant', content: fullText })
 
         if (!pendingTools.length) {
@@ -82,8 +86,9 @@ export function useRunLoop(
             setCurrentTool(tc.name)
             if (tool) {
               try {
+                printer.toolCallStart(tc.name, tc.args)
                 const result = await tool.execute(tc.args)
-                printer.toolMsg(tc.name, result)
+                if (SHOW_RESULT_TOOLS.has(tc.name)) printer.toolMsg(tc.name, result)
                 next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
               } catch (e) {
                 const err = `Tool ${tc.name} error: ${e}`
@@ -106,6 +111,7 @@ export function useRunLoop(
           if (testTool) {
             setCurrentTool('run_tests')
             try {
+              printer.toolCallStart('run_tests', {})
               const testResult = await testTool.execute({})
               if (testResult && !testResult.startsWith('(no test script') && !testResult.startsWith('(no package.json')) {
                 printer.toolMsg('run_tests', testResult)
