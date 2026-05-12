@@ -9,7 +9,7 @@ import { execSync } from 'child_process'
 import { loadConfig } from './config.js'
 import { SkillLoader } from './skills/loader.js'
 import { InputBar } from './tui/InputBar.js'
-import { welcome } from './tui/printer.js'
+import { welcome, setInkInstance } from './tui/printer.js'
 import { ensureOllama } from './llm/ollama.js'
 
 const require = createRequire(import.meta.url)
@@ -91,12 +91,13 @@ export async function lazyInit(): Promise<void> {
   // Print welcome banner to scrollback BEFORE Ink starts
   welcome(config.provider, config.model, process.cwd(), currentVersion, updateAvailable, linked)
 
-  const sessionName = (argv.session as string) || 'default'
+  const sessionName = (argv.session as string) || `s-${Date.now()}`
 
-  const { waitUntilExit } = render(
+  const { waitUntilExit, clear } = render(
     React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName, version: currentVersion }),
     { exitOnCtrlC: false }
   )
+  setInkInstance(clear)
 
   await waitUntilExit()
 }

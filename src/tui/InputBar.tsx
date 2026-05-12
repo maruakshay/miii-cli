@@ -9,7 +9,7 @@ import type { SkillLoader } from '../skills/loader.js'
 import type { Config, ChatMessage } from '../types.js'
 import { generateId } from '../types.js'
 import * as printer from './printer.js'
-import { loadSession, saveSession, listSessions } from '../sessions.js'
+import { loadSession, saveSession, listSessions, deleteSession } from '../sessions.js'
 import { MacroQueue, MicroQueue } from '../tasks/queue.js'
 import { TaskExecutor } from '../tasks/executor.js'
 import type { MacroTask, MicroTask } from '../tasks/types.js'
@@ -65,7 +65,7 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
   const {
     setSessionName, sessionNameRef,
     historyRef, saveTimerRef, systemPromptRef,
-    pushHistory, buildContext,
+    pushHistory, buildContext, renameFromMessage,
   } = useSession(session, cwd, config)
 
   const {
@@ -410,6 +410,16 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
     if (cmd.startsWith('/session')) {
       const arg = cmd.slice(8).trim()
       if (!arg) { printer.systemMsg(`current: ${sessionNameRef.current}`); return }
+
+      if (arg.startsWith('delete ')) {
+        const target = arg.slice(7).trim()
+        if (!target) { printer.systemMsg('usage: /session delete <name>'); return }
+        if (target === sessionNameRef.current) { printer.systemMsg('cannot delete active session — switch first'); return }
+        try { deleteSession(target); printer.systemMsg(`deleted: ${target}`) }
+        catch (e) { printer.errorMsg(`delete failed: ${String(e)}`) }
+        return
+      }
+
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
       saveSession(sessionNameRef.current, historyRef.current)
       historyRef.current = loadSession(arg)
@@ -450,6 +460,7 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
       return
     }
 
+    renameFromMessage(text)
     const contextPrefix = buildAtContext(text)
     const shouldInjectGit = config.gitContext !== false && looksCodeRelated(text)
     const { prefix: gitPrefix, label: gitLabel } = shouldInjectGit
