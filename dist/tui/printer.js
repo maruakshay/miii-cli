@@ -11,6 +11,7 @@ const cyan = (s) => col(96, s);
 const gray = (s) => col(90, s);
 const yellow = (s) => col(93, s);
 const purple = (s) => col(95, s);
+const red = (s) => col(91, s);
 function indent(text, pad = '  ') {
     return text.split('\n').map(l => pad + l).join('\n');
 }
@@ -70,16 +71,6 @@ function toolArgSummary(args) {
 }
 export function welcome(provider, model, cwd, version, updateAvailable, linked) {
     const cols = Math.min(process.stdout.columns ?? 80, 100);
-    const artLines = [
-        '    ●       ●    ',
-        '   ╱ ╲     ╱ ╲   ',
-        '  ╱   ╲   ╱   ╲  ',
-        ' ╱     ╲ ╱     ╲ ',
-        '●       ●       ●',
-        ' m i i i - c l i',
-    ];
-    const artPad = ' '.repeat(Math.max(0, Math.floor((cols - 17) / 2)));
-    process.stdout.write('\n' + artLines.map(l => artPad + purple(l)).join('\n') + '\n\n');
     const innerW = cols - 2;
     const leftW = Math.floor(innerW * 0.44);
     const rightW = innerW - leftW - 1;
@@ -112,8 +103,6 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
         '',
         ...miniArt,
         '',
-        `  ${bold(cyan('Welcome back ' + username + '!'))}`,
-        '',
         `  ${gray(model + ' · ' + provider)}`,
         `  ${gray(shortCwd)}`,
         '',
@@ -124,12 +113,6 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
         `  Type ${cyan('@filename')} to inject file into context`,
         `  Use ${cyan('/skill')} to run a skill or command`,
         `  Use ${cyan('/models')} to switch or pull models`,
-        '',
-        `  ${bold(yellow("What's new"))}`,
-        `  v0.2.6: ASCII logo on startup`,
-        `  v0.2.5: Built-in skills & commands`,
-        `  v0.2.4: Enhanced tool call handling`,
-        `  ${dim(gray('/release-notes for more'))}`,
         '',
     ];
     const maxLen = Math.max(leftLines.length, rightLines.length);
@@ -151,14 +134,26 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
 }
 export function userMsg(text) {
     const atHighlighted = text.replace(/(@[\w./\-]+)/g, (m) => cyan(m));
-    console.log(`\n${bold(blue('You'))}\n${indent(atHighlighted)}`);
+    console.log(`\n${gray('>>')} ${atHighlighted}`);
 }
 export function assistantMsg(text) {
-    console.log(`\n${bold(green('miii'))}\n${formatContent(text)}`);
+    const content = formatContent(text);
+    if (!content.trim())
+        return;
+    const lines = content.split('\n');
+    const idx = lines.findIndex(l => l.trim());
+    if (idx === -1)
+        return;
+    const head = lines[idx].replace(/^ {2}/, '');
+    const tail = lines.slice(idx + 1).join('\n');
+    console.log(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}`);
 }
+const EDIT_TOOLS = new Set(['edit_file', 'patch_file', 'create_file', 'write_file']);
+const DELETE_TOOLS = new Set(['delete_file', 'remove_file']);
 export function toolCallStart(name, args) {
     const summary = toolArgSummary(args);
-    process.stdout.write(`  ${gray('⎿')} ${cyan(name)}${summary ? gray('(' + summary + ')') : ''}\n`);
+    const dot = DELETE_TOOLS.has(name) ? red('●') : EDIT_TOOLS.has(name) ? green('●') : blue('●');
+    process.stdout.write(`  ${dot} ${cyan(name)}${summary ? gray('(' + summary + ')') : ''}\n`);
 }
 export function toolMsg(name, result) {
     const preview = result.length > 250 ? result.slice(0, 250) + '…' : result;

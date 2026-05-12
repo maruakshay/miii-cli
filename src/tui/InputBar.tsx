@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, useMemo } from 'react'
 import { Box, Text, useStdout } from 'ink'
 import { InputArea } from './components/InputArea.js'
 import { ModelPicker } from './components/ModelPicker.js'
@@ -52,6 +52,10 @@ function buildAtContext(text: string): string {
 export function InputBar({ config, skills, cwd, session, version }: Props) {
   const { stdout } = useStdout()
   const cols = stdout.columns ?? 80
+
+  const phraseSeq = useMemo(() =>
+    Array.from({ length: 100 }, () => Math.floor(Math.random() * THINKING_PHRASES.length))
+  , [])
 
   const [planningMode, setPlanningMode] = useState(false)
   const macroQueueRef = useRef(new MacroQueue())
@@ -480,11 +484,10 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
       ) : (status === 'thinking' || status === 'tool') ? (
         <>
           <Box flexDirection="column" paddingX={1}>
-            <Text bold color="green">miii</Text>
-            <Box paddingLeft={2} flexDirection="column">
+            <Box flexDirection="column">
               <Box>
                 {status === 'thinking'
-                  ? <><Text color="yellow">{SPARKLE[tick % SPARKLE.length]} </Text><Text color="gray" dimColor italic>{THINKING_PHRASES[Math.floor(tick / 62) % THINKING_PHRASES.length]}</Text></>
+                  ? <><Text color="yellow">{SPARKLE[tick % SPARKLE.length]} </Text><Text color="gray" dimColor italic>{THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]]}</Text></>
                   : <Text color="yellow" dimColor>⚙ running {currentTool ?? 'tool'}…</Text>
                 }
               </Box>

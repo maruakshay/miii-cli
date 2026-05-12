@@ -1,5 +1,5 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { InputArea } from './components/InputArea.js';
 import { ModelPicker } from './components/ModelPicker.js';
@@ -42,6 +42,7 @@ function buildAtContext(text) {
 export function InputBar({ config, skills, cwd, session, version }) {
     const { stdout } = useStdout();
     const cols = stdout.columns ?? 80;
+    const phraseSeq = useMemo(() => Array.from({ length: 100 }, () => Math.floor(Math.random() * THINKING_PHRASES.length)), []);
     const [planningMode, setPlanningMode] = useState(false);
     const macroQueueRef = useRef(new MacroQueue());
     const executorRef = useRef(new TaskExecutor(tools));
@@ -446,7 +447,7 @@ export function InputBar({ config, skills, cwd, session, version }) {
     }, [skills, runLoop, openPicker]);
     const skillList = skills.list();
     // ─── render ────────────────────────────────────────────────────────────────
-    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(_Fragment, { children: [_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Text, { bold: true, color: "green", children: "miii" }), _jsxs(Box, { paddingLeft: 2, flexDirection: "column", children: [_jsx(Box, { children: status === 'thinking'
-                                            ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[Math.floor(tick / 62) % THINKING_PHRASES.length] })] })
-                                            : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsxs(Text, { color: "gray", dimColor: true, children: [Math.floor((Date.now() - thinkingStartRef.current) / 1000), "s"] }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] })] }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, onSubmit: handleSubmit, onAbort: handleAbort })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(_Fragment, { children: [_jsx(Box, { flexDirection: "column", paddingX: 1, children: _jsxs(Box, { flexDirection: "column", children: [_jsx(Box, { children: status === 'thinking'
+                                        ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]] })] })
+                                        : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsxs(Text, { color: "gray", dimColor: true, children: [Math.floor((Date.now() - thinkingStartRef.current) / 1000), "s"] }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] }) }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, onSubmit: handleSubmit, onAbort: handleAbort })] }));
 }
