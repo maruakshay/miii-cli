@@ -49,11 +49,16 @@ interface Props {
   onAbort: () => void
 }
 
+const PASTE_MIN_LINES = 3
+const PASTE_MIN_CHARS = 200
+
 export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [overlayIdx, setOverlayIdx] = useState(0)
+  const [pasteLines, setPasteLines] = useState(0)
+  const pasteRef = useRef<string | null>(null)
 
   const [files, setFiles] = useState<FileEntry[]>([])
   const filesLoadedRef = useRef(false)
@@ -111,6 +116,8 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
     setCursor({ row: 0, col: 0 })
     setOverlay('none')
     setOverlayIdx(0)
+    pasteRef.current = null
+    setPasteLines(0)
   }
 
   function appendChar(ch: string) {
@@ -205,12 +212,17 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
     }
 
     if (key.return) {
-      const text = fullInput.trim()
+      const typed = fullInput.trim()
+      const pasted = pasteRef.current
+      const text = pasted
+        ? typed ? `${typed}\n${pasted}` : pasted
+        : typed
       if (text) { clearInput(); onSubmit(text) }
       return
     }
 
     if (key.backspace || key.delete) {
+      if (pasteRef.current) { pasteRef.current = null; setPasteLines(0); return }
       deleteChar()
       // Recompute overlay trigger for updated input
       const r = cursor.row
@@ -237,6 +249,14 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
     if (key.rightArrow) { setCursor(c => ({ ...c, col: Math.min(lines[c.row]?.length ?? 0, c.col + 1) })); return }
 
     if (input && !key.ctrl && !key.meta) {
+      // Detect paste: Ink delivers entire pasted chunk as one input string
+      const lineCount = input.split('\n').length
+      if (input.length > 1 && (lineCount >= PASTE_MIN_LINES || input.length >= PASTE_MIN_CHARS)) {
+        pasteRef.current = input
+        setPasteLines(lineCount)
+        return
+      }
+
       // Compute prospective new input to decide overlay
       const r = cursor.row
       const col = cursor.col
@@ -269,6 +289,8 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
   const borderColor = isProcessing ? 'yellow' : 'cyan'
   const hint = isProcessing
     ? 'esc to abort'
+    : pasteLines > 0
+    ? 'backspace removes paste  enter to send'
     : overlay === 'command' && !commandQuery.includes(' ')
     ? '↑↓ navigate  enter select  esc close'
     : overlay === 'at'
@@ -289,7 +311,15 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
         <Box>
           <Text color={borderColor} bold>{'❯ '}</Text>
           <Box flexDirection="column" flexGrow={1}>
-            {lines.length === 1 && !lines[0] ? (
+            {pasteLines > 0 ? (
+              <Box gap={1}>
+                <Text color="cyan">⎘</Text>
+                <Text color="cyan">pasted {pasteLines} lines</Text>
+                {(lines.length > 1 || lines[0]) && (
+                  <Text color="gray" dimColor>+ typed text</Text>
+                )}
+              </Box>
+            ) : lines.length === 1 && !lines[0] ? (
               <Text color={isActive ? 'white' : 'gray'} dimColor={isProcessing}>
                 {isActive ? '█' : 'processing...'}
               </Text>

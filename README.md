@@ -4,7 +4,7 @@
 
 ```
 ╭──────────────────────────────────────────────────────────────────────╮
-│  miii  v0.2.5                                                        │
+│  miii  v0.2.8                                                        │
 │  model: qwen2.5-coder:7b                                             │
 ├──────────────────────────────────────────────────────────────────────┤
 │  ✦ cross-referencing vibes…                              12s         │
@@ -74,7 +74,7 @@ miii
 Model picker opens on launch. Select a model. Start coding.
 
 ```bash
-miii                          # default session
+miii                          # new session, named from first message
 miii --model qwen2.5-coder    # specific model
 miii --session myproject      # named session
 miii -s work -m codellama     # short flags
@@ -83,7 +83,7 @@ miii -s work -m codellama     # short flags
 miii checks for updates on startup and lets you know when a new version is available:
 
 ```
-├── miii v0.2.5 → v0.2.6 available  run: npm install -g miii-cli ───┤
+├── miii v0.2.7 → v0.2.8 available  run: npm install -g miii-cli ───┤
 ```
 
 ---
@@ -268,18 +268,19 @@ Chains up to 6 tool hops per response — read, edit, test, verify, commit in on
 
 ## Sessions
 
-Every conversation persists automatically to disk.
+Every `miii` run starts a fresh session automatically. The session is named after your first message — so `fix the auth bug` becomes the session `fix-the-auth-bug`. Use `--session` to resume a specific one.
 
 ```bash
-miii                          # resumes last session
+miii                          # new session every time, named from first message
 miii --session feature-auth   # resumes or creates "feature-auth"
 ```
 
 ```
-/session <name>     switch to a session (creates if new)
-/sessions           list all sessions with message counts
-/new                fresh auto-named session
-/clear              clear current session
+/session <name>        switch to a session (creates if new)
+/session delete <name> delete a saved session
+/sessions              list all sessions with message counts
+/new                   fresh auto-named session
+/clear                 clear current session history
 ```
 
 Sessions at `~/.config/miii/sessions/`. History capped at 100 messages in-context, full history on disk. Debounced writes — no I/O on every message.
@@ -301,6 +302,7 @@ Type `/` to open the command palette with fuzzy search.
 | `/model <name>` | Switch model mid-session — no restart |
 | `/models` | Model picker, pull new Ollama models |
 | `/session <name>` | Switch or create session |
+| `/session delete <name>` | Delete a saved session |
 | `/sessions` | List all sessions |
 | `/new` | Fresh auto-named session |
 | `/clear` | Clear current history |
@@ -374,6 +376,18 @@ Loaded in order from `.miii.json` (project) → `~/.config/miii/config.json` (gl
 | `↑ / ↓` | Navigate command palette or file picker |
 | `esc` | Close overlay / abort in-flight request |
 | `ctrl+c` | Abort current request or exit |
+| `backspace` | Remove pasted content chip |
+
+## Paste detection
+
+Paste a large file or code block and miii collapses it into a chip instead of flooding the input:
+
+```
+❯ ⎘ pasted 84 lines
+  backspace removes paste  enter to send
+```
+
+The full content is sent with your message when you press enter. Threshold: ≥ 3 lines or ≥ 200 characters.
 
 ---
 
@@ -390,13 +404,9 @@ npm test          # 8 integration tests
 
 ---
 
-## What's new in 0.2.5
+## What's new in 0.2.8
 
-- **Web search** — `web_search` + `web_extract` tools powered by Tavily
-- **npm skill ecosystem** — install/uninstall `miii-skill-*` packages, write your own
-- **Auto-test after edits** — model runs test suite after every file change, feeds failures back
-- **Live model switching** — `/model <name>` mid-session, no restart
-- **Update check** — startup banner when a new version is available
-- **Hook architecture** — `useSession`, `useModelPicker`, `useRunLoop` for clean internals
-- **Ambiguous patch detection** — `patch_file` throws on multiple matches
-- **176K bundle** — vs ~50MB for the Python alternatives
+- **Auto-named sessions** — every run starts fresh; session named from first message (`fix-the-auth-bug`)
+- **Session delete** — `/session delete <name>` to remove saved sessions
+- **Paste detection** — large pastes collapse to `⎘ pasted N lines` chip; full content sent on enter
+- **Thinking animation fix** — messages and tool calls no longer bleed into the scrollback buffer
