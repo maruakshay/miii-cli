@@ -2,7 +2,7 @@
 
 **The fastest, local AI coding assistant. Zero cloud. Zero Python. Total Control.**
 
-![MIII Demo](miii-cli.gif)
+![MIII Demo](mii-cli.gif)
 
 [![npm version](https://img.shields.io/npm/v/miii-cli)](https://www.npmjs.com/package/miii-cli)
 [![npm downloads](https://img.shields.io/npm/dm/miii-cli)](https://www.npmjs.com/package/miii-cli)
