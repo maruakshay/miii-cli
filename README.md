@@ -1,6 +1,13 @@
-# miii
+# 🚀 MIII - CLI
 
-> Local AI coding assistant. Runs on Ollama or any OpenAI-compatible API. Zero cloud, zero Python.
+**The fastest, local AI coding assistant. Zero cloud. Zero Python. Total Control.**
+
+![MIII Demo](miii-cli.gif)
+
+[![npm version](https://img.shields.io/npm/v/miii-cli)](https://www.npmjs.com/package/miii-cli)
+[![npm downloads](https://img.shields.io/npm/dm/miii-cli)](https://www.npmjs.com/package/miii-cli)
+[![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
+[![node](https://img.shields.io/node/v/miii-cli)](https://nodejs.org)
 
 ```
 ╭──────────────────────────────────────────────────────────────────────╮
@@ -16,95 +23,75 @@
 ╰──────────────────────────────────────────────────────────────────────╯
 ```
 
-[![npm version](https://img.shields.io/npm/v/miii-cli)](https://www.npmjs.com/package/miii-cli)
-[![npm downloads](https://img.shields.io/npm/dm/miii-cli)](https://www.npmjs.com/package/miii-cli)
-[![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
-[![node](https://img.shields.io/node/v/miii-cli)](https://nodejs.org)
+## ⚡️ Quick Start
 
-## Install
-
-```bash
-npm install -g miii-cli
-```
-
-Requires Node.js 18+ and [Ollama](https://ollama.com).
-
-## Quick start
+Get up and running in 30 seconds:
 
 ```bash
 ollama pull qwen2.5-coder:7b
+npm install -g miii-cli
 miii
 ```
 
-Each run starts a fresh session named after your first message. Use `--session` to resume one.
+## 🧠 Why miii?
 
-```bash
-miii                         # new session
-miii --session feature-auth  # resume or create named session
-miii -m codellama            # specific model
-```
+Most AI coding tools are either heavy Python wrappers or expensive monthly subscriptions that send your code to the cloud. **miii is different.**
 
-## What it does
+- **Local-First**: Runs on Ollama or any OpenAI-compatible API. Your code stays on your machine.
+- **Blazing Fast**: Written in TypeScript. No Python overhead. 176K bundle size.
+- **Autonomous**: Doesn't just suggest code; it edits files, runs your tests, and fixes bugs until they are gone.
+- **Context Aware**: Automatically injects git diffs and project structure so you don't have to copy-paste.
 
-- **File editing** — `edit_file`, `patch_file`, `create_file`, `delete_file`, `move_file`
-- **Multi-file refactor** — `/refactor <goal>` plans, reads, edits, and tests across the whole codebase
-- **Auto-test after edits** — runs jest/vitest/mocha after every file change, feeds failures back
-- **Auto git context** — injects changed files into context before you even ask
-- **Web search** — `web_search` + `web_extract` via Tavily (`/tavily-key tvly-...`)
-- **Planning mode** — `/plan` switches the model to structured planning; no code until you say so
-- **Sessions** — every conversation persists to `~/.config/miii/sessions/`, auto-named from first message
-- **Paste detection** — large pastes collapse to `⎘ pasted N lines` chip instead of flooding input
-- **npm skill plugins** — install `miii-skill-*` packages or drop `.md` files in `~/.config/miii/skills/`
-- **Context compaction** — auto-trims LLM window when context gets long; history preserved on disk
-- **176K bundle** — vs ~50MB for Python alternatives
+## 🔥 Killer Features
 
-## Commands
+- **🛠 Precision Editing**: Using `patch_file`, miii makes surgical changes without rewriting entire files.
+- **🔄 Auto-Test Loop**: Miii runs your Jest/Vitest/Mocha tests after every edit. If it breaks, it fixes itself.
+- **🌐 Web Intelligence**: Integrated `web_search` and `web_extract` via Tavily for real-time documentation.
+- **📐 Planning Mode**: Use `/plan` to architect a solution before a single line of code is written.
+- **📂 Session Memory**: Every conversation is auto-named and persisted. Resume your work instantly with `miii --session feature-auth`.
+- **📦 Skill System**: Extend miii with npm skill plugins or custom `.md` files.
 
-| Command | Description |
+## ⌨️ Command Cheat Sheet
+
+| Command | What it does |
 |---|---|
-| `/model <name>` | Switch model mid-session |
-| `/models` | Model picker, pull Ollama models |
-| `/session <name>` | Switch or create session |
-| `/session delete <name>` | Delete a saved session |
-| `/sessions` | List all sessions |
-| `/new` | Fresh session |
-| `/clear` | Clear current history |
-| `/plan [topic]` | Planning mode |
-| `/refactor <goal>` | Multi-file refactor |
-| `/git <sub>` | Git commands (status, diff, log, review, commit…) |
-| `/skills install <name>` | Install npm skill |
-| `/tavily-key <key>` | Set web search API key |
-| `/list` | List all loaded skills |
-| `/exit` | Exit |
+| `/refactor <goal>` | The powerhouse: plans, edits, and tests across your whole codebase |
+| `/git <sub>` | Instant git status, diffs, and automated commit messages |
+| `/plan` | Stop coding, start thinking (Structured Planning Mode) |
+| `/model <name>` | Swap LLMs on the fly |
+| `/tavily-key <key>` | Enable real-time web browsing |
+| `/sessions` | Travel back in time to previous coding sessions |
 
-## Configuration
+## ⚙️ Configuration
 
-`.miii.json` (project) or `~/.config/miii/config.json` (global):
+Customise your experience in `.miii.json` or `~/.config/miii/config.json`:
 
 ```json
 {
   "model": "qwen2.5-coder:7b",
   "provider": "ollama",
   "baseUrl": "http://localhost:11434",
-  "apiKey": "",
   "gitContext": true,
-  "tavilyApiKey": "tvly-...",
-  "systemPrompt": ""
+  "tavilyApiKey": "tvly-..."
 }
 ```
 
-For OpenAI-compatible APIs (LM Studio, Groq, OpenRouter…): set `"provider": "openai-compat"` and point `baseUrl` at the API.
-
-## Build from source
+## 🛠 Build from Source
 
 ```bash
 git clone https://github.com/maruakshay/miii-cli
 cd miii-cli && npm install && npm run build && npm link
 ```
 
-## What's new in 0.2.8
+## 🌟 Community & Philosophy
 
-- **Auto-named sessions** — each run starts fresh, named from first message (`fix-the-auth-bug`)
-- **Session delete** — `/session delete <name>`
-- **Paste detection** — large pastes collapse to `⎘ pasted N lines` chip
-- **Scrollback fix** — thinking animation and tool calls no longer bleed into terminal history
+**Own your AI stack. Stop renting your intelligence.**
+
+miii is built for the community. If this tool saves you hours of coding, help us grow:
+- 🌟 **Star the repo** on GitHub
+- 🐦 **Share on X**
+- 🤖 **Post on Reddit**
+- 💬 **Tell a fellow developer**
+
+## 📜 License
+MIT
