@@ -10,6 +10,7 @@ const green = (s) => col(92, s);
 const cyan = (s) => col(96, s);
 const gray = (s) => col(90, s);
 const yellow = (s) => col(93, s);
+const purple = (s) => col(95, s);
 function indent(text, pad = '  ') {
     return text.split('\n').map(l => pad + l).join('\n');
 }
@@ -69,6 +70,16 @@ function toolArgSummary(args) {
 }
 export function welcome(provider, model, cwd, version, updateAvailable, linked) {
     const cols = Math.min(process.stdout.columns ?? 80, 100);
+    const artLines = [
+        '    ●       ●    ',
+        '   ╱ ╲     ╱ ╲   ',
+        '  ╱   ╲   ╱   ╲  ',
+        ' ╱     ╲ ╱     ╲ ',
+        '●       ●       ●',
+        ' m i i i - c l i',
+    ];
+    const artPad = ' '.repeat(Math.max(0, Math.floor((cols - 17) / 2)));
+    process.stdout.write('\n' + artLines.map(l => artPad + purple(l)).join('\n') + '\n\n');
     const innerW = cols - 2;
     const leftW = Math.floor(innerW * 0.44);
     const rightW = innerW - leftW - 1;
@@ -84,18 +95,47 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
     function row(l, r) {
         return gray('│') + cell(l, leftW) + gray('│') + cell(r, rightW) + gray('│');
     }
-    function blank() {
-        return gray('│') + ' '.repeat(leftW) + gray('│') + ' '.repeat(rightW) + gray('│');
-    }
-    function rcmd(key, desc, keyW = 10) {
-        return '  ' + cyan(key) + ' '.repeat(Math.max(1, keyW - key.length)) + gray(desc);
-    }
     const versionStr = version ? ` v${version}` : '';
     const titleStr = `─ MIII - CLI${versionStr} `;
     const dashCount = Math.max(0, cols - 2 - titleStr.length);
     const top = gray('╭') + gray('─') + bold(cyan(` MIII - CLI${versionStr} `)) + gray('─'.repeat(dashCount) + '╮');
     const bottom = gray('╰' + '─'.repeat(innerW) + '╯');
     const shortCwd = cwd.replace(process.env.HOME ?? '', '~');
+    const username = process.env.USER ?? 'there';
+    const miniArt = [
+        `  ${purple('   ●     ●   ')}`,
+        `  ${purple('  ╱ ╲   ╱ ╲  ')}`,
+        `  ${purple(' ╱   ╲ ╱   ╲ ')}`,
+        `  ${purple('●     ●     ●')}`,
+    ];
+    const leftLines = [
+        '',
+        ...miniArt,
+        '',
+        `  ${bold(cyan('Welcome back ' + username + '!'))}`,
+        '',
+        `  ${gray(model + ' · ' + provider)}`,
+        `  ${gray(shortCwd)}`,
+        '',
+    ];
+    const rightLines = [
+        '',
+        `  ${bold(yellow('Tips for getting started'))}`,
+        `  Type ${cyan('@filename')} to inject file into context`,
+        `  Use ${cyan('/skill')} to run a skill or command`,
+        `  Use ${cyan('/models')} to switch or pull models`,
+        '',
+        `  ${bold(yellow("What's new"))}`,
+        `  v0.2.6: ASCII logo on startup`,
+        `  v0.2.5: Built-in skills & commands`,
+        `  v0.2.4: Enhanced tool call handling`,
+        `  ${dim(gray('/release-notes for more'))}`,
+        '',
+    ];
+    const maxLen = Math.max(leftLines.length, rightLines.length);
+    const pl = [...leftLines, ...Array(Math.max(0, maxLen - leftLines.length)).fill('')];
+    const pr = [...rightLines, ...Array(Math.max(0, maxLen - rightLines.length)).fill('')];
+    const contentRows = pl.map((l, i) => row(l, pr[i]));
     const upgradeCmd = linked ? 'cd <miii-dir> && npm run build' : 'npm install -g miii-cli';
     const separator = gray('│') + bold(yellow(' ⬆ update available: v' + updateAvailable + ' — run: ' + upgradeCmd)).padEnd(innerW - 1) + gray('│');
     const updateRow = updateAvailable
@@ -103,19 +143,8 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
         : [];
     const lines = [
         top,
-        blank(),
-        row(`  ${bold(cyan('MIII - CLI'))}`, `  ${bold(yellow('Getting started'))}`),
-        row(`  ${gray('Claude Code-level terminal')}`, rcmd('@filename', 'inject file into context')),
-        row(`  ${gray('workflows, local models.')}`, rcmd('/skill', 'run a skill or command')),
-        row('', rcmd('/models', 'switch or pull models')),
-        row('', rcmd('/list', 'list all skills')),
-        row('', rcmd('/session', 'manage sessions')),
-        blank(),
-        row(`  ${gray(provider + '/' + model)}`, `  ${bold(yellow('Tips'))}`),
-        row(`  ${gray(shortCwd)}`, rcmd('ctrl+c', 'stop thinking')),
-        row('', rcmd('ctrl+c x2', 'exit')),
+        ...contentRows,
         ...updateRow,
-        blank(),
         bottom,
     ];
     process.stdout.write(lines.join('\n') + '\n');
