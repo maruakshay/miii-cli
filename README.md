@@ -1,6 +1,6 @@
-# 🚀 MIII - CLI
+# 🚀 Miii CLI — High-Performance Local AI Coding Agent
 
-**The fastest, local AI coding assistant. Zero cloud. Zero Python. Total Control.**
+**The definitive local AI coding agent for your terminal. Automate complex engineering workflows with total control, zero cloud, and zero Python overhead.**
 
 ![MIII Demo](mii-cli.gif)
 
@@ -33,14 +33,14 @@ npm install -g miii-cli
 miii
 ```
 
-## 🧠 Why miii?
+## 🧠 Why Miii?
 
 Most AI coding tools are either heavy Python wrappers or expensive monthly subscriptions that send your code to the cloud. **miii is different.**
 
-- **Local-First**: Runs on Ollama or any OpenAI-compatible API. Your code stays on your machine.
-- **Blazing Fast**: Written in TypeScript. No Python overhead. 176K bundle size.
-- **Autonomous**: Doesn't just suggest code; it edits files, runs your tests, and fixes bugs until they are gone.
-- **Context Aware**: Automatically injects git diffs and project structure so you don't have to copy-paste.
+- **Local-First & Private**: Runs on Ollama or any OpenAI-compatible API. Your code never leaves your machine, ensuring 100% privacy and security.
+- **Blazing Fast**: Built with TypeScript for near-instant startup. No heavy Python runtime overhead. Tiny footprint, massive power.
+- **Fully Autonomous**: Miii doesn't just suggest code; it acts as a junior engineer—editing files, running your test suite, and iterating until the bugs are gone.
+- **Deep Context Awareness**: Automatically analyzes git diffs and project architecture, eliminating the need for manual copy-pasting.
 
 ## 🔥 Killer Features
 
@@ -85,7 +85,7 @@ cd miii-cli && npm install && npm run build && npm link
 
 ## 🌟 Community & Philosophy
 
-**Own your AI stack. Stop renting your intelligence.**
+**Own your AI stack. Stop renting your intelligence. The future of coding is local.**
 
 miii is built for the community. If this tool saves you hours of coding, help us grow:
 - 🌟 **Star the repo** on GitHub

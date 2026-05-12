@@ -1,8 +1,8 @@
 {
   "name": "miii-cli",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "type": "module",
-  "description": "Claude Code-level terminal workflows powered by your local models.",
+  "description": "The high-performance local AI coding agent for your terminal. Automate complex workflows with local LLMs.",
   "license": "MIT",
   "engines": {
     "node": ">=18"
@@ -16,13 +16,16 @@
     "url": "https://github.com/maruakshay/miii-cli/issues"
   },
   "keywords": [
-    "ai",
-    "cli",
+    "ai-coding-assistant",
+    "local-llm",
     "ollama",
-    "llm",
-    "coding-assistant",
-    "terminal",
-    "local-ai"
+    "terminal-agent",
+    "autonomous-coding",
+    "cli-tool",
+    "developer-experience",
+    "open-source-ai",
+    "local-ai",
+    "software-engineering"
   ],
   "files": [
     "dist",
