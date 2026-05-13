@@ -1,11 +1,15 @@
 // ANSI-formatted stdout output — goes into terminal scrollback
-let _inkClear = null;
-export function setInkInstance(clear) {
-    _inkClear = clear;
+let _inkWrite = null;
+export function setInkInstance(inkWrite) {
+    _inkWrite = inkWrite;
 }
 function write(s) {
-    _inkClear?.();
-    process.stdout.write(s);
+    if (_inkWrite) {
+        _inkWrite(s);
+    }
+    else {
+        process.stdout.write(s);
+    }
 }
 const R = '\x1b[0m';
 const BOLD = '\x1b[1m';

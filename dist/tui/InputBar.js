@@ -1,5 +1,5 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { InputArea } from './components/InputArea.js';
 import { ModelPicker } from './components/ModelPicker.js';
@@ -9,7 +9,7 @@ import { readFile } from '../files/ops.js';
 import { generateId } from '../types.js';
 import * as printer from './printer.js';
 import { toolArgSummary } from './printer.js';
-import { loadSession, saveSession, listSessions, deleteSession } from '../sessions.js';
+import { loadSession, saveSession, listSessions, deleteSession, deleteAllSessions } from '../sessions.js';
 import { MacroQueue, MicroQueue } from '../tasks/queue.js';
 import { TaskExecutor } from '../tasks/executor.js';
 import { fileEditContext } from '../tasks/compactor.js';
@@ -25,6 +25,7 @@ import { useSession } from './hooks/useSession.js';
 import { useModelPicker } from './hooks/useModelPicker.js';
 import { useRunLoop } from './hooks/useRunLoop.js';
 import { runDeepThink } from './deepThink.js';
+import { setInkInstance } from './printer.js';
 const gitRun = promisify(exec);
 function buildAtContext(text) {
     const refs = [...text.matchAll(/@([\w./\-]+)/g)];
@@ -41,9 +42,20 @@ function buildAtContext(text) {
     }
     return parts.length ? parts.join('\n\n') + '\n\n' : '';
 }
+function formatElapsed(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60)
+        return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem === 0 ? `${m}m` : `${m}m ${rem}s`;
+}
 export function InputBar({ config, skills, cwd, session, version }) {
-    const { stdout } = useStdout();
+    const { stdout, write: stdoutWrite } = useStdout();
     const cols = stdout.columns ?? 80;
+    useEffect(() => {
+        setInkInstance(stdoutWrite);
+    }, []);
     const phraseSeq = useMemo(() => Array.from({ length: 100 }, () => Math.floor(Math.random() * THINKING_PHRASES.length)), []);
     const [planningMode, setPlanningMode] = useState(false);
     const macroQueueRef = useRef(new MacroQueue());
@@ -445,7 +457,12 @@ export function InputBar({ config, skills, cwd, session, version }) {
             if (arg.startsWith('delete ')) {
                 const target = arg.slice(7).trim();
                 if (!target) {
-                    printer.systemMsg('usage: /session delete <name>');
+                    printer.systemMsg('usage: /session delete <name|all>');
+                    return;
+                }
+                if (target === 'all') {
+                    const count = deleteAllSessions(sessionNameRef.current);
+                    printer.systemMsg(`deleted ${count} session(s) — kept active: ${sessionNameRef.current}`);
                     return;
                 }
                 if (target === sessionNameRef.current) {
@@ -515,7 +532,7 @@ export function InputBar({ config, skills, cwd, session, version }) {
     }, [skills, runLoop, openPicker]);
     const skillList = skills.list();
     // ─── render ────────────────────────────────────────────────────────────────
-    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : permissionRequest ? (_jsxs(_Fragment, { children: [_jsx(Box, { flexDirection: "column", paddingX: 1, paddingY: 0, children: _jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: permissionRequest.toolName }), _jsx(Text, { color: "gray", children: toolArgSummary(permissionRequest.args) })] }) }), _jsx(Divider, { cols: cols })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(_Fragment, { children: [_jsx(Box, { flexDirection: "column", paddingX: 1, children: _jsxs(Box, { flexDirection: "column", children: [_jsx(Box, { children: status === 'thinking'
-                                        ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]] })] })
-                                        : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsxs(Text, { color: "gray", dimColor: true, children: [Math.floor((Date.now() - thinkingStartRef.current) / 1000), "s"] }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] }) }), _jsx(Divider, { cols: cols })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, onSubmit: handleSubmit, onAbort: handleAbort })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : permissionRequest ? (_jsxs(Box, { paddingX: 1, gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: permissionRequest.toolName }), _jsx(Text, { color: "gray", children: toolArgSummary(permissionRequest.args) })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Box, { children: status === 'thinking'
+                            ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]] })] })
+                            : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, onSubmit: handleSubmit, onAbort: handleAbort, history: historyRef.current.filter(m => m.role === 'user').map(m => m.content) })] }));
 }

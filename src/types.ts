@@ -16,6 +16,7 @@ export interface Config {
   apiKey?: string
   gitContext?: boolean  // default true — set false to disable auto git context injection
   tavilyApiKey?: string
+  embedModel?: string
 }
 
 export interface ChatMessage {

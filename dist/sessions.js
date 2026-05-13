@@ -44,10 +44,29 @@ export function loadSession(name) {
 }
 export function saveSession(name, messages) {
     ensureDir();
-    writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages));
+    try {
+        writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages));
+    }
+    catch { }
 }
 export function deleteSession(name) {
     const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`);
     if (existsSync(p))
         unlinkSync(p);
+}
+export function deleteAllSessions(exceptName) {
+    ensureDir();
+    const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.json'));
+    let count = 0;
+    for (const f of files) {
+        const name = f.replace('.json', '');
+        if (exceptName && name === exceptName)
+            continue;
+        try {
+            unlinkSync(join(SESSIONS_DIR, f));
+            count++;
+        }
+        catch { }
+    }
+    return count;
 }

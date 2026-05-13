@@ -16,6 +16,7 @@ export class MicroQueue {
   pop(): MicroTask | undefined {
     if (!this.heap.length) return undefined
     const top = this.heap[0]
+    this.order.delete(top.id)
     const last = this.heap.pop()!
     if (this.heap.length) {
       this.heap[0] = last

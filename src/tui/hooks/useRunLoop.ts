@@ -50,7 +50,7 @@ export function useRunLoop(
   }, [status])
 
   const runLoop = useCallback(async (contextMsgs: ChatMessage[], depth = 0, goal?: string): Promise<void> => {
-    if (depth >= MAX_TOOL_DEPTH) { setStatus('idle'); return }
+    if (depth >= MAX_TOOL_DEPTH) { abortRef.current = null; setStatus('idle'); return }
     setStatus('thinking')
     if (depth === 0) thinkingStartRef.current = Date.now()
 

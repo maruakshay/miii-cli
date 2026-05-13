@@ -1,14 +1,17 @@
 // ANSI-formatted stdout output — goes into terminal scrollback
 
-let _inkClear: (() => void) | null = null
+let _inkWrite: ((data: string) => void) | null = null
 
-export function setInkInstance(clear: () => void) {
-  _inkClear = clear
+export function setInkInstance(inkWrite: (data: string) => void) {
+  _inkWrite = inkWrite
 }
 
 function write(s: string): void {
-  _inkClear?.()
-  process.stdout.write(s)
+  if (_inkWrite) {
+    _inkWrite(s)
+  } else {
+    process.stdout.write(s)
+  }
 }
 
 const R = '\x1b[0m'
@@ -166,13 +169,41 @@ export function assistantMsg(text: string): void {
   write(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}\n`)
 }
 
-const EDIT_TOOLS  = new Set(['edit_file', 'patch_file', 'create_file', 'write_file'])
+const EDIT_TOOLS   = new Set(['edit_file', 'patch_file', 'create_file', 'write_file'])
 const DELETE_TOOLS = new Set(['delete_file', 'remove_file'])
 
+function toolLabel(name: string, args: Record<string, unknown>): string {
+  const a = args as Record<string, string>
+  const short = (s: string, n = 55) => s.length > n ? s.slice(0, n) + '…' : s
+  switch (name) {
+    case 'read_file':       return `Reading ${a.path ?? ''}`
+    case 'list_files':      return `Listing ${a.path || '.'}`
+    case 'create_file':     return `Creating ${a.path ?? ''}`
+    case 'edit_file':       return `Writing ${a.path ?? ''}`
+    case 'patch_file':      return `Editing ${a.path ?? ''}`
+    case 'delete_file':     return `Deleting ${a.path ?? ''}`
+    case 'move_file':       return `Moving ${a.from} → ${a.to}`
+    case 'create_folder':   return `Creating folder ${a.path ?? ''}`
+    case 'run_command':     return `Running ${short(a.command ?? '')}`
+    case 'git_status':      return 'Checking git status'
+    case 'git_diff':        return 'Reading diff'
+    case 'git_log':         return 'Reading commits'
+    case 'git_commit':      return `Committing: ${short(a.message ?? '')}`
+    case 'run_tests':       return a.path ? `Running tests › ${a.path}` : 'Running tests'
+    case 'web_search':      return `Searching: ${short(a.query ?? '')}`
+    case 'web_extract':     return `Extracting page`
+    case 'deep_think':      return `Researching: ${short(a.query ?? '')}`
+    case 'search_codebase': return `Searching codebase: ${short(a.query ?? '')}`
+    default: {
+      const s = toolArgSummary(args)
+      return s ? `${name} ${s}` : name
+    }
+  }
+}
+
 export function toolCallStart(name: string, args: Record<string, unknown>): void {
-  const summary = toolArgSummary(args)
   const dot = DELETE_TOOLS.has(name) ? red('●') : EDIT_TOOLS.has(name) ? green('●') : blue('●')
-  write(`  ${dot} ${cyan(name)}${summary ? gray('(' + summary + ')') : ''}\n`)
+  write(`  ${dot} ${toolLabel(name, args)}\n`)
 }
 
 export function toolMsg(name: string, result: string): void {

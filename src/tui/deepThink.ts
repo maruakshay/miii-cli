@@ -54,6 +54,7 @@ Guardrails:
     depth++
 
     let fullText = ''
+    let chatError: Error | null = null
     await chat({
       provider: config.provider,
       model,
@@ -61,9 +62,11 @@ Guardrails:
       apiKey: config.apiKey,
       messages: msgs,
       signal,
+      onChunk() {},
       async onDone(text) { fullText = text },
-      onError(err) { if (err.name !== 'AbortError') throw err },
+      onError(err) { if (err.name !== 'AbortError') chatError = err },
     })
+    if (chatError) throw chatError
 
     if (!fullText) return
 

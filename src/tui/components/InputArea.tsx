@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text, useInput, useStdout } from 'ink'
 import type { Key } from 'ink'
 import type { Status } from '../../types.js'
 import type { Skill } from '../../skills/loader.js'
@@ -15,7 +15,7 @@ const BUILTIN_COMMANDS: Skill[] = [
   { ns: 'builtin', name: 'sessions',    description: 'list all saved sessions' },
   { ns: 'builtin', name: 'session',     description: 'switch session  /session <name>' },
   { ns: 'builtin', name: 'exit',        description: 'exit miii' },
-  { ns: 'builtin', name: 'model',      description: 'switch model mid-session  /model <name>' },
+  { ns: 'builtin', name: 'model',       description: 'switch model mid-session  /model <name>' },
   { ns: 'builtin', name: 'version',     description: 'show current miii version' },
   { ns: 'builtin', name: 'tavily-key',  description: 'set Tavily API key for web search  /tavily-key tvly-...' },
   { ns: 'builtin', name: 'skills',      description: 'install/uninstall/list npm skills  /skills install <name>' },
@@ -49,23 +49,38 @@ interface Props {
   onPermissionResponse?: (approved: boolean) => void
   onSubmit: (text: string) => void
   onAbort: () => void
+  history?: string[]
 }
 
-const PASTE_MIN_LINES = 3
-const PASTE_MIN_CHARS = 200
+const PASTE_MIN_CHARS = 120
 
-export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort }: Props) {
+function wordStartBefore(line: string, col: number): number {
+  let i = col
+  while (i > 0 && line[i - 1] === ' ') i--
+  while (i > 0 && line[i - 1] !== ' ') i--
+  return i
+}
+
+function wordEndAfter(line: string, col: number): number {
+  let i = col
+  while (i < line.length && line[i] === ' ') i++
+  while (i < line.length && line[i] !== ' ') i++
+  return i
+}
+
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort, history = [] }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [overlayIdx, setOverlayIdx] = useState(0)
   const [pasteLines, setPasteLines] = useState(0)
   const pasteRef = useRef<string | null>(null)
+  const [historyIdx, setHistoryIdx] = useState(-1)
+  const savedInputRef = useRef('')
 
   const [files, setFiles] = useState<FileEntry[]>([])
   const filesLoadedRef = useRef(false)
 
-  // built-ins first, then loaded skills (deduplicated by name)
   const allCommands = useMemo(() => {
     const builtinNames = new Set(BUILTIN_COMMANDS.map(b => b.name))
     const userSkills = skills.filter(s => !builtinNames.has(s.name))
@@ -87,7 +102,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     const atIdx = before.lastIndexOf('@')
     if (atIdx === -1) return ''
     const after = before.slice(atIdx + 1)
-    if (after.includes(' ')) return '' // space breaks @ ref
+    if (after.includes(' ')) return ''
     return after
   }, [lines, cursor])
 
@@ -105,7 +120,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     if (!atQuery) return []
     if (!filesLoadedRef.current) {
       filesLoadedRef.current = true
-      setTimeout(() => { try { setFiles(listFiles(cwd, true)) } catch {} }, 0)
+      setTimeout(() => { try { setFiles(listFiles(cwd, true)) } catch { filesLoadedRef.current = false } }, 0)
       return []
     }
     return files.filter(f => f.rel.toLowerCase().includes(atQuery.toLowerCase())).slice(0, 8)
@@ -120,6 +135,8 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     setOverlayIdx(0)
     pasteRef.current = null
     setPasteLines(0)
+    setHistoryIdx(-1)
+    savedInputRef.current = ''
   }
 
   function appendChar(ch: string) {
@@ -132,21 +149,45 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     setCursor(c => ({ ...c, col: c.col + ch.length }))
   }
 
-  function deleteChar() {
+  function insertNewline() {
     const { row, col } = cursor
+    const before = lines[row].slice(0, col)
+    const after = lines[row].slice(col)
     setLines(prev => {
       const next = [...prev]
-      if (col > 0) {
-        next[row] = next[row].slice(0, col - 1) + next[row].slice(col)
-      } else if (row > 0) {
-        const prevLen = next[row - 1].length
-        next.splice(row - 1, 2, next[row - 1] + next[row])
-        setCursor({ row: row - 1, col: prevLen })
-        return next
-      }
+      next.splice(row, 1, before, after)
       return next
     })
-    if (col > 0) setCursor(c => ({ ...c, col: c.col - 1 }))
+    setCursor({ row: row + 1, col: 0 })
+  }
+
+  function deleteChar() {
+    const { row, col } = cursor
+    if (col > 0) {
+      setLines(prev => {
+        const next = [...prev]
+        next[row] = next[row].slice(0, col - 1) + next[row].slice(col)
+        return next
+      })
+      setCursor(c => ({ ...c, col: c.col - 1 }))
+    } else if (row > 0) {
+      const prevLen = lines[row - 1].length
+      setLines(prev => {
+        const next = [...prev]
+        next.splice(row - 1, 2, next[row - 1] + next[row])
+        return next
+      })
+      setCursor({ row: row - 1, col: prevLen })
+    }
+  }
+
+  function recallHistory(idx: number) {
+    const entry = history[history.length - 1 - idx]
+    if (!entry) return
+    const recalled = entry.split('\n')
+    setLines(recalled)
+    setCursor({ row: 0, col: recalled[0].length })
+    setHistoryIdx(idx)
   }
 
   function selectCommand(skill: Skill) {
@@ -177,21 +218,18 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
   }
 
   useInput((input: string, key: Key) => {
-    // Permission prompt intercepts all input
     if (permissionRequest && onPermissionResponse) {
       if (input === 'y' || input === 'Y') { onPermissionResponse(true); return }
       if (input === 'n' || input === 'N' || key.escape) { onPermissionResponse(false); return }
       return
     }
 
-    // ESC: close overlay, abort stream, or clear input
     if (key.escape) {
       if (overlay !== 'none') { setOverlay('none'); setOverlayIdx(0); return }
       if (status !== 'idle') { onAbort(); return }
       clearInput(); return
     }
 
-    // Ctrl+C
     if (key.ctrl && input === 'c') {
       if (status !== 'idle') { onAbort() } else { process.exit(0) }
       return
@@ -206,7 +244,6 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
       if (key.return) {
         if (overlay === 'command') {
           if (commandQuery.includes(' ')) {
-            // has args — submit full text, don't pick from palette
             const text = fullInput.trim()
             if (text) { clearInput(); onSubmit(text) }
           } else if (filteredCommands[overlayIdx]) {
@@ -217,7 +254,6 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
         }
         return
       }
-      // backspace/typing falls through to normal handling below
     }
 
     if (key.return) {
@@ -230,10 +266,15 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
       return
     }
 
+    // Ctrl+J — insert newline without submitting
+    if (key.ctrl && input === 'j') {
+      insertNewline()
+      return
+    }
+
     if (key.backspace || key.delete) {
       if (pasteRef.current) { pasteRef.current = null; setPasteLines(0); return }
       deleteChar()
-      // Recompute overlay trigger for updated input
       const r = cursor.row
       const col = cursor.col
       const prospectiveLine = col > 0
@@ -242,31 +283,118 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
       const prospectiveLines = [...lines]
       prospectiveLines[r] = prospectiveLine
       const prospective = prospectiveLines.join('\n')
-
       if (overlay === 'command' && !prospective.startsWith('/')) setOverlay('none')
       if (overlay === 'at') {
         const before = prospectiveLine.slice(0, Math.max(0, col - 1))
-        const atIdx = before.lastIndexOf('@')
-        if (atIdx === -1) setOverlay('none')
+        if (before.lastIndexOf('@') === -1) setOverlay('none')
       }
       return
     }
 
-    if (key.upArrow && overlay === 'none') { setCursor(c => ({ row: Math.max(0, c.row - 1), col: 0 })); return }
-    if (key.downArrow && overlay === 'none') { setCursor(c => ({ row: Math.min(lines.length - 1, c.row + 1), col: 0 })); return }
+    // Ctrl chords
+    if (key.ctrl) {
+      const { row, col } = cursor
+      const line = lines[row] ?? ''
+
+      if (input === 'a') { setCursor(c => ({ ...c, col: 0 })); return }
+      if (input === 'e') { setCursor(c => ({ ...c, col: line.length })); return }
+
+      if (input === 'w') {
+        if (col === 0) return
+        const newCol = wordStartBefore(line, col)
+        setLines(prev => {
+          const next = [...prev]
+          next[row] = line.slice(0, newCol) + line.slice(col)
+          return next
+        })
+        setCursor(c => ({ ...c, col: newCol }))
+        return
+      }
+
+      if (input === 'k') {
+        setLines(prev => {
+          const next = [...prev]
+          next[row] = line.slice(0, col)
+          return next
+        })
+        return
+      }
+
+      if (input === 'u') {
+        setLines(prev => {
+          const next = [...prev]
+          next[row] = ''
+          return next
+        })
+        setCursor(c => ({ ...c, col: 0 }))
+        return
+      }
+
+      if (key.leftArrow) {
+        setCursor(c => ({ ...c, col: wordStartBefore(line, col) }))
+        return
+      }
+
+      if (key.rightArrow) {
+        setCursor(c => ({ ...c, col: wordEndAfter(line, col) }))
+        return
+      }
+
+      return
+    }
+
+    // Arrow keys
+    if (key.upArrow && overlay === 'none') {
+      if (cursor.row > 0) {
+        setCursor(c => ({ row: c.row - 1, col: Math.min(c.col, lines[c.row - 1]?.length ?? 0) }))
+        return
+      }
+      // history recall at top row
+      if (history.length > 0) {
+        const nextIdx = historyIdx + 1
+        if (nextIdx < history.length) {
+          if (historyIdx === -1) savedInputRef.current = fullInput
+          recallHistory(nextIdx)
+        }
+      }
+      return
+    }
+
+    if (key.downArrow && overlay === 'none') {
+      if (cursor.row < lines.length - 1) {
+        setCursor(c => ({ row: c.row + 1, col: Math.min(c.col, lines[c.row + 1]?.length ?? 0) }))
+        return
+      }
+      // history forward at bottom row
+      if (historyIdx > 0) {
+        recallHistory(historyIdx - 1)
+      } else if (historyIdx === 0) {
+        const saved = savedInputRef.current
+        const restored = saved ? saved.split('\n') : ['']
+        setLines(restored)
+        setCursor({ row: 0, col: restored[0].length })
+        setHistoryIdx(-1)
+        savedInputRef.current = ''
+      }
+      return
+    }
+
     if (key.leftArrow) { setCursor(c => ({ ...c, col: Math.max(0, c.col - 1) })); return }
     if (key.rightArrow) { setCursor(c => ({ ...c, col: Math.min(lines[c.row]?.length ?? 0, c.col + 1) })); return }
 
-    if (input && !key.ctrl && !key.meta) {
-      // Detect paste: Ink delivers entire pasted chunk as one input string
-      const lineCount = input.split('\n').length
-      if (input.length > 1 && (lineCount >= PASTE_MIN_LINES || input.length >= PASTE_MIN_CHARS)) {
+    if (input && !key.meta) {
+      // Detect paste
+      const hasNewline = input.includes('\n')
+      const lineCount = hasNewline ? input.split('\n').length : 1
+      if (input.length > 1 && (hasNewline || input.length >= PASTE_MIN_CHARS)) {
         pasteRef.current = input
         setPasteLines(lineCount)
         return
       }
 
-      // Compute prospective new input to decide overlay
+      // Exit history mode on any edit
+      if (historyIdx !== -1) setHistoryIdx(-1)
+
       const r = cursor.row
       const col = cursor.col
       const prospectiveLine = lines[r].slice(0, col) + input + lines[r].slice(col)
@@ -276,11 +404,9 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
 
       appendChar(input)
 
-      // Open/update overlays
       if (prospective.startsWith('/')) {
-        const q = prospective.slice(1)
-        if (q.includes(' ')) {
-          setOverlay('none')  // typing args — close palette, let user type freely
+        if (prospective.slice(1).includes(' ')) {
+          setOverlay('none')
         } else {
           setOverlay('command')
           setOverlayIdx(0)
@@ -294,21 +420,32 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     }
   })
 
+  const { stdout } = useStdout()
+  const cols = stdout.columns ?? 80
+
   const isProcessing = status !== 'idle'
-  const borderColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'cyan'
+  const promptColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'green'
+  const inHistory = historyIdx !== -1
+
   const hint = permissionRequest
-    ? 'y approve  n deny'
+    ? 'y approve · n deny'
     : isProcessing
-    ? 'esc to abort'
+    ? 'esc to interrupt'
     : pasteLines > 0
-    ? 'backspace removes paste  enter to send'
+    ? 'backspace removes paste · enter to send'
     : overlay === 'command' && !commandQuery.includes(' ')
-    ? '↑↓ navigate  enter select  esc close'
+    ? '↑↓ navigate · enter select · esc close'
     : overlay === 'at'
-    ? '↑↓ navigate  enter select  esc close'
+    ? '↑↓ navigate · enter select · esc close'
+    : inHistory
+    ? `history [${historyIdx + 1}/${history.length}] · ↑↓ navigate · enter to send · esc clear`
     : planningMode
-    ? '📋 planning mode  / suggestions  enter send  /plan:done to exit'
-    : '@ file  / command  enter send  ctrl+c exit'
+    ? 'planning mode · / suggestions · enter send · /plan:done exit'
+    : 'enter send · @ file · / cmd · ctrl+j newline · ↑ history'
+
+  const pastePreview = pasteRef.current
+    ? pasteRef.current.split('\n')[0].slice(0, cols - 6)
+    : ''
 
   return (
     <Box flexDirection="column">
@@ -318,40 +455,46 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
       {overlay === 'at' && (
         <AtPicker files={filteredFiles} query={atQuery} idx={overlayIdx} />
       )}
-      <Box borderStyle="round" borderColor={borderColor} paddingX={1} flexDirection="column">
-        <Box>
-          <Text color={borderColor} bold>{'❯ '}</Text>
-          <Box flexDirection="column" flexGrow={1}>
-            {permissionRequest ? (
-              <Box gap={2}>
-                <Text color="green" bold>y  yes</Text>
-                <Text color="red" bold>n  no</Text>
-              </Box>
-            ) : pasteLines > 0 ? (
+      <Text color="gray" dimColor>{'─'.repeat(Math.max(cols, 10))}</Text>
+      <Box paddingX={1}>
+        <Text color={promptColor} bold>{'> '}</Text>
+        <Box flexDirection="column" flexGrow={1}>
+          {permissionRequest ? (
+            <Box gap={2}>
+              <Text color="green" bold>y  yes</Text>
+              <Text color="red" bold>n  no</Text>
+            </Box>
+          ) : pasteLines > 0 ? (
+            <Box flexDirection="column">
               <Box gap={1}>
                 <Text color="cyan">⎘</Text>
-                <Text color="cyan">pasted {pasteLines} lines</Text>
+                <Text color="cyan">pasted {pasteLines} line{pasteLines !== 1 ? 's' : ''}</Text>
                 {(lines.length > 1 || lines[0]) && (
                   <Text color="gray" dimColor>+ typed text</Text>
                 )}
               </Box>
-            ) : lines.length === 1 && !lines[0] ? (
-              <Text color={isActive ? 'white' : 'gray'} dimColor={isProcessing}>
-                {isActive ? '█' : 'processing...'}
-              </Text>
+              {pastePreview && (
+                <Text color="gray" dimColor>  {pastePreview}{pasteRef.current!.split('\n')[0].length > cols - 6 ? '…' : ''}</Text>
+              )}
+            </Box>
+          ) : lines.length === 1 && !lines[0] ? (
+            isActive ? (
+              <Text><Text>█</Text><Text color="gray" dimColor>How can I help you?</Text></Text>
             ) : (
-              lines.map((line, i) => (
-                <Text key={i} wrap="wrap">
-                  {i === cursor.row
-                    ? renderLineWithCursor(line, cursor.col, isActive)
-                    : line}
-                </Text>
-              ))
-            )}
-          </Box>
+              <Text color="gray" dimColor> </Text>
+            )
+          ) : (
+            lines.map((line, i) => (
+              <Text key={i} wrap="wrap">
+                {i === cursor.row
+                  ? renderLineWithCursor(line, cursor.col, isActive)
+                  : line}
+              </Text>
+            ))
+          )}
         </Box>
-        <Text color="gray" dimColor>{hint}</Text>
       </Box>
+      <Text color="gray" dimColor>{'─ ' + hint + ' ' + '─'.repeat(Math.max(0, cols - hint.length - 3))}</Text>
     </Box>
   )
 }

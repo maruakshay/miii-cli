@@ -28,7 +28,8 @@ export async function buildGitContext(cwd: string, lastStatusRef: { current: str
       const code = line.slice(0, 2)
       if (code.includes('D')) continue
       const raw = line.slice(3).trim().replace(/^"|"$/g, '')
-      const rel  = raw.includes(' -> ') ? raw.split(' -> ')[1]! : raw
+      const arrowIdx = raw.lastIndexOf(' -> ')
+      const rel = arrowIdx !== -1 ? raw.slice(arrowIdx + 4) : raw
       if (!rel) continue
       try {
         const content = readFile(resolve(cwd, rel))
