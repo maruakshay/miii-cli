@@ -72,6 +72,25 @@ export function useSubmit(deps: SubmitDeps) {
 
     const cmd = text.trim()
 
+    if (cmd === '?') {
+      printer.systemMsg(
+        'shortcuts:\n' +
+        '  enter          send message\n' +
+        '  ctrl+j         insert newline\n' +
+        '  ↑ / ↓          history navigate\n' +
+        '  ctrl+a / ctrl+e  line start / end\n' +
+        '  ctrl+w         delete word back\n' +
+        '  ctrl+k         kill to line end\n' +
+        '  ctrl+u         clear line\n' +
+        '  ctrl+← / →     jump word\n' +
+        '  @filename      inject file into context\n' +
+        '  /cmd           open command palette\n' +
+        '  esc            abort / clear input\n' +
+        '  ctrl+c         abort / exit'
+      )
+      return
+    }
+
     if (cmd === '/version') {
       printer.systemMsg(`miii v${version ?? 'unknown'}`)
       return

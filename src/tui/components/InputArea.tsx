@@ -428,20 +428,18 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
   const inHistory = historyIdx !== -1
 
   const hint = permissionRequest
-    ? 'y approve · n deny'
+    ? 'y  approve   n  deny'
     : isProcessing
-    ? 'esc to interrupt'
+    ? 'esc  interrupt'
     : pasteLines > 0
-    ? 'backspace removes paste · enter to send'
-    : overlay === 'command' && !commandQuery.includes(' ')
-    ? '↑↓ navigate · enter select · esc close'
-    : overlay === 'at'
-    ? '↑↓ navigate · enter select · esc close'
+    ? 'backspace  remove paste   enter  send'
+    : overlay !== 'none'
+    ? '↑↓  navigate   enter  select   esc  close'
     : inHistory
-    ? `history [${historyIdx + 1}/${history.length}] · ↑↓ navigate · enter to send · esc clear`
+    ? `history ${historyIdx + 1}/${history.length}   ↑↓  navigate   esc  clear`
     : planningMode
-    ? 'planning mode · / suggestions · enter send · /plan:done exit'
-    : 'enter send · @ file · / cmd · ctrl+j newline · ↑ history'
+    ? 'planning mode   /plan:done  exit'
+    : '?  for shortcuts'
 
   const pastePreview = pasteRef.current
     ? pasteRef.current.split('\n')[0].slice(0, cols - 6)
@@ -478,11 +476,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
               )}
             </Box>
           ) : lines.length === 1 && !lines[0] ? (
-            isActive ? (
-              <Box><Text>█</Text><Text color="gray" dimColor>How can I help you?</Text></Box>
-            ) : (
-              <Text color="gray" dimColor> </Text>
-            )
+            <Text>{isActive ? '█' : ' '}</Text>
           ) : (
             lines.map((line, i) => (
               <Text key={i} wrap="wrap">
@@ -494,7 +488,8 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
           )}
         </Box>
       </Box>
-      <Text color="gray" dimColor>{'─ ' + hint + ' ' + '─'.repeat(Math.max(0, cols - hint.length - 3))}</Text>
+      <Text color="gray" dimColor>{'─'.repeat(Math.max(cols, 10))}</Text>
+      <Text color="gray" dimColor>  {hint}</Text>
     </Box>
   )
 }
