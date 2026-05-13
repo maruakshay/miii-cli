@@ -15,7 +15,7 @@ import { ensureOllama } from './llm/ollama.js'
 const require = createRequire(import.meta.url)
 
 const UPDATE_CACHE = join(homedir(), '.config', 'miii', 'update-check.json')
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000  // 24h
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000  // 6h
 
 function semverGt(a: string, b: string): boolean {
   const pa = a.split('.').map(Number)
@@ -36,17 +36,18 @@ function isLinkedInstall(): boolean {
   } catch { return false }
 }
 
-async function checkLatestVersion(current: string): Promise<string | undefined> {
-  // Return cached result if checked within 24h and local version hasn't changed
-  try {
-    if (existsSync(UPDATE_CACHE)) {
-      const cache = JSON.parse(readFileSync(UPDATE_CACHE, 'utf-8')) as { ts: number; latest: string; localVersion?: string }
-      const cacheValid = Date.now() - cache.ts < CHECK_INTERVAL_MS && cache.localVersion === current
-      if (cacheValid) {
-        return semverGt(cache.latest, current) ? cache.latest : undefined
+async function checkLatestVersion(current: string, force = false): Promise<string | undefined> {
+  if (!force) {
+    try {
+      if (existsSync(UPDATE_CACHE)) {
+        const cache = JSON.parse(readFileSync(UPDATE_CACHE, 'utf-8')) as { ts: number; latest: string; localVersion?: string }
+        const cacheValid = Date.now() - cache.ts < CHECK_INTERVAL_MS && cache.localVersion === current
+        if (cacheValid) {
+          return semverGt(cache.latest, current) ? cache.latest : undefined
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   try {
     const res = await fetch('https://registry.npmjs.org/miii-cli/latest', { signal: AbortSignal.timeout(3000) })
@@ -65,6 +66,7 @@ async function checkLatestVersion(current: string): Promise<string | undefined> 
 export async function lazyInit(): Promise<void> {
   const argv = minimist(process.argv.slice(2), {
     string: ['model', 'url', 'provider', 'session'],
+    boolean: ['update'],
     alias: { m: 'model', u: 'url', p: 'provider', s: 'session' },
   })
 
@@ -86,7 +88,7 @@ export async function lazyInit(): Promise<void> {
   const linked = isLinkedInstall()
   const [, updateAvailable] = await Promise.all([
     skills.loadAll(),
-    checkLatestVersion(currentVersion),
+    checkLatestVersion(currentVersion, !!argv.update),
   ])
 
   // Print welcome banner to scrollback BEFORE Ink starts

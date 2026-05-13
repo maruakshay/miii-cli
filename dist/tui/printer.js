@@ -132,10 +132,12 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
     const pr = [...rightLines, ...Array(Math.max(0, maxLen - rightLines.length)).fill('')];
     const contentRows = pl.map((l, i) => row(l, pr[i]));
     const upgradeCmd = linked ? 'cd <miii-dir> && npm run build' : 'npm install -g miii-cli';
-    const separator = gray('│') + bold(yellow(' ⬆ update available: v' + updateAvailable + ' — run: ' + upgradeCmd)).padEnd(innerW - 1) + gray('│');
-    const updateRow = updateAvailable
-        ? [gray('├' + '─'.repeat(innerW) + '┤'), separator, gray('├' + '─'.repeat(innerW) + '┤')]
-        : [];
+    const updateRow = updateAvailable ? (() => {
+        const updateText = bold(yellow(` ⬆  update available: v${updateAvailable}  —  run: ${upgradeCmd}`));
+        const pad = Math.max(0, innerW - vis(updateText).length);
+        const separator = gray('│') + updateText + ' '.repeat(pad) + gray('│');
+        return [gray('├' + '─'.repeat(innerW) + '┤'), separator, gray('├' + '─'.repeat(innerW) + '┤')];
+    })() : [];
     const lines = [
         top,
         ...contentRows,
@@ -162,10 +164,37 @@ export function assistantMsg(text) {
 }
 const EDIT_TOOLS = new Set(['edit_file', 'patch_file', 'create_file', 'write_file']);
 const DELETE_TOOLS = new Set(['delete_file', 'remove_file']);
+function toolLabel(name, args) {
+    const a = args;
+    const short = (s, n = 55) => s.length > n ? s.slice(0, n) + '…' : s;
+    switch (name) {
+        case 'read_file': return `Reading ${a.path ?? ''}`;
+        case 'list_files': return `Listing ${a.path || '.'}`;
+        case 'create_file': return `Creating ${a.path ?? ''}`;
+        case 'edit_file': return `Writing ${a.path ?? ''}`;
+        case 'patch_file': return `Editing ${a.path ?? ''}`;
+        case 'delete_file': return `Deleting ${a.path ?? ''}`;
+        case 'move_file': return `Moving ${a.from} → ${a.to}`;
+        case 'create_folder': return `Creating folder ${a.path ?? ''}`;
+        case 'run_command': return `Running ${short(a.command ?? '')}`;
+        case 'git_status': return 'Checking git status';
+        case 'git_diff': return 'Reading diff';
+        case 'git_log': return 'Reading commits';
+        case 'git_commit': return `Committing: ${short(a.message ?? '')}`;
+        case 'run_tests': return a.path ? `Running tests › ${a.path}` : 'Running tests';
+        case 'web_search': return `Searching: ${short(a.query ?? '')}`;
+        case 'web_extract': return `Extracting page`;
+        case 'deep_think': return `Researching: ${short(a.query ?? '')}`;
+        case 'search_codebase': return `Searching codebase: ${short(a.query ?? '')}`;
+        default: {
+            const s = toolArgSummary(args);
+            return s ? `${name} ${s}` : name;
+        }
+    }
+}
 export function toolCallStart(name, args) {
-    const summary = toolArgSummary(args);
     const dot = DELETE_TOOLS.has(name) ? red('●') : EDIT_TOOLS.has(name) ? green('●') : blue('●');
-    write(`  ${dot} ${cyan(name)}${summary ? gray('(' + summary + ')') : ''}\n`);
+    write(`  ${dot} ${toolLabel(name, args)}\n`);
 }
 export function toolMsg(name, result) {
     const preview = result.length > 250 ? result.slice(0, 250) + '…' : result;

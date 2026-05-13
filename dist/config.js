@@ -6,7 +6,7 @@ const defaults = {
     provider: 'ollama',
     baseUrl: 'http://localhost:11434',
 };
-const ALLOWED_KEYS = new Set(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey', 'gitContext', 'tavilyApiKey']);
+const ALLOWED_KEYS = new Set(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey', 'gitContext', 'tavilyApiKey', 'embedModel']);
 export function loadConfig() {
     const candidates = [
         join(process.cwd(), '.miii.json'),

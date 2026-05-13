@@ -433,26 +433,24 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     const promptColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'green';
     const inHistory = historyIdx !== -1;
     const hint = permissionRequest
-        ? 'y approve · n deny'
+        ? 'y  approve   n  deny'
         : isProcessing
-            ? 'esc to interrupt'
+            ? 'esc  interrupt'
             : pasteLines > 0
-                ? 'backspace removes paste · enter to send'
-                : overlay === 'command' && !commandQuery.includes(' ')
-                    ? '↑↓ navigate · enter select · esc close'
-                    : overlay === 'at'
-                        ? '↑↓ navigate · enter select · esc close'
-                        : inHistory
-                            ? `history [${historyIdx + 1}/${history.length}] · ↑↓ navigate · enter to send · esc clear`
-                            : planningMode
-                                ? 'planning mode · / suggestions · enter send · /plan:done exit'
-                                : 'enter send · @ file · / cmd · ctrl+j newline · ↑ history';
+                ? 'backspace  remove paste   enter  send'
+                : overlay !== 'none'
+                    ? '↑↓  navigate   enter  select   esc  close'
+                    : inHistory
+                        ? `history ${historyIdx + 1}/${history.length}   ↑↓  navigate   esc  clear`
+                        : planningMode
+                            ? 'planning mode   /plan:done  exit'
+                            : '?  for shortcuts';
     const pastePreview = pasteRef.current
         ? pasteRef.current.split('\n')[0].slice(0, cols - 6)
         : '';
-    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: promptColor, bold: true, children: '> ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: permissionRequest ? (_jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "green", bold: true, children: "y  yes" }), _jsx(Text, { color: "red", bold: true, children: "n  no" })] })) : pasteLines > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " line", pasteLines !== 1 ? 's' : ''] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] }), pastePreview && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", pastePreview, pasteRef.current.split('\n')[0].length > cols - 6 ? '…' : ''] }))] })) : lines.length === 1 && !lines[0] ? (isActive ? (_jsxs(Text, { children: [_jsx(Text, { color: "gray", dimColor: true, children: "How can I help you?  " }), _jsx(Text, { children: "\u2588" })] })) : (_jsx(Text, { color: "gray", dimColor: true, children: " " }))) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
+    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: promptColor, bold: true, children: '> ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: permissionRequest ? (_jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "green", bold: true, children: "y  yes" }), _jsx(Text, { color: "red", bold: true, children: "n  no" })] })) : pasteLines > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " line", pasteLines !== 1 ? 's' : ''] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] }), pastePreview && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", pastePreview, pasteRef.current.split('\n')[0].length > cols - 6 ? '…' : ''] }))] })) : lines.length === 1 && !lines[0] ? (_jsx(Text, { children: isActive ? '█' : ' ' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
                                 ? renderLineWithCursor(line, cursor.col, isActive)
-                                : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: '─ ' + hint + ' ' + '─'.repeat(Math.max(0, cols - hint.length - 3)) })] }));
+                                : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Text, { color: "gray", dimColor: true, children: ["  ", hint] })] }));
 }
 function renderLineWithCursor(line, col, showCursor) {
     return line.slice(0, col) + (showCursor ? '█' : '') + line.slice(col);
