@@ -1,4 +1,12 @@
 // ANSI-formatted stdout output — goes into terminal scrollback
+let _inkClear = null;
+export function setInkInstance(clear) {
+    _inkClear = clear;
+}
+function write(s) {
+    _inkClear?.();
+    process.stdout.write(s);
+}
 const R = '\x1b[0m';
 const BOLD = '\x1b[1m';
 const DIM = '\x1b[2m';
@@ -134,7 +142,7 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
 }
 export function userMsg(text) {
     const atHighlighted = text.replace(/(@[\w./\-]+)/g, (m) => cyan(m));
-    console.log(`\n${gray('>>')} ${atHighlighted}`);
+    write(`\n${gray('>>')} ${atHighlighted}\n`);
 }
 export function assistantMsg(text) {
     const content = formatContent(text);
@@ -146,14 +154,14 @@ export function assistantMsg(text) {
         return;
     const head = lines[idx].replace(/^ {2}/, '');
     const tail = lines.slice(idx + 1).join('\n');
-    console.log(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}`);
+    write(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}\n`);
 }
 const EDIT_TOOLS = new Set(['edit_file', 'patch_file', 'create_file', 'write_file']);
 const DELETE_TOOLS = new Set(['delete_file', 'remove_file']);
 export function toolCallStart(name, args) {
     const summary = toolArgSummary(args);
     const dot = DELETE_TOOLS.has(name) ? red('●') : EDIT_TOOLS.has(name) ? green('●') : blue('●');
-    process.stdout.write(`  ${dot} ${cyan(name)}${summary ? gray('(' + summary + ')') : ''}\n`);
+    write(`  ${dot} ${cyan(name)}${summary ? gray('(' + summary + ')') : ''}\n`);
 }
 export function toolMsg(name, result) {
     const preview = result.length > 250 ? result.slice(0, 250) + '…' : result;
@@ -161,15 +169,15 @@ export function toolMsg(name, result) {
         ? preview.split('\n').map(l => gray('    ' + l)).join('\n')
         : '';
     if (body)
-        console.log(body);
+        write(body + '\n');
 }
 export function systemMsg(text) {
-    console.log(gray(`─ ${text}`));
+    write(gray(`─ ${text}`) + '\n');
 }
 export function errorMsg(text) {
-    console.log(gray(`error: ${text}`));
+    write(gray(`error: ${text}`) + '\n');
 }
 export function divider() {
     const cols = process.stdout.columns ?? 80;
-    process.stdout.write(`${gray('─'.repeat(cols))}\n`);
+    write(`${gray('─'.repeat(cols))}\n`);
 }

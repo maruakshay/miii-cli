@@ -4,6 +4,7 @@ import { InputArea } from './components/InputArea.js'
 import { ModelPicker } from './components/ModelPicker.js'
 import { Divider } from './components/StatusBar.js'
 import { tools } from '../tools/index.js'
+import type { Tool } from '../tools/index.js'
 import { readFile } from '../files/ops.js'
 import type { SkillLoader } from '../skills/loader.js'
 import type { Config, ChatMessage } from '../types.js'
@@ -25,6 +26,7 @@ import { buildGitContext, looksCodeRelated } from './git-context.js'
 import { useSession } from './hooks/useSession.js'
 import { useModelPicker } from './hooks/useModelPicker.js'
 import { useRunLoop } from './hooks/useRunLoop.js'
+import { runDeepThink } from './deepThink.js'
 
 const gitRun = promisify(exec)
 
@@ -61,6 +63,7 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
   const macroQueueRef = useRef(new MacroQueue())
   const executorRef = useRef(new TaskExecutor(tools))
   const lastGitStatusRef = useRef<string>('')
+  const abortRef = useRef<AbortController | null>(null)
 
   const {
     setSessionName, sessionNameRef,
@@ -75,13 +78,30 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
     openPicker, handleModelSelect, handleModelPull,
   } = useModelPicker(config)
 
+  const deepThinkTool = useMemo<Tool>(() => ({
+    name: 'deep_think',
+    description: 'Research tool: gather info from files and web before answering.',
+    params: '{"query": "string", "needs_web": "boolean (optional)"}',
+    execute: async ({ query }) => {
+      const result = await runDeepThink(
+        String(query),
+        config,
+        currentModelRef.current,
+        abortRef.current?.signal,
+      )
+      return `Research complete (${result.toolCalls} tool calls, ${result.webCalls} web):\n\n${result.findings}`
+    },
+  }), [config])
+
+  const allTools = useMemo<Tool[]>(() => [...tools, deepThinkTool], [deepThinkTool])
+
   const {
     status, setStatus, tick,
     currentTool, setCurrentTool,
     taskLabel, setTaskLabel,
-    thinkingStartRef, abortRef,
+    thinkingStartRef,
     runLoop, handleAbort,
-  } = useRunLoop(config, currentModelRef, pushHistory)
+  } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef)
 
   // ─── refactor ─────────────────────────────────────────────────────────────
 
@@ -359,6 +379,39 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
       const goal = cmd.slice(9).trim()
       if (!goal) { printer.systemMsg('usage: /refactor <goal>'); return }
       await runRefactor(goal)
+      return
+    }
+
+    if (cmd.startsWith('/think ') || cmd === '/think') {
+      const query = cmd.slice(6).trim()
+      if (!query) { printer.systemMsg('usage: /think <query>'); return }
+      printer.userMsg(`/think ${query}`)
+      setStatus('thinking')
+      setTaskLabel(`gathering: ${query}`)
+      abortRef.current = new AbortController()
+      try {
+        const result = await runDeepThink(
+          query, config, currentModelRef.current, abortRef.current.signal,
+          (toolName) => setCurrentTool(`gather:${toolName}`),
+        )
+        setCurrentTool(undefined)
+        printer.systemMsg(`gathered: ${result.toolCalls} tool call(s), ${result.webCalls} web call(s)`)
+        if (result.findings) {
+          pushHistory({ role: 'user', content: `/think ${query}` })
+          pushHistory({ role: 'assistant', content: result.findings })
+          pushHistory({ role: 'user', content: `Based on your research above, give a complete answer to: ${query}` })
+          await runLoop(buildContext(), 0, query)
+        } else {
+          printer.systemMsg('nothing gathered — try rephrasing')
+          setStatus('idle')
+        }
+      } catch (e) {
+        printer.errorMsg(`deep think failed: ${e}`)
+        setStatus('idle')
+      } finally {
+        setCurrentTool(undefined)
+        setTaskLabel(undefined)
+      }
       return
     }
 

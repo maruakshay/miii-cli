@@ -2,7 +2,8 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Config, ChatMessage, Status } from '../../types.js'
 import { chat } from '../../llm/stream.js'
-import { tools } from '../../tools/index.js'
+import { tools as staticTools } from '../../tools/index.js'
+import type { Tool } from '../../tools/index.js'
 import { StreamParser, extractBareToolCall } from '../../parser/stream-parser.js'
 import { shouldCompact, compactContext } from '../../tasks/compactor.js'
 import * as printer from '../printer.js'
@@ -15,13 +16,16 @@ export function useRunLoop(
   config: Config,
   currentModelRef: MutableRefObject<string>,
   pushHistory: (msg: ChatMessage) => void,
+  extraTools: Tool[] = [],
+  abortRef: MutableRefObject<AbortController | null>,
 ) {
   const [status, setStatus] = useState<Status>('idle')
   const [tick, setTick] = useState(0)
   const [currentTool, setCurrentTool] = useState<string | undefined>()
   const [taskLabel, setTaskLabel] = useState<string | undefined>()
-  const abortRef = useRef<AbortController | null>(null)
   const thinkingStartRef = useRef<number>(0)
+  const extraToolsRef = useRef(extraTools)
+  extraToolsRef.current = extraTools
   const pushHistoryRef = useRef(pushHistory)
   useEffect(() => { pushHistoryRef.current = pushHistory }, [pushHistory])
 
@@ -82,7 +86,8 @@ export function useRunLoop(
 
         try {
           for (const tc of pendingTools) {
-            const tool = tools.find(t => t.name === tc.name)
+            const allTools = [...staticTools, ...extraToolsRef.current]
+            const tool = allTools.find(t => t.name === tc.name)
             setCurrentTool(tc.name)
             if (tool) {
               try {
@@ -107,7 +112,7 @@ export function useRunLoop(
         // Auto-run tests after file edits
         const didEditFiles = pendingTools.some(tc => FILE_EDIT_TOOLS.has(tc.name))
         if (didEditFiles) {
-          const testTool = tools.find(t => t.name === 'run_tests')
+          const testTool = staticTools.find(t => t.name === 'run_tests')
           if (testTool) {
             setCurrentTool('run_tests')
             try {
@@ -146,7 +151,7 @@ export function useRunLoop(
     status, setStatus, tick,
     currentTool, setCurrentTool,
     taskLabel, setTaskLabel,
-    thinkingStartRef, abortRef,
+    thinkingStartRef,
     runLoop, handleAbort,
   }
 }

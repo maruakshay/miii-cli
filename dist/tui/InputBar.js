@@ -8,7 +8,7 @@ import { tools } from '../tools/index.js';
 import { readFile } from '../files/ops.js';
 import { generateId } from '../types.js';
 import * as printer from './printer.js';
-import { loadSession, saveSession, listSessions } from '../sessions.js';
+import { loadSession, saveSession, listSessions, deleteSession } from '../sessions.js';
 import { MacroQueue, MicroQueue } from '../tasks/queue.js';
 import { TaskExecutor } from '../tasks/executor.js';
 import { fileEditContext } from '../tasks/compactor.js';
@@ -23,6 +23,7 @@ import { buildGitContext, looksCodeRelated } from './git-context.js';
 import { useSession } from './hooks/useSession.js';
 import { useModelPicker } from './hooks/useModelPicker.js';
 import { useRunLoop } from './hooks/useRunLoop.js';
+import { runDeepThink } from './deepThink.js';
 const gitRun = promisify(exec);
 function buildAtContext(text) {
     const refs = [...text.matchAll(/@([\w./\-]+)/g)];
@@ -47,9 +48,20 @@ export function InputBar({ config, skills, cwd, session, version }) {
     const macroQueueRef = useRef(new MacroQueue());
     const executorRef = useRef(new TaskExecutor(tools));
     const lastGitStatusRef = useRef('');
-    const { setSessionName, sessionNameRef, historyRef, saveTimerRef, systemPromptRef, pushHistory, buildContext, } = useSession(session, cwd, config);
+    const abortRef = useRef(null);
+    const { setSessionName, sessionNameRef, historyRef, saveTimerRef, systemPromptRef, pushHistory, buildContext, renameFromMessage, } = useSession(session, cwd, config);
     const { currentModel, setCurrentModel, currentModelRef, pickerOpen, setPickerOpen, pickerModels, pickerLoading, pickerError, pullState, openPicker, handleModelSelect, handleModelPull, } = useModelPicker(config);
-    const { status, setStatus, tick, currentTool, setCurrentTool, taskLabel, setTaskLabel, thinkingStartRef, abortRef, runLoop, handleAbort, } = useRunLoop(config, currentModelRef, pushHistory);
+    const deepThinkTool = useMemo(() => ({
+        name: 'deep_think',
+        description: 'Research tool: gather info from files and web before answering.',
+        params: '{"query": "string", "needs_web": "boolean (optional)"}',
+        execute: async ({ query }) => {
+            const result = await runDeepThink(String(query), config, currentModelRef.current, abortRef.current?.signal);
+            return `Research complete (${result.toolCalls} tool calls, ${result.webCalls} web):\n\n${result.findings}`;
+        },
+    }), [config]);
+    const allTools = useMemo(() => [...tools, deepThinkTool], [deepThinkTool]);
+    const { status, setStatus, tick, currentTool, setCurrentTool, taskLabel, setTaskLabel, thinkingStartRef, runLoop, handleAbort, } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef);
     // ─── refactor ─────────────────────────────────────────────────────────────
     const runRefactor = useCallback(async (goal) => {
         printer.systemMsg(`refactor: ${goal}`);
@@ -348,6 +360,41 @@ export function InputBar({ config, skills, cwd, session, version }) {
             await runRefactor(goal);
             return;
         }
+        if (cmd.startsWith('/think ') || cmd === '/think') {
+            const query = cmd.slice(6).trim();
+            if (!query) {
+                printer.systemMsg('usage: /think <query>');
+                return;
+            }
+            printer.userMsg(`/think ${query}`);
+            setStatus('thinking');
+            setTaskLabel(`gathering: ${query}`);
+            abortRef.current = new AbortController();
+            try {
+                const result = await runDeepThink(query, config, currentModelRef.current, abortRef.current.signal, (toolName) => setCurrentTool(`gather:${toolName}`));
+                setCurrentTool(undefined);
+                printer.systemMsg(`gathered: ${result.toolCalls} tool call(s), ${result.webCalls} web call(s)`);
+                if (result.findings) {
+                    pushHistory({ role: 'user', content: `/think ${query}` });
+                    pushHistory({ role: 'assistant', content: result.findings });
+                    pushHistory({ role: 'user', content: `Based on your research above, give a complete answer to: ${query}` });
+                    await runLoop(buildContext(), 0, query);
+                }
+                else {
+                    printer.systemMsg('nothing gathered — try rephrasing');
+                    setStatus('idle');
+                }
+            }
+            catch (e) {
+                printer.errorMsg(`deep think failed: ${e}`);
+                setStatus('idle');
+            }
+            finally {
+                setCurrentTool(undefined);
+                setTaskLabel(undefined);
+            }
+            return;
+        }
         if (cmd === '/plan' || cmd.startsWith('/plan ')) {
             const topic = cmd.slice(5).trim();
             setPlanningMode(true);
@@ -394,6 +441,25 @@ export function InputBar({ config, skills, cwd, session, version }) {
                 printer.systemMsg(`current: ${sessionNameRef.current}`);
                 return;
             }
+            if (arg.startsWith('delete ')) {
+                const target = arg.slice(7).trim();
+                if (!target) {
+                    printer.systemMsg('usage: /session delete <name>');
+                    return;
+                }
+                if (target === sessionNameRef.current) {
+                    printer.systemMsg('cannot delete active session — switch first');
+                    return;
+                }
+                try {
+                    deleteSession(target);
+                    printer.systemMsg(`deleted: ${target}`);
+                }
+                catch (e) {
+                    printer.errorMsg(`delete failed: ${String(e)}`);
+                }
+                return;
+            }
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
                 saveTimerRef.current = null;
@@ -434,6 +500,7 @@ export function InputBar({ config, skills, cwd, session, version }) {
             printer.systemMsg(`unknown command: /${slashCmd}  —  try /list`);
             return;
         }
+        renameFromMessage(text);
         const contextPrefix = buildAtContext(text);
         const shouldInjectGit = config.gitContext !== false && looksCodeRelated(text);
         const { prefix: gitPrefix, label: gitLabel } = shouldInjectGit

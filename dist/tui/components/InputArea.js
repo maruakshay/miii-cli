@@ -32,11 +32,15 @@ const PLANNING_COMMANDS = [
     { ns: 'plan', name: 'review', description: 'review and critique the plan so far' },
     { ns: 'plan', name: 'done', description: 'exit planning mode' },
 ];
+const PASTE_MIN_LINES = 3;
+const PASTE_MIN_CHARS = 200;
 export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort }) {
     const [lines, setLines] = useState(['']);
     const [cursor, setCursor] = useState({ row: 0, col: 0 });
     const [overlay, setOverlay] = useState('none');
     const [overlayIdx, setOverlayIdx] = useState(0);
+    const [pasteLines, setPasteLines] = useState(0);
+    const pasteRef = useRef(null);
     const [files, setFiles] = useState([]);
     const filesLoadedRef = useRef(false);
     // built-ins first, then loaded skills (deduplicated by name)
@@ -87,6 +91,8 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
         setCursor({ row: 0, col: 0 });
         setOverlay('none');
         setOverlayIdx(0);
+        pasteRef.current = null;
+        setPasteLines(0);
     }
     function appendChar(ch) {
         setLines(prev => {
@@ -200,7 +206,11 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
             // backspace/typing falls through to normal handling below
         }
         if (key.return) {
-            const text = fullInput.trim();
+            const typed = fullInput.trim();
+            const pasted = pasteRef.current;
+            const text = pasted
+                ? typed ? `${typed}\n${pasted}` : pasted
+                : typed;
             if (text) {
                 clearInput();
                 onSubmit(text);
@@ -208,6 +218,11 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
             return;
         }
         if (key.backspace || key.delete) {
+            if (pasteRef.current) {
+                pasteRef.current = null;
+                setPasteLines(0);
+                return;
+            }
             deleteChar();
             // Recompute overlay trigger for updated input
             const r = cursor.row;
@@ -245,6 +260,13 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
             return;
         }
         if (input && !key.ctrl && !key.meta) {
+            // Detect paste: Ink delivers entire pasted chunk as one input string
+            const lineCount = input.split('\n').length;
+            if (input.length > 1 && (lineCount >= PASTE_MIN_LINES || input.length >= PASTE_MIN_CHARS)) {
+                pasteRef.current = input;
+                setPasteLines(lineCount);
+                return;
+            }
             // Compute prospective new input to decide overlay
             const r = cursor.row;
             const col = cursor.col;
@@ -277,14 +299,16 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
     const borderColor = isProcessing ? 'yellow' : 'cyan';
     const hint = isProcessing
         ? 'esc to abort'
-        : overlay === 'command' && !commandQuery.includes(' ')
-            ? '↑↓ navigate  enter select  esc close'
-            : overlay === 'at'
+        : pasteLines > 0
+            ? 'backspace removes paste  enter to send'
+            : overlay === 'command' && !commandQuery.includes(' ')
                 ? '↑↓ navigate  enter select  esc close'
-                : planningMode
-                    ? '📋 planning mode  / suggestions  enter send  /plan:done to exit'
-                    : '@ file  / command  enter send  ctrl+c exit';
-    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsxs(Box, { borderStyle: "round", borderColor: borderColor, paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { color: borderColor, bold: true, children: '❯ ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: lines.length === 1 && !lines[0] ? (_jsx(Text, { color: isActive ? 'white' : 'gray', dimColor: isProcessing, children: isActive ? '█' : 'processing...' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
+                : overlay === 'at'
+                    ? '↑↓ navigate  enter select  esc close'
+                    : planningMode
+                        ? '📋 planning mode  / suggestions  enter send  /plan:done to exit'
+                        : '@ file  / command  enter send  ctrl+c exit';
+    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsxs(Box, { borderStyle: "round", borderColor: borderColor, paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { color: borderColor, bold: true, children: '❯ ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: pasteLines > 0 ? (_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " lines"] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] })) : lines.length === 1 && !lines[0] ? (_jsx(Text, { color: isActive ? 'white' : 'gray', dimColor: isProcessing, children: isActive ? '█' : 'processing...' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
                                         ? renderLineWithCursor(line, cursor.col, isActive)
                                         : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: hint })] })] }));
 }

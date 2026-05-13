@@ -9,19 +9,23 @@
 [![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
 [![node](https://img.shields.io/node/v/miii-cli)](https://nodejs.org)
 
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│  miii  v0.2.8                                                        │
-│  model: qwen2.5-coder:7b                                             │
-├──────────────────────────────────────────────────────────────────────┤
-│  ✦ cross-referencing vibes…                              12s         │
-│  ⚙ running patch_file…                                               │
-│  ⚙ running run_tests…                                                │
-├──────────────────────────────────────────────────────────────────────┤
-│  ❯ ⎘ pasted 84 lines                                                 │
-│  backspace removes paste  enter to send                              │
-╰──────────────────────────────────────────────────────────────────────╯
-```
+## 📊 How Miii Stacks Up
+
+| Feature | **Miii** | Claude Code | Codex CLI | Aider |
+|---|---|---|---|---|
+| **Runs locally** | ✅ Ollama / any API | ❌ Cloud only | ❌ Cloud only | ✅ Local + cloud |
+| **Code stays private** | ✅ Never leaves machine | ❌ Sent to Anthropic | ❌ Sent to OpenAI | ⚠️ Depends on model |
+| **Cost** | 🆓 Free (your compute) | 💳 Pay per token | 💳 Pay per token | 🆓 Free (local) |
+| **Runtime** | ⚡ TypeScript — instant start | 🐍 Node (fast) | 🐍 Node | 🐢 Python |
+| **Deep Think mode** | ✅ Gather + synthesize | ❌ | ❌ | ❌ |
+| **Auto-test loop** | ✅ Jest / Vitest / Mocha | ⚠️ Manual | ❌ | ⚠️ Manual |
+| **Web search built-in** | ✅ Tavily | ❌ | ❌ | ❌ |
+| **Surgical patch edits** | ✅ `patch_file` | ✅ | ⚠️ | ✅ |
+| **Session memory** | ✅ Named, persistent | ✅ | ❌ | ⚠️ Basic |
+| **Skill / plugin system** | ✅ npm + `.md` skills | ⚠️ MCP only | ❌ | ❌ |
+| **Open source** | ✅ MIT | ❌ | ❌ | ✅ Apache 2.0 |
+
+> ✅ = supported &nbsp;|&nbsp; ⚠️ = partial &nbsp;|&nbsp; ❌ = not supported
 
 ## ⚡️ Quick Start
 
@@ -47,14 +51,35 @@ Most AI coding tools are either heavy Python wrappers or expensive monthly subsc
 - **🛠 Precision Editing**: Using `patch_file`, miii makes surgical changes without rewriting entire files.
 - **🔄 Auto-Test Loop**: Miii runs your Jest/Vitest/Mocha tests after every edit. If it breaks, it fixes itself.
 - **🌐 Web Intelligence**: Integrated `web_search` and `web_extract` via Tavily for real-time documentation.
+- **🧠 Deep Think**: Two-phase research mode — gathers from files, git, and web first, then synthesizes a complete answer. Available as `/think <query>` or as a tool the LLM calls autonomously.
 - **📐 Planning Mode**: Use `/plan` to architect a solution before a single line of code is written.
 - **📂 Session Memory**: Every conversation is auto-named and persisted. Resume your work instantly with `miii --session feature-auth`.
 - **📦 Skill System**: Extend miii with npm skill plugins or custom `.md` files.
+
+## 🧠 Deep Think
+
+Deep think is a two-phase research engine built into miii:
+
+1. **Gather phase** — runs a constrained inner loop with read-only tools: `read_file`, `list_files`, `git_status`, `git_log`, `git_diff`, `web_search`, `web_extract`. Guardrails enforce a hard cap of 6 tool calls and 4 web calls. No file writes, no shell mutations.
+2. **Synthesize phase** — gathered findings feed into the main run loop for a complete, grounded answer.
+
+**Two ways to trigger:**
+
+```
+/think how does the auth middleware handle token expiry?
+/think what does this codebase do and how is it structured?
+/think latest breaking changes in react 19
+```
+
+The LLM can also call `deep_think` autonomously mid-conversation when it decides a question needs multi-source research before answering.
+
+> Requires a Tavily key (`/tavily-key tvly-...`) for web calls. File/git research works without it.
 
 ## ⌨️ Command Cheat Sheet
 
 | Command | What it does |
 |---|---|
+| `/think <query>` | Deep research: gather from files + web, then synthesize answer |
 | `/refactor <goal>` | The powerhouse: plans, edits, and tests across your whole codebase |
 | `/git <sub>` | Instant git status, diffs, and automated commit messages |
 | `/plan` | Stop coding, start thinking (Structured Planning Mode) |

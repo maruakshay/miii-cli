@@ -215,6 +215,7 @@ export const tools: Tool[] = [
 
 export function getSystemPrompt(extra = ''): string {
   const toolDocs = tools.map(t => `- ${t.name}(${t.params}): ${t.description}`).join('\n')
+  const deepThinkDoc = `- deep_think({"query": "string", "needs_web": "boolean (optional)"}): Research tool — gathers information from files, git, and optionally the web before answering. Returns a compiled research summary. Guardrails: read-only tools only, max 6 tool calls, max 4 web calls inside. Use when a question requires reading multiple files or searching the web first.`
   return `You are Miii — a fast, local AI coding assistant.
 
 Use tools by emitting:
@@ -245,6 +246,7 @@ replacement text
 
 Tools:
 ${toolDocs}
+${deepThinkDoc}
 
 Rules:
 - To modify an existing file: use patch_file with the exact old text and new replacement — do NOT rewrite the whole file
@@ -264,5 +266,7 @@ Rules:
 - After editing files that have tests, call run_tests to verify nothing broke
 - If run_tests fails, read the failing test output and fix the code, then run_tests again (max 3 retries)
 - You have web_search and web_extract tools — use them whenever the user asks about anything requiring internet access, current information, documentation, library versions, news, or external URLs
-- NEVER say you cannot search the web — always call web_search instead${extra}`
+- NEVER say you cannot search the web — always call web_search instead
+- Use deep_think when the question requires gathering from multiple files or sources before you can answer well — it runs a safe read-only research phase and returns a summary you can reason over
+- deep_think cannot edit files or run shell commands — it is purely for information gathering${extra}`
 }

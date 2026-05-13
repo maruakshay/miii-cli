@@ -4,21 +4,57 @@ export async function chat(cfg) {
     return chatOllama(cfg);
 }
 async function chatOllama(cfg) {
-    const { model, messages, baseUrl, signal, onDone, onError, onUsage } = cfg;
+    const { model, messages, baseUrl, signal, onDone, onError, onUsage, onChunk } = cfg;
     try {
         const res = await fetch(`${baseUrl}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, messages, stream: false }),
+            body: JSON.stringify({ model, messages, stream: !!onChunk }),
             signal,
         });
         if (!res.ok) {
             onError(new Error(`Ollama ${res.status}: ${await res.text()}`));
             return;
         }
-        const obj = await res.json();
-        onUsage?.(obj?.prompt_eval_count ?? 0, obj?.eval_count ?? 0);
-        await onDone(obj?.message?.content ?? '');
+        if (!onChunk) {
+            const obj = await res.json();
+            onUsage?.(obj?.prompt_eval_count ?? 0, obj?.eval_count ?? 0);
+            await onDone(obj?.message?.content ?? '');
+            return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let full = '';
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let buf = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done)
+                break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() ?? '';
+            for (const line of lines) {
+                if (!line.trim())
+                    continue;
+                try {
+                    const obj = JSON.parse(line);
+                    const chunk = obj?.message?.content ?? '';
+                    if (chunk) {
+                        full += chunk;
+                        onChunk(chunk);
+                    }
+                    if (obj?.done) {
+                        promptTokens = obj.prompt_eval_count ?? 0;
+                        completionTokens = obj.eval_count ?? 0;
+                    }
+                }
+                catch { }
+            }
+        }
+        onUsage?.(promptTokens, completionTokens);
+        await onDone(full);
     }
     catch (err) {
         if (err?.name !== 'AbortError')
@@ -26,21 +62,53 @@ async function chatOllama(cfg) {
     }
 }
 async function chatOpenAI(cfg) {
-    const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage } = cfg;
+    const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage, onChunk } = cfg;
     try {
         const res = await fetch(`${baseUrl}/v1/chat/completions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey ?? 'local'}` },
-            body: JSON.stringify({ model, messages }),
+            body: JSON.stringify({ model, messages, stream: !!onChunk }),
             signal,
         });
         if (!res.ok) {
             onError(new Error(`LLM ${res.status}: ${await res.text()}`));
             return;
         }
-        const obj = await res.json();
-        onUsage?.(obj?.usage?.prompt_tokens ?? 0, obj?.usage?.completion_tokens ?? 0);
-        await onDone(obj?.choices?.[0]?.message?.content ?? '');
+        if (!onChunk) {
+            const obj = await res.json();
+            onUsage?.(obj?.usage?.prompt_tokens ?? 0, obj?.usage?.completion_tokens ?? 0);
+            await onDone(obj?.choices?.[0]?.message?.content ?? '');
+            return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let full = '';
+        let buf = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done)
+                break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() ?? '';
+            for (const line of lines) {
+                if (!line.startsWith('data: '))
+                    continue;
+                const data = line.slice(6).trim();
+                if (data === '[DONE]')
+                    continue;
+                try {
+                    const obj = JSON.parse(data);
+                    const chunk = obj?.choices?.[0]?.delta?.content ?? '';
+                    if (chunk) {
+                        full += chunk;
+                        onChunk(chunk);
+                    }
+                }
+                catch { }
+            }
+        }
+        await onDone(full);
     }
     catch (err) {
         if (err?.name !== 'AbortError')
