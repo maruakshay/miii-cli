@@ -479,7 +479,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
             </Box>
           ) : lines.length === 1 && !lines[0] ? (
             isActive ? (
-              <Text><Text>█</Text><Text color="gray" dimColor>How can I help you?</Text></Text>
+              <Box><Text>█</Text><Text color="gray" dimColor>How can I help you?</Text></Box>
             ) : (
               <Text color="gray" dimColor> </Text>
             )

@@ -37,11 +37,12 @@ function isLinkedInstall(): boolean {
 }
 
 async function checkLatestVersion(current: string): Promise<string | undefined> {
-  // Return cached result if checked within 24h
+  // Return cached result if checked within 24h and local version hasn't changed
   try {
     if (existsSync(UPDATE_CACHE)) {
-      const cache = JSON.parse(readFileSync(UPDATE_CACHE, 'utf-8')) as { ts: number; latest: string }
-      if (Date.now() - cache.ts < CHECK_INTERVAL_MS) {
+      const cache = JSON.parse(readFileSync(UPDATE_CACHE, 'utf-8')) as { ts: number; latest: string; localVersion?: string }
+      const cacheValid = Date.now() - cache.ts < CHECK_INTERVAL_MS && cache.localVersion === current
+      if (cacheValid) {
         return semverGt(cache.latest, current) ? cache.latest : undefined
       }
     }
@@ -55,7 +56,7 @@ async function checkLatestVersion(current: string): Promise<string | undefined> 
     if (!latest) return undefined
     // Cache result
     mkdirSync(join(homedir(), '.config', 'miii'), { recursive: true })
-    writeFileSync(UPDATE_CACHE, JSON.stringify({ ts: Date.now(), latest }))
+    writeFileSync(UPDATE_CACHE, JSON.stringify({ ts: Date.now(), latest, localVersion: current }))
     return semverGt(latest, current) ? latest : undefined
   } catch {}
   return undefined

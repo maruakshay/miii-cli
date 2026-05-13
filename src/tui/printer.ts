@@ -138,10 +138,12 @@ export function welcome(provider: string, model: string, cwd: string, version?: 
   const contentRows = pl.map((l, i) => row(l, pr[i]))
 
   const upgradeCmd = linked ? 'cd <miii-dir> && npm run build' : 'npm install -g miii-cli'
-  const separator = gray('│') + bold(yellow(' ⬆ update available: v' + updateAvailable + ' — run: ' + upgradeCmd)).padEnd(innerW - 1) + gray('│')
-  const updateRow = updateAvailable
-    ? [gray('├' + '─'.repeat(innerW) + '┤'), separator, gray('├' + '─'.repeat(innerW) + '┤')]
-    : []
+  const updateRow = updateAvailable ? (() => {
+    const updateText = bold(yellow(` ⬆  update available: v${updateAvailable}  —  run: ${upgradeCmd}`))
+    const pad = Math.max(0, innerW - vis(updateText).length)
+    const separator = gray('│') + updateText + ' '.repeat(pad) + gray('│')
+    return [gray('├' + '─'.repeat(innerW) + '┤'), separator, gray('├' + '─'.repeat(innerW) + '┤')]
+  })() : []
 
   const lines = [
     top,
