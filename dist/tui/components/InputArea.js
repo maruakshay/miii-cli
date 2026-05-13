@@ -34,7 +34,7 @@ const PLANNING_COMMANDS = [
 ];
 const PASTE_MIN_LINES = 3;
 const PASTE_MIN_CHARS = 200;
-export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort }) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort }) {
     const [lines, setLines] = useState(['']);
     const [cursor, setCursor] = useState({ row: 0, col: 0 });
     const [overlay, setOverlay] = useState('none');
@@ -148,6 +148,18 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
         setOverlayIdx(0);
     }
     useInput((input, key) => {
+        // Permission prompt intercepts all input
+        if (permissionRequest && onPermissionResponse) {
+            if (input === 'y' || input === 'Y') {
+                onPermissionResponse(true);
+                return;
+            }
+            if (input === 'n' || input === 'N' || key.escape) {
+                onPermissionResponse(false);
+                return;
+            }
+            return;
+        }
         // ESC: close overlay, abort stream, or clear input
         if (key.escape) {
             if (overlay !== 'none') {
@@ -296,19 +308,21 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
         }
     });
     const isProcessing = status !== 'idle';
-    const borderColor = isProcessing ? 'yellow' : 'cyan';
-    const hint = isProcessing
-        ? 'esc to abort'
-        : pasteLines > 0
-            ? 'backspace removes paste  enter to send'
-            : overlay === 'command' && !commandQuery.includes(' ')
-                ? '↑↓ navigate  enter select  esc close'
-                : overlay === 'at'
+    const borderColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'cyan';
+    const hint = permissionRequest
+        ? 'y approve  n deny'
+        : isProcessing
+            ? 'esc to abort'
+            : pasteLines > 0
+                ? 'backspace removes paste  enter to send'
+                : overlay === 'command' && !commandQuery.includes(' ')
                     ? '↑↓ navigate  enter select  esc close'
-                    : planningMode
-                        ? '📋 planning mode  / suggestions  enter send  /plan:done to exit'
-                        : '@ file  / command  enter send  ctrl+c exit';
-    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsxs(Box, { borderStyle: "round", borderColor: borderColor, paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { color: borderColor, bold: true, children: '❯ ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: pasteLines > 0 ? (_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " lines"] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] })) : lines.length === 1 && !lines[0] ? (_jsx(Text, { color: isActive ? 'white' : 'gray', dimColor: isProcessing, children: isActive ? '█' : 'processing...' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
+                    : overlay === 'at'
+                        ? '↑↓ navigate  enter select  esc close'
+                        : planningMode
+                            ? '📋 planning mode  / suggestions  enter send  /plan:done to exit'
+                            : '@ file  / command  enter send  ctrl+c exit';
+    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsxs(Box, { borderStyle: "round", borderColor: borderColor, paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { color: borderColor, bold: true, children: '❯ ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: permissionRequest ? (_jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "green", bold: true, children: "y  yes" }), _jsx(Text, { color: "red", bold: true, children: "n  no" })] })) : pasteLines > 0 ? (_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " lines"] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] })) : lines.length === 1 && !lines[0] ? (_jsx(Text, { color: isActive ? 'white' : 'gray', dimColor: isProcessing, children: isActive ? '█' : 'processing...' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
                                         ? renderLineWithCursor(line, cursor.col, isActive)
                                         : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: hint })] })] }));
 }

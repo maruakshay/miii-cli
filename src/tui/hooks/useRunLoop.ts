@@ -11,6 +11,12 @@ import * as printer from '../printer.js'
 const MAX_TOOL_DEPTH = 6
 const FILE_EDIT_TOOLS = new Set(['edit_file', 'create_file', 'patch_file', 'delete_file'])
 const SHOW_RESULT_TOOLS = new Set(['run_tests', 'git_commit'])
+const PERMISSION_TOOLS = new Set(['edit_file', 'patch_file', 'delete_file', 'create_file', 'move_file', 'run_command', 'git_commit'])
+
+export interface PermissionRequest {
+  toolName: string
+  args: Record<string, unknown>
+}
 
 export function useRunLoop(
   config: Config,
@@ -23,11 +29,19 @@ export function useRunLoop(
   const [tick, setTick] = useState(0)
   const [currentTool, setCurrentTool] = useState<string | undefined>()
   const [taskLabel, setTaskLabel] = useState<string | undefined>()
+  const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
+  const permissionResolveRef = useRef<((approved: boolean) => void) | null>(null)
   const thinkingStartRef = useRef<number>(0)
   const extraToolsRef = useRef(extraTools)
   extraToolsRef.current = extraTools
   const pushHistoryRef = useRef(pushHistory)
   useEffect(() => { pushHistoryRef.current = pushHistory }, [pushHistory])
+
+  const resolvePermission = useCallback((approved: boolean) => {
+    permissionResolveRef.current?.(approved)
+    permissionResolveRef.current = null
+    setPermissionRequest(null)
+  }, [])
 
   useEffect(() => {
     if (status === 'idle') return
@@ -89,6 +103,19 @@ export function useRunLoop(
             const allTools = [...staticTools, ...extraToolsRef.current]
             const tool = allTools.find(t => t.name === tc.name)
             setCurrentTool(tc.name)
+
+            if (PERMISSION_TOOLS.has(tc.name)) {
+              const approved = await new Promise<boolean>(resolve => {
+                permissionResolveRef.current = resolve
+                setPermissionRequest({ toolName: tc.name, args: tc.args })
+              })
+              if (!approved) {
+                printer.systemMsg(`denied: ${tc.name}`)
+                next.push({ role: 'user', content: `Tool ${tc.name} was denied by the user` })
+                break
+              }
+            }
+
             if (tool) {
               try {
                 printer.toolCallStart(tc.name, tc.args)
@@ -144,6 +171,11 @@ export function useRunLoop(
 
   const handleAbort = useCallback(() => {
     abortRef.current?.abort()
+    if (permissionResolveRef.current) {
+      permissionResolveRef.current(false)
+      permissionResolveRef.current = null
+      setPermissionRequest(null)
+    }
     setStatus('idle')
   }, [])
 
@@ -153,5 +185,6 @@ export function useRunLoop(
     taskLabel, setTaskLabel,
     thinkingStartRef,
     runLoop, handleAbort,
+    permissionRequest, resolvePermission,
   }
 }

@@ -63,7 +63,7 @@ function formatContent(text) {
 function truncate(s, n) {
     return s.length > n ? s.slice(0, n) + '…' : s;
 }
-function toolArgSummary(args) {
+export function toolArgSummary(args) {
     if (args.message)
         return `"${truncate(String(args.message), 60)}"`;
     if (args.path)

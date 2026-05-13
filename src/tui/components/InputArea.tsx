@@ -45,6 +45,8 @@ interface Props {
   skills: Skill[]
   cwd: string
   planningMode?: boolean
+  permissionRequest?: { toolName: string; args: Record<string, unknown> } | null
+  onPermissionResponse?: (approved: boolean) => void
   onSubmit: (text: string) => void
   onAbort: () => void
 }
@@ -52,7 +54,7 @@ interface Props {
 const PASTE_MIN_LINES = 3
 const PASTE_MIN_CHARS = 200
 
-export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort }: Props) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
@@ -175,6 +177,13 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
   }
 
   useInput((input: string, key: Key) => {
+    // Permission prompt intercepts all input
+    if (permissionRequest && onPermissionResponse) {
+      if (input === 'y' || input === 'Y') { onPermissionResponse(true); return }
+      if (input === 'n' || input === 'N' || key.escape) { onPermissionResponse(false); return }
+      return
+    }
+
     // ESC: close overlay, abort stream, or clear input
     if (key.escape) {
       if (overlay !== 'none') { setOverlay('none'); setOverlayIdx(0); return }
@@ -286,8 +295,10 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
   })
 
   const isProcessing = status !== 'idle'
-  const borderColor = isProcessing ? 'yellow' : 'cyan'
-  const hint = isProcessing
+  const borderColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'cyan'
+  const hint = permissionRequest
+    ? 'y approve  n deny'
+    : isProcessing
     ? 'esc to abort'
     : pasteLines > 0
     ? 'backspace removes paste  enter to send'
@@ -311,7 +322,12 @@ export function InputArea({ status, skills, cwd, planningMode, onSubmit, onAbort
         <Box>
           <Text color={borderColor} bold>{'❯ '}</Text>
           <Box flexDirection="column" flexGrow={1}>
-            {pasteLines > 0 ? (
+            {permissionRequest ? (
+              <Box gap={2}>
+                <Text color="green" bold>y  yes</Text>
+                <Text color="red" bold>n  no</Text>
+              </Box>
+            ) : pasteLines > 0 ? (
               <Box gap={1}>
                 <Text color="cyan">⎘</Text>
                 <Text color="cyan">pasted {pasteLines} lines</Text>

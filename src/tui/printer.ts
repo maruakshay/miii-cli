@@ -65,7 +65,7 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + '…' : s
 }
 
-function toolArgSummary(args: Record<string, unknown>): string {
+export function toolArgSummary(args: Record<string, unknown>): string {
   if (args.message) return `"${truncate(String(args.message), 60)}"`
   if (args.path) return String(args.path)
   if (args.command) return truncate(String(args.command), 60)

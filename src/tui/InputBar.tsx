@@ -10,6 +10,7 @@ import type { SkillLoader } from '../skills/loader.js'
 import type { Config, ChatMessage } from '../types.js'
 import { generateId } from '../types.js'
 import * as printer from './printer.js'
+import { toolArgSummary } from './printer.js'
 import { loadSession, saveSession, listSessions, deleteSession } from '../sessions.js'
 import { MacroQueue, MicroQueue } from '../tasks/queue.js'
 import { TaskExecutor } from '../tasks/executor.js'
@@ -101,6 +102,7 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
     taskLabel, setTaskLabel,
     thinkingStartRef,
     runLoop, handleAbort,
+    permissionRequest, resolvePermission,
   } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef)
 
   // ─── refactor ─────────────────────────────────────────────────────────────
@@ -545,6 +547,17 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
           />
           <Divider cols={cols} />
         </>
+      ) : permissionRequest ? (
+        <>
+          <Box flexDirection="column" paddingX={1} paddingY={0}>
+            <Box gap={1}>
+              <Text color="yellow">⚠</Text>
+              <Text color="white" bold>{permissionRequest.toolName}</Text>
+              <Text color="gray">{toolArgSummary(permissionRequest.args)}</Text>
+            </Box>
+          </Box>
+          <Divider cols={cols} />
+        </>
       ) : (status === 'thinking' || status === 'tool') ? (
         <>
           <Box flexDirection="column" paddingX={1}>
@@ -570,6 +583,8 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
         skills={skillList}
         cwd={cwd}
         planningMode={planningMode}
+        permissionRequest={permissionRequest}
+        onPermissionResponse={resolvePermission}
         onSubmit={handleSubmit}
         onAbort={handleAbort}
       />
