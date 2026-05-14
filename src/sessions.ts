@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync, unlinkSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, chmodSync, readdirSync, statSync, existsSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { ChatMessage } from './types.js'
@@ -6,7 +6,8 @@ import type { ChatMessage } from './types.js'
 const SESSIONS_DIR = join(homedir(), '.config', 'miii', 'sessions')
 
 function ensureDir() {
-  mkdirSync(SESSIONS_DIR, { recursive: true })
+  mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 })
+  chmodSync(SESSIONS_DIR, 0o700)
 }
 
 function sanitizeName(name: string): string {
@@ -46,7 +47,7 @@ export function loadSession(name: string): ChatMessage[] {
 export function saveSession(name: string, messages: ChatMessage[]) {
   ensureDir()
   try {
-    writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages))
+    writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages), { mode: 0o600 })
   } catch {}
 }
 

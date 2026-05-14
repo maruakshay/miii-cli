@@ -1,10 +1,11 @@
 import { readFile, writeFile, deleteFile, listFiles, createDir, moveFile, guardPath } from '../files/ops.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { getTavilyKey, tavilySearch, tavilyExtract } from '../tavily/client.js';
 const run = promisify(exec);
+const runFile = promisify(execFile);
 const EXEC_TIMEOUT_MS = 30_000;
 export const tools = [
     {
@@ -126,10 +127,13 @@ export const tools = [
         description: 'Show git diff. staged=true for staged changes, path for specific file',
         params: '{"staged": "boolean (optional)", "path": "string (optional)"}',
         execute: async ({ staged = false, path = '' }) => {
-            const args = staged ? '--staged' : '';
-            const target = path ? `-- "${path}"` : '';
             try {
-                const { stdout } = await run(`git diff ${args} ${target}`.trim(), { timeout: EXEC_TIMEOUT_MS });
+                const args = ['diff'];
+                if (staged)
+                    args.push('--staged');
+                if (path)
+                    args.push('--', String(path));
+                const { stdout } = await runFile('git', args, { timeout: EXEC_TIMEOUT_MS });
                 const out = stdout.trim();
                 if (!out)
                     return '(no diff)';
@@ -146,7 +150,7 @@ export const tools = [
         params: '{"n": "number (optional, default 10)"}',
         execute: async ({ n = 10 }) => {
             try {
-                const { stdout } = await run(`git log --oneline -${Math.min(Number(n), 50)}`, { timeout: EXEC_TIMEOUT_MS });
+                const { stdout } = await runFile('git', ['log', '--oneline', `-${Math.min(Number(n), 50)}`], { timeout: EXEC_TIMEOUT_MS });
                 return stdout.trim() || '(no commits)';
             }
             catch (e) {
@@ -156,14 +160,18 @@ export const tools = [
     },
     {
         name: 'git_commit',
-        description: 'Stage files and create a git commit. Use files="-A" to stage all.',
+        description: 'Stage files and create a git commit. Use files="-A" to stage all, or list specific paths.',
         params: '{"message": "string", "files": "string (optional, default -A)"}',
         execute: async ({ message, files = '-A' }) => {
             if (!message)
                 throw new Error('git_commit: message required');
+            const fileStr = String(files);
+            if (/\.\./.test(fileStr) || !/^(-A|\.|[\w./\-\s]+)$/.test(fileStr))
+                throw new Error('git_commit: invalid files argument — use -A, ., or space-separated paths (no .. allowed)');
             try {
-                await run(`git add ${files}`, { timeout: EXEC_TIMEOUT_MS });
-                const { stdout } = await run(`git commit -m ${JSON.stringify(String(message))}`, { timeout: EXEC_TIMEOUT_MS });
+                const fileArgs = fileStr === '-A' ? ['-A'] : fileStr === '.' ? ['.'] : fileStr.split(/\s+/).filter(Boolean);
+                await runFile('git', ['add', ...fileArgs], { timeout: EXEC_TIMEOUT_MS });
+                const { stdout } = await runFile('git', ['commit', '-m', String(message)], { timeout: EXEC_TIMEOUT_MS });
                 return stdout.trim();
             }
             catch (e) {
@@ -190,9 +198,9 @@ export const tools = [
             if (!testScript || testScript === 'echo "Error: no test specified" && exit 1') {
                 return '(no test script configured in package.json)';
             }
-            const cmd = path ? `npm test -- ${path}` : 'npm test';
+            const npmArgs = path ? ['test', '--', String(path)] : ['test'];
             try {
-                const { stdout, stderr } = await run(cmd, { cwd: process.cwd(), timeout: 60_000 });
+                const { stdout, stderr } = await runFile('npm', npmArgs, { cwd: process.cwd(), timeout: 60_000 });
                 const out = (stdout + (stderr ? '\nstderr: ' + stderr : '')).trim();
                 return out.length > 4000 ? '…[truncated]\n' + out.slice(-4000) : out;
             }
@@ -210,9 +218,12 @@ export const tools = [
             const key = getTavilyKey();
             if (!key)
                 throw new Error('Tavily API key not set — user must run /tavily-key <key> first');
+            const q = query != null ? String(query).trim() : '';
+            if (!q)
+                throw new Error('web_search: "query" argument is required and must be a non-empty string');
             return tavilySearch({
                 apiKey: key,
-                query: String(query),
+                query: q,
                 maxResults: typeof max_results === 'number' ? max_results : undefined,
                 searchDepth: search_depth,
                 includeDomains: include_domains,
@@ -228,6 +239,8 @@ export const tools = [
             const key = getTavilyKey();
             if (!key)
                 throw new Error('Tavily API key not set — user must run /tavily-key <key> first');
+            if (!urls)
+                throw new Error('web_extract: "urls" argument is required');
             const list = Array.isArray(urls) ? urls : [String(urls)];
             return tavilyExtract({ apiKey: key, urls: list });
         },
@@ -288,6 +301,7 @@ Rules:
 - If run_tests fails, read the failing test output and fix the code, then run_tests again (max 3 retries)
 - You have web_search and web_extract tools — use them whenever the user asks about anything requiring internet access, current information, documentation, library versions, news, or external URLs
 - NEVER say you cannot search the web — always call web_search instead
+- web_search REQUIRES the "query" key exactly — never omit it, never use "q" or "search_query" or any other key name
 - Use deep_think when the question requires gathering from multiple files or sources before you can answer well — it runs a safe read-only research phase and returns a summary you can reason over
 - deep_think cannot edit files or run shell commands — it is purely for information gathering${extra}`;
 }

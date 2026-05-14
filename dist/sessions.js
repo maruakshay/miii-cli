@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, chmodSync, readdirSync, statSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 const SESSIONS_DIR = join(homedir(), '.config', 'miii', 'sessions');
 function ensureDir() {
-    mkdirSync(SESSIONS_DIR, { recursive: true });
+    mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+    chmodSync(SESSIONS_DIR, 0o700);
 }
 function sanitizeName(name) {
     if (!/^[\w-]+$/.test(name))
@@ -45,7 +46,7 @@ export function loadSession(name) {
 export function saveSession(name, messages) {
     ensureDir();
     try {
-        writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages));
+        writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages), { mode: 0o600 });
     }
     catch { }
 }

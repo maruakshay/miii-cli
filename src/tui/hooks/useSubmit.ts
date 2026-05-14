@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Config, ChatMessage, Status } from '../../types.js'
-import { readFile } from '../../files/ops.js'
+import { readFile, guardPath } from '../../files/ops.js'
 import type { SkillLoader } from '../../skills/loader.js'
 import { getSystemPrompt } from '../../tools/index.js'
 import { loadSession, saveSession, listSessions, deleteSession, deleteAllSessions } from '../../sessions.js'
@@ -15,14 +15,19 @@ import { loadIndex } from '../../index/store.js'
 import { topK } from '../../index/search.js'
 import * as printer from '../printer.js'
 
+function sanitizeInjected(content: string): string {
+  return content.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '[tool_call block removed]')
+}
+
 function buildAtContext(text: string): string {
   const refs = [...text.matchAll(/@([\w./\-]+)/g)]
   if (!refs.length) return ''
   const parts: string[] = []
   for (const m of refs) {
     try {
-      const content = readFile(m[1])
-      if (content) parts.push(`<file path="${m[1]}">\n${content}\n</file>`)
+      const safe = guardPath(m[1])
+      const content = readFile(safe)
+      if (content) parts.push(`<file path="${m[1]}">\n${sanitizeInjected(content)}\n</file>`)
     } catch {}
   }
   return parts.length ? parts.join('\n\n') + '\n\n' : ''
