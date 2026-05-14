@@ -1,6 +1,6 @@
 {
   "name": "miii-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "The high-performance local AI coding agent for your terminal. Automate complex workflows with local LLMs.",
   "license": "MIT",
@@ -11,7 +11,7 @@
     "type": "git",
     "url": "https://github.com/maruakshay/miii-cli.git"
   },
-  "homepage": "https://github.com/maruakshay/miii-cli#readme",
+  "homepage": "https://www.miii.in",
   "bugs": {
     "url": "https://github.com/maruakshay/miii-cli/issues"
   },
