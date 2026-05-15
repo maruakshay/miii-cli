@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { ChatMessage, Config } from '../../types.js'
-import { loadSession, saveSession, deleteSession } from '../../sessions.js'
+import { getProjectDir, loadSession, saveSession, deleteSession } from '../../sessions.js'
 import { getSystemPrompt } from '../../tools/index.js'
 import type { Tool } from '../../tools/index.js'
 import { getTavilyKey, saveTavilyKey } from '../../tavily/client.js'
@@ -16,6 +16,8 @@ function buildSystemPrompt(cwd: string, facts: MemoryFact[], extraTools: Tool[] 
 }
 
 export function useSession(initialSession: string, cwd: string, config: Config, extraTools: Tool[] = []) {
+  const projectDir = getProjectDir(cwd)
+
   const [sessionName, setSessionName] = useState(initialSession)
   const sessionNameRef = useRef(initialSession)
   const historyRef = useRef<ChatMessage[]>([])
@@ -23,44 +25,47 @@ export function useSession(initialSession: string, cwd: string, config: Config, 
   const firstMessageSentRef = useRef(false)
   const longMemoryRef = useRef<MemoryFact[]>([])
   const systemPromptRef = useRef(buildSystemPrompt(cwd, [], extraTools))
+  const extractingRef = useRef(false)
 
   useEffect(() => { sessionNameRef.current = sessionName }, [sessionName])
 
   useEffect(() => {
-    const facts = loadLongMemory(initialSession)
+    const facts = loadLongMemory(projectDir)
     longMemoryRef.current = facts
     systemPromptRef.current = buildSystemPrompt(cwd, facts, extraTools)
-    if (facts.length) printer.systemMsg(`long memory: ${facts.length} facts loaded`)
+    if (facts.length) printer.systemMsg(`project memory: ${facts.length} facts`)
 
-    const history = loadSession(initialSession)
+    const history = loadSession(projectDir, initialSession)
     historyRef.current = history
     if (history.length) printer.systemMsg(`resumed "${initialSession}" — ${history.length} messages`)
 
     if (config.tavilyApiKey && !getTavilyKey()) saveTavilyKey(config.tavilyApiKey)
     if (!getTavilyKey()) {
-      printer.systemMsg('Tavily API key not set — web search disabled. Run /tavily-key <key> to enable. Get a free key at https://tavily.com')
+      printer.systemMsg('Tavily API key not set — web search disabled. Run /config to enable.')
     }
   }, [])
 
   function scheduleSave() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      saveSession(sessionNameRef.current, historyRef.current)
+      saveSession(projectDir, sessionNameRef.current, historyRef.current)
       saveTimerRef.current = null
     }, 2000)
   }
 
   function pushHistory(msg: ChatMessage) {
     historyRef.current.push(msg)
-    if (historyRef.current.length > SHORT_MEMORY_SIZE) {
+    if (historyRef.current.length > SHORT_MEMORY_SIZE && !extractingRef.current) {
       const dropped = historyRef.current.splice(0, historyRef.current.length - SHORT_MEMORY_SIZE)
+      extractingRef.current = true
       extractFacts(dropped, config, config.model).then(newFacts => {
-        if (!newFacts.length) return
-        const updated = mergeFacts(longMemoryRef.current, newFacts)
-        longMemoryRef.current = updated
-        systemPromptRef.current = buildSystemPrompt(cwd, updated, extraTools)
-        saveLongMemory(sessionNameRef.current, updated)
-      })
+        if (newFacts.length) {
+          const updated = mergeFacts(longMemoryRef.current, newFacts)
+          longMemoryRef.current = updated
+          systemPromptRef.current = buildSystemPrompt(cwd, updated, extraTools)
+          saveLongMemory(projectDir, updated)
+        }
+      }).finally(() => { extractingRef.current = false })
     }
     scheduleSave()
   }
@@ -80,7 +85,7 @@ export function useSession(initialSession: string, cwd: string, config: Config, 
     const oldName = sessionNameRef.current
     sessionNameRef.current = slug
     setSessionName(slug)
-    try { deleteSession(oldName) } catch {}
+    try { deleteSession(projectDir, oldName) } catch {}
   }
 
   function buildContext(extra?: ChatMessage): ChatMessage[] {
@@ -90,9 +95,19 @@ export function useSession(initialSession: string, cwd: string, config: Config, 
     return ctx
   }
 
+  function updateMemory(newFacts: string[]) {
+    if (!newFacts.length) return
+    const updated = mergeFacts(longMemoryRef.current, newFacts)
+    longMemoryRef.current = updated
+    systemPromptRef.current = buildSystemPrompt(cwd, updated, extraTools)
+    saveLongMemory(projectDir, updated)
+  }
+
   return {
+    projectDir,
     sessionName, setSessionName, sessionNameRef,
     historyRef, saveTimerRef, systemPromptRef,
-    pushHistory, buildContext, renameFromMessage,
+    longMemoryRef,
+    pushHistory, buildContext, renameFromMessage, updateMemory,
   }
 }

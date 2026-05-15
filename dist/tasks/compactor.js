@@ -1,8 +1,13 @@
 import { chat } from '../llm/stream.js';
-const COMPACT_THRESHOLD = 18;
+// ~4 chars per token heuristic. 40K chars ≈ 10K tokens — safe floor for 7B local models.
+// Cloud providers can handle more but compacting early keeps responses fast regardless.
+const COMPACT_CHAR_THRESHOLD = 40_000;
 const KEEP_RECENT = 6;
+export function contextSize(messages) {
+    return messages.reduce((sum, m) => sum + m.content.length, 0);
+}
 export function shouldCompact(messages) {
-    return messages.length > COMPACT_THRESHOLD;
+    return contextSize(messages) > COMPACT_CHAR_THRESHOLD;
 }
 const COMPACT_SYSTEM = `You are a context summarizer for an AI coding agent session.
 Your job: produce a dense, structured summary of the conversation so the agent can continue the task without losing context.
@@ -26,7 +31,7 @@ Any constraints, errors encountered, important facts the agent must remember to 
 
 Be factual. No padding. Include file paths, error messages, and command outputs verbatim when relevant.`;
 export async function compactContext(messages, cfg, goal) {
-    if (messages.length <= COMPACT_THRESHOLD)
+    if (contextSize(messages) <= COMPACT_CHAR_THRESHOLD)
         return messages;
     const system = messages[0]?.role === 'system' ? messages[0] : null;
     const recent = messages.slice(messages.length - KEEP_RECENT);
@@ -42,6 +47,7 @@ export async function compactContext(messages, cfg, goal) {
         `Conversation to summarize:\n\n${transcript}`,
     ].join('');
     let summary = '';
+    let compactErr = '';
     await chat({
         ...cfg,
         messages: [
@@ -49,8 +55,10 @@ export async function compactContext(messages, cfg, goal) {
             { role: 'user', content: userPrompt },
         ],
         onDone: (text) => { summary = text.trim(); },
-        onError: () => { },
+        onError: (err) => { compactErr = err.message; },
     });
+    if (compactErr)
+        console.error(`[compactor] LLM error: ${compactErr}`);
     // Fallback to dumb compaction if LLM fails
     if (!summary)
         return dumbCompact(messages, goal);
@@ -65,6 +73,8 @@ export async function compactContext(messages, cfg, goal) {
     ];
 }
 function dumbCompact(messages, goal) {
+    if (contextSize(messages) <= COMPACT_CHAR_THRESHOLD)
+        return messages;
     const system = messages[0]?.role === 'system' ? messages[0] : null;
     const userGoal = messages.find(m => m.role === 'user' && !m.content.startsWith('['));
     const recent = messages.slice(messages.length - KEEP_RECENT);

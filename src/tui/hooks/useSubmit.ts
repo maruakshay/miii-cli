@@ -8,6 +8,8 @@ import type { Tool } from '../../tools/index.js'
 import { saveConfig } from '../../config.js'
 import { loadSession, saveSession, listSessions, deleteSession, deleteAllSessions } from '../../sessions.js'
 import { compactContext } from '../../tasks/compactor.js'
+import { extractFacts } from '../../memory/extractor.js'
+import { stripEphemeral } from './useRunLoop.js'
 import { runDeepThink } from '../deepThink.js'
 import { buildGitContext, looksCodeRelated } from '../git-context.js'
 import { buildIndex } from '../../index/indexer.js'
@@ -39,6 +41,7 @@ interface SubmitDeps {
   config: Config
   skills: SkillLoader
   cwd: string
+  projectDir: string
   version?: string
   currentModelRef: MutableRefObject<string>
   setCurrentModel: (m: string) => void
@@ -62,6 +65,7 @@ interface SubmitDeps {
   mcpTools: Tool[]
   setConfig: (updater: (c: import('../../types.js').Config) => import('../../types.js').Config) => void
   setConfigOpen: (v: boolean) => void
+  updateMemory: (facts: string[]) => void
 }
 
 export function useSubmit(deps: SubmitDeps) {
@@ -70,12 +74,12 @@ export function useSubmit(deps: SubmitDeps) {
 
   const handleSubmit = useCallback(async (text: string) => {
     const {
-      config, skills, cwd, version, currentModelRef, setCurrentModel,
+      config, skills, cwd, projectDir, version, currentModelRef, setCurrentModel,
       historyRef, sessionNameRef, saveTimerRef, systemPromptRef, abortRef,
       setPlanningMode, runLoop, buildContext, pushHistory,
       setSessionName, renameFromMessage,
       setStatus, setTaskLabel, setCurrentTool,
-      runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig, setConfigOpen,
+      runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig, setConfigOpen, updateMemory,
     } = depsRef.current
 
     const cmd = text.trim()
@@ -189,20 +193,42 @@ export function useSubmit(deps: SubmitDeps) {
     }
 
     if (cmd === '/compact') {
-      const full = buildContext()
-      if (full.length <= 2) { printer.systemMsg('nothing to compact'); return }
-      printer.systemMsg(`compacting ${full.length} messages…`)
+      // Strip ephemeral tool noise (read_file, list_files, run_tests results, injected state)
+      const meaningful = stripEphemeral(historyRef.current)
+      if (!meaningful.length) { printer.systemMsg('nothing to compact'); return }
+
+      const before = historyRef.current.length
+      printer.systemMsg(`compacting ${before} messages (${before - meaningful.length} ephemeral dropped)…`)
       setStatus('thinking')
+
       try {
-        const compacted = await compactContext(full, {
+        const cfg = {
           provider: config.provider,
           model: currentModelRef.current,
           baseUrl: config.baseUrl,
           apiKey: config.apiKey,
-        }, undefined)
-        historyRef.current = compacted.filter(m => m.role !== 'system')
-        saveSession(sessionNameRef.current, historyRef.current)
-        printer.systemMsg(`compacted: ${full.length} → ${compacted.length} messages`)
+        }
+
+        // Run both in parallel: LLM summary + fact extraction
+        const [compacted, facts] = await Promise.all([
+          compactContext(
+            [{ role: 'system', content: '' }, ...meaningful],
+            cfg,
+          ),
+          extractFacts(meaningful, config, currentModelRef.current),
+        ])
+
+        // Update long-term memory with extracted facts
+        if (facts.length) {
+          updateMemory(facts)
+          printer.systemMsg(`memory: +${facts.length} fact${facts.length === 1 ? '' : 's'} saved`)
+        }
+
+        // Replace history with just the compact summary (no system msg)
+        const summaryOnly = compacted.filter(m => m.role !== 'system')
+        historyRef.current = summaryOnly
+        saveSession(projectDir, sessionNameRef.current, summaryOnly)
+        printer.systemMsg(`compacted: ${before} → ${summaryOnly.length} message${summaryOnly.length === 1 ? '' : 's'}`)
       } catch (e) {
         printer.errorMsg(`compact failed: ${e}`)
       } finally {
@@ -213,7 +239,7 @@ export function useSubmit(deps: SubmitDeps) {
 
     if (cmd === '/new') {
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
-      saveSession(sessionNameRef.current, historyRef.current)
+      saveSession(projectDir, sessionNameRef.current, historyRef.current)
       const newName = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
       historyRef.current = []
       setSessionName(newName)
@@ -225,7 +251,7 @@ export function useSubmit(deps: SubmitDeps) {
 
     if (cmd === '/clear') {
       historyRef.current = []
-      saveSession(sessionNameRef.current, [])
+      saveSession(projectDir, sessionNameRef.current, [])
       setPlanningMode(false)
       systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`, mcpTools)
       printer.systemMsg('chat cleared')
@@ -317,11 +343,28 @@ export function useSubmit(deps: SubmitDeps) {
     }
 
     if (cmd === '/sessions') {
-      const sessions = listSessions()
-      if (!sessions.length) { printer.systemMsg('no saved sessions'); return }
-      printer.systemMsg(sessions.map(s =>
-        `${s.name === sessionNameRef.current ? '▶ ' : '  '}${s.name}  (${s.messageCount} msgs)`
-      ).join('\n'))
+      const sessions = listSessions(projectDir)
+      const shortCwd = cwd.replace(process.env.HOME ?? '', '~')
+      if (!sessions.length) {
+        printer.systemMsg(
+          `project: ${shortCwd}\nno saved sessions\n\n` +
+          `  /new                    start fresh session\n` +
+          `  /session <name>         switch to session\n` +
+          `  /session delete <name>  delete session\n` +
+          `  /session delete all     delete all sessions in this project`
+        )
+        return
+      }
+      const rows = sessions.map(s =>
+        `  ${s.name === sessionNameRef.current ? '▶' : ' '} ${s.name.padEnd(32)} ${s.messageCount} msg${s.messageCount === 1 ? '' : 's'}`
+      ).join('\n')
+      printer.systemMsg(
+        `project: ${shortCwd}  (${sessions.length} session${sessions.length === 1 ? '' : 's'})\n${rows}\n\n` +
+        `  /session <name>         switch session\n` +
+        `  /session delete <name>  delete session\n` +
+        `  /session delete all     delete all sessions in this project\n` +
+        `  /new                    start fresh session`
+      )
       return
     }
 
@@ -333,21 +376,21 @@ export function useSubmit(deps: SubmitDeps) {
         const target = arg.slice(7).trim()
         if (!target) { printer.systemMsg('usage: /session delete <name|all>'); return }
         if (target === 'all') {
-          const count = deleteAllSessions(sessionNameRef.current)
-          printer.systemMsg(`deleted ${count} session(s) — kept active: ${sessionNameRef.current}`)
+          const count = deleteAllSessions(projectDir, sessionNameRef.current)
+          printer.systemMsg(`deleted ${count} session${count === 1 ? '' : 's'} — kept active: ${sessionNameRef.current}`)
           return
         }
         if (target === sessionNameRef.current) { printer.systemMsg('cannot delete active session — switch first'); return }
-        try { deleteSession(target); printer.systemMsg(`deleted: ${target}`) }
+        try { deleteSession(projectDir, target); printer.systemMsg(`deleted: ${target}`) }
         catch (e) { printer.errorMsg(`delete failed: ${String(e)}`) }
         return
       }
 
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
-      saveSession(sessionNameRef.current, historyRef.current)
-      historyRef.current = loadSession(arg)
+      saveSession(projectDir, sessionNameRef.current, historyRef.current)
+      historyRef.current = loadSession(projectDir, arg)
       setSessionName(arg)
-      printer.systemMsg(`session → ${arg}  (${historyRef.current.length} messages)`)
+      printer.systemMsg(`session → ${arg}  (${historyRef.current.length} message${historyRef.current.length === 1 ? '' : 's'})`)
       return
     }
 

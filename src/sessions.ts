@@ -3,11 +3,20 @@ import { join } from 'path'
 import { homedir } from 'os'
 import type { ChatMessage } from './types.js'
 
-const SESSIONS_DIR = join(homedir(), '.config', 'miii', 'sessions')
+const PROJECTS_DIR = join(homedir(), '.config', 'miii', 'projects')
 
-function ensureDir() {
-  mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 })
-  chmodSync(SESSIONS_DIR, 0o700)
+export function getProjectDir(cwd: string): string {
+  const slug = cwd.replace(/\//g, '-').replace(/^-/, '').replace(/[^a-zA-Z0-9_.-]/g, '-') || 'default'
+  return join(PROJECTS_DIR, slug)
+}
+
+function sessionsDir(projectDir: string): string {
+  return join(projectDir, 'sessions')
+}
+
+function ensureProjectDir(projectDir: string) {
+  mkdirSync(sessionsDir(projectDir), { recursive: true, mode: 0o700 })
+  chmodSync(projectDir, 0o700)
 }
 
 function sanitizeName(name: string): string {
@@ -15,13 +24,14 @@ function sanitizeName(name: string): string {
   return name
 }
 
-export function listSessions(): Array<{ name: string; messageCount: number; updatedAt: number }> {
-  ensureDir()
-  return readdirSync(SESSIONS_DIR)
+export function listSessions(projectDir: string): Array<{ name: string; messageCount: number; updatedAt: number }> {
+  ensureProjectDir(projectDir)
+  const dir = sessionsDir(projectDir)
+  return readdirSync(dir)
     .filter(f => f.endsWith('.json'))
     .map(f => {
       const name = f.replace('.json', '')
-      const p = join(SESSIONS_DIR, f)
+      const p = join(dir, f)
       let messageCount = 0
       let updatedAt = 0
       try {
@@ -34,9 +44,9 @@ export function listSessions(): Array<{ name: string; messageCount: number; upda
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-export function loadSession(name: string): ChatMessage[] {
-  ensureDir()
-  const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`)
+export function loadSession(projectDir: string, name: string): ChatMessage[] {
+  ensureProjectDir(projectDir)
+  const p = join(sessionsDir(projectDir), `${sanitizeName(name)}.json`)
   if (!existsSync(p)) return []
   try {
     const parsed = JSON.parse(readFileSync(p, 'utf-8'))
@@ -44,26 +54,31 @@ export function loadSession(name: string): ChatMessage[] {
   } catch { return [] }
 }
 
-export function saveSession(name: string, messages: ChatMessage[]) {
-  ensureDir()
+export function saveSession(projectDir: string, name: string, messages: ChatMessage[]) {
+  ensureProjectDir(projectDir)
   try {
-    writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages), { mode: 0o600 })
+    writeFileSync(
+      join(sessionsDir(projectDir), `${sanitizeName(name)}.json`),
+      JSON.stringify(messages),
+      { mode: 0o600 },
+    )
   } catch {}
 }
 
-export function deleteSession(name: string) {
-  const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`)
+export function deleteSession(projectDir: string, name: string) {
+  const p = join(sessionsDir(projectDir), `${sanitizeName(name)}.json`)
   if (existsSync(p)) unlinkSync(p)
 }
 
-export function deleteAllSessions(exceptName?: string): number {
-  ensureDir()
-  const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.json'))
+export function deleteAllSessions(projectDir: string, exceptName?: string): number {
+  ensureProjectDir(projectDir)
+  const dir = sessionsDir(projectDir)
+  const files = readdirSync(dir).filter(f => f.endsWith('.json'))
   let count = 0
   for (const f of files) {
     const name = f.replace('.json', '')
     if (exceptName && name === exceptName) continue
-    try { unlinkSync(join(SESSIONS_DIR, f)); count++ } catch {}
+    try { unlinkSync(join(dir, f)); count++ } catch {}
   }
   return count
 }

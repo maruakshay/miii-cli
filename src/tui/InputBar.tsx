@@ -1,10 +1,10 @@
-import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { Box, Text, useStdout } from 'ink'
 import { InputArea } from './components/InputArea.js'
 import { ModelPicker } from './components/ModelPicker.js'
 import { ConfigPicker } from './components/ConfigPicker.js'
 import { Divider } from './components/StatusBar.js'
-import { tools, getSystemPrompt } from '../tools/index.js'
+import { tools } from '../tools/index.js'
 import type { Tool } from '../tools/index.js'
 import type { SkillLoader } from '../skills/loader.js'
 import type { Config } from '../types.js'
@@ -23,6 +23,7 @@ import { setInkInstance } from './printer.js'
 import { createSearchCodebaseTool } from '../index/tool.js'
 import { saveConfig } from '../config.js'
 import { getTavilyKey, saveTavilyKey } from '../tavily/client.js'
+import { warmup } from '../llm/stream.js'
 
 interface Props {
   config: Config
@@ -41,12 +42,49 @@ function formatElapsed(ms: number): string {
   return rem === 0 ? `${m}m` : `${m}m ${rem}s`
 }
 
+const MAX_DIFF_LINES = 5
+
+function DiffPreview({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
+  if (toolName === 'patch_file' && (args.old || args.new)) {
+    const oldLines = String(args.old ?? '').split('\n')
+    const newLines = String(args.new ?? '').split('\n')
+    return (
+      <Box flexDirection="column" paddingLeft={2}>
+        {oldLines.slice(0, MAX_DIFF_LINES).map((line, i) => (
+          <Text key={`o${i}`} color="red" dimColor>- {line.slice(0, 72)}</Text>
+        ))}
+        {oldLines.length > MAX_DIFF_LINES && (
+          <Text color="gray" dimColor>  …{oldLines.length - MAX_DIFF_LINES} more</Text>
+        )}
+        {newLines.slice(0, MAX_DIFF_LINES).map((line, i) => (
+          <Text key={`n${i}`} color="green" dimColor>+ {line.slice(0, 72)}</Text>
+        ))}
+        {newLines.length > MAX_DIFF_LINES && (
+          <Text color="gray" dimColor>  …{newLines.length - MAX_DIFF_LINES} more</Text>
+        )}
+      </Box>
+    )
+  }
+  if ((toolName === 'edit_file' || toolName === 'create_file') && args.content) {
+    const n = String(args.content).split('\n').length
+    return (
+      <Box paddingLeft={2}>
+        <Text color="gray" dimColor>{n} line{n === 1 ? '' : 's'}</Text>
+      </Box>
+    )
+  }
+  return null
+}
+
 export function InputBar({ config: initialConfig, skills, cwd, session, version, mcpTools = [] }: Props) {
   const [config, setConfig] = useState(initialConfig)
   const { stdout, write: stdoutWrite } = useStdout()
   const cols = stdout.columns ?? 80
 
-  useEffect(() => { setInkInstance(stdoutWrite) }, [])
+  useEffect(() => {
+    setInkInstance(stdoutWrite)
+    warmup(initialConfig.provider, initialConfig.baseUrl, initialConfig.model)
+  }, [])
 
   const phraseSeq = useMemo(() =>
     Array.from({ length: 100 }, () => Math.floor(Math.random() * THINKING_PHRASES.length))
@@ -61,14 +99,11 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
   const abortRef = useRef<AbortController | null>(null)
 
   const {
+    projectDir,
     setSessionName, sessionNameRef,
     historyRef, saveTimerRef, systemPromptRef,
-    pushHistory, buildContext, renameFromMessage,
+    pushHistory, buildContext, renameFromMessage, updateMemory,
   } = useSession(session, cwd, config, mcpTools)
-
-  const sysPrompt = useCallback((extra = '') =>
-    getSystemPrompt(`\n- CWD: ${cwd}${extra}`, mcpTools)
-  , [mcpTools, cwd])
 
   const {
     currentModel, setCurrentModel, currentModelRef,
@@ -111,13 +146,13 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
   const { handleGit } = useGit({ pushHistory, buildContext, runLoop })
 
   const { handleSubmit } = useSubmit({
-    config, skills, cwd, version, currentModelRef, setCurrentModel,
+    config, skills, cwd, projectDir, version, currentModelRef, setCurrentModel,
     historyRef, sessionNameRef, saveTimerRef, systemPromptRef, abortRef,
     setPlanningMode, runLoop, buildContext, pushHistory,
     setSessionName, renameFromMessage,
     setStatus, setTaskLabel, setCurrentTool,
     runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig,
-    setConfigOpen,
+    setConfigOpen, updateMemory,
   })
 
   const skillList = skills.list()
@@ -161,15 +196,18 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
           <Box gap={1}>
             <Text color="yellow">⚠</Text>
             <Text color="white" bold>context is large</Text>
-            <Text color="gray">({compactRequest.messageCount} messages)</Text>
+            <Text color="gray">(~{compactRequest.messageCount}k chars)</Text>
           </Box>
           <Text color="gray" dimColor>compact to keep responses fast, or keep full history</Text>
         </Box>
       ) : permissionRequest ? (
-        <Box paddingX={1} gap={1}>
-          <Text color="yellow">⚠</Text>
-          <Text color="white" bold>{permissionRequest.toolName}</Text>
-          <Text color="gray">{toolArgSummary(permissionRequest.args)}</Text>
+        <Box paddingX={1} flexDirection="column">
+          <Box gap={1}>
+            <Text color="yellow">⚠</Text>
+            <Text color="white" bold>{permissionRequest.toolName}</Text>
+            <Text color="gray">{toolArgSummary(permissionRequest.args)}</Text>
+          </Box>
+          <DiffPreview toolName={permissionRequest.toolName} args={permissionRequest.args} />
         </Box>
       ) : (status === 'thinking' || status === 'tool') ? (
         <Box flexDirection="column" paddingX={1}>

@@ -24,9 +24,6 @@ const gray = (s) => col(90, s);
 const yellow = (s) => col(93, s);
 const purple = (s) => col(95, s);
 const red = (s) => col(91, s);
-function indent(text, pad = '  ') {
-    return text.split('\n').map(l => pad + l).join('\n');
-}
 function stripMarkdown(s) {
     return s
         .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
@@ -104,7 +101,6 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
     const top = gray('╭') + gray('─') + bold(cyan(` MIII - CLI${versionStr} `)) + gray('─'.repeat(dashCount) + '╮');
     const bottom = gray('╰' + '─'.repeat(innerW) + '╯');
     const shortCwd = cwd.replace(process.env.HOME ?? '', '~');
-    const username = process.env.USER ?? 'there';
     const miniArt = [
         `  ${purple('   ●     ●   ')}`,
         `  ${purple('  ╱ ╲   ╱ ╲  ')}`,
@@ -124,7 +120,7 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
         `  ${bold(yellow('Tips for getting started'))}`,
         `  Type ${cyan('@filename')} to inject file into context`,
         `  Use ${cyan('/skill')} to run a skill or command`,
-        `  Use ${cyan('/models')} to switch or pull models`,
+        `  Use ${cyan('/config')} to switch provider, model, or API key`,
         '',
     ];
     const maxLen = Math.max(leftLines.length, rightLines.length);
@@ -266,7 +262,7 @@ export function toolResultSummary(name, args, result) {
     if (summary)
         write(gray(`  ${summary}`) + '\n');
 }
-export function toolMsg(name, result) {
+export function toolMsg(_name, result) {
     const preview = result.length > 600 ? result.slice(0, 600) + '…' : result;
     const body = preview.trim()
         ? preview.split('\n').map(l => gray('    ' + l)).join('\n')

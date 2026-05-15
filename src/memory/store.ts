@@ -1,8 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
 
-const MEMORY_DIR = join(homedir(), '.config', 'miii', 'memory')
 const MAX_FACTS = 200
 
 export interface MemoryFact {
@@ -10,13 +8,13 @@ export interface MemoryFact {
   ts: number
 }
 
-function ensureDir() {
-  mkdirSync(MEMORY_DIR, { recursive: true })
+function memoryPath(projectDir: string): string {
+  return join(projectDir, 'memory.json')
 }
 
-export function loadLongMemory(sessionName: string): MemoryFact[] {
-  ensureDir()
-  const p = join(MEMORY_DIR, `${sessionName}.json`)
+export function loadLongMemory(projectDir: string): MemoryFact[] {
+  mkdirSync(projectDir, { recursive: true })
+  const p = memoryPath(projectDir)
   if (!existsSync(p)) return []
   try {
     const parsed = JSON.parse(readFileSync(p, 'utf-8'))
@@ -24,9 +22,9 @@ export function loadLongMemory(sessionName: string): MemoryFact[] {
   } catch { return [] }
 }
 
-export function saveLongMemory(sessionName: string, facts: MemoryFact[]) {
-  ensureDir()
-  writeFileSync(join(MEMORY_DIR, `${sessionName}.json`), JSON.stringify(facts))
+export function saveLongMemory(projectDir: string, facts: MemoryFact[]) {
+  mkdirSync(projectDir, { recursive: true })
+  writeFileSync(memoryPath(projectDir), JSON.stringify(facts))
 }
 
 export function mergeFacts(existing: MemoryFact[], newTexts: string[]): MemoryFact[] {
@@ -42,5 +40,5 @@ export function mergeFacts(existing: MemoryFact[], newTexts: string[]): MemoryFa
 
 export function formatMemoryBlock(facts: MemoryFact[]): string {
   if (!facts.length) return ''
-  return `\n\n[Long-term memory — recalled from prior conversation]\n${facts.map(f => `- ${f.text}`).join('\n')}`
+  return `\n\n[Long-term memory — recalled from prior sessions in this project]\n${facts.map(f => `- ${f.text}`).join('\n')}`
 }

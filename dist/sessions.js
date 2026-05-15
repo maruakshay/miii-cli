@@ -1,23 +1,31 @@
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, readdirSync, statSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-const SESSIONS_DIR = join(homedir(), '.config', 'miii', 'sessions');
-function ensureDir() {
-    mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
-    chmodSync(SESSIONS_DIR, 0o700);
+const PROJECTS_DIR = join(homedir(), '.config', 'miii', 'projects');
+export function getProjectDir(cwd) {
+    const slug = cwd.replace(/\//g, '-').replace(/^-/, '').replace(/[^a-zA-Z0-9_.-]/g, '-') || 'default';
+    return join(PROJECTS_DIR, slug);
+}
+function sessionsDir(projectDir) {
+    return join(projectDir, 'sessions');
+}
+function ensureProjectDir(projectDir) {
+    mkdirSync(sessionsDir(projectDir), { recursive: true, mode: 0o700 });
+    chmodSync(projectDir, 0o700);
 }
 function sanitizeName(name) {
     if (!/^[\w-]+$/.test(name))
         throw new Error(`invalid session name: ${name}`);
     return name;
 }
-export function listSessions() {
-    ensureDir();
-    return readdirSync(SESSIONS_DIR)
+export function listSessions(projectDir) {
+    ensureProjectDir(projectDir);
+    const dir = sessionsDir(projectDir);
+    return readdirSync(dir)
         .filter(f => f.endsWith('.json'))
         .map(f => {
         const name = f.replace('.json', '');
-        const p = join(SESSIONS_DIR, f);
+        const p = join(dir, f);
         let messageCount = 0;
         let updatedAt = 0;
         try {
@@ -30,9 +38,9 @@ export function listSessions() {
     })
         .sort((a, b) => b.updatedAt - a.updatedAt);
 }
-export function loadSession(name) {
-    ensureDir();
-    const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`);
+export function loadSession(projectDir, name) {
+    ensureProjectDir(projectDir);
+    const p = join(sessionsDir(projectDir), `${sanitizeName(name)}.json`);
     if (!existsSync(p))
         return [];
     try {
@@ -43,28 +51,29 @@ export function loadSession(name) {
         return [];
     }
 }
-export function saveSession(name, messages) {
-    ensureDir();
+export function saveSession(projectDir, name, messages) {
+    ensureProjectDir(projectDir);
     try {
-        writeFileSync(join(SESSIONS_DIR, `${sanitizeName(name)}.json`), JSON.stringify(messages), { mode: 0o600 });
+        writeFileSync(join(sessionsDir(projectDir), `${sanitizeName(name)}.json`), JSON.stringify(messages), { mode: 0o600 });
     }
     catch { }
 }
-export function deleteSession(name) {
-    const p = join(SESSIONS_DIR, `${sanitizeName(name)}.json`);
+export function deleteSession(projectDir, name) {
+    const p = join(sessionsDir(projectDir), `${sanitizeName(name)}.json`);
     if (existsSync(p))
         unlinkSync(p);
 }
-export function deleteAllSessions(exceptName) {
-    ensureDir();
-    const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.json'));
+export function deleteAllSessions(projectDir, exceptName) {
+    ensureProjectDir(projectDir);
+    const dir = sessionsDir(projectDir);
+    const files = readdirSync(dir).filter(f => f.endsWith('.json'));
     let count = 0;
     for (const f of files) {
         const name = f.replace('.json', '');
         if (exceptName && name === exceptName)
             continue;
         try {
-            unlinkSync(join(SESSIONS_DIR, f));
+            unlinkSync(join(dir, f));
             count++;
         }
         catch { }

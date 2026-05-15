@@ -30,10 +30,6 @@ const yellow = (s: string) => col(93, s)
 const purple = (s: string) => col(95, s)
 const red    = (s: string) => col(91, s)
 
-function indent(text: string, pad = '  '): string {
-  return text.split('\n').map(l => pad + l).join('\n')
-}
-
 function stripMarkdown(s: string): string {
   return s
     .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
@@ -105,7 +101,6 @@ export function welcome(provider: string, model: string, cwd: string, version?: 
   const bottom = gray('╰' + '─'.repeat(innerW) + '╯')
 
   const shortCwd = cwd.replace(process.env.HOME ?? '', '~')
-  const username = process.env.USER ?? 'there'
 
   const miniArt = [
     `  ${purple('   ●     ●   ')}`,
@@ -128,7 +123,7 @@ export function welcome(provider: string, model: string, cwd: string, version?: 
     `  ${bold(yellow('Tips for getting started'))}`,
     `  Type ${cyan('@filename')} to inject file into context`,
     `  Use ${cyan('/skill')} to run a skill or command`,
-    `  Use ${cyan('/models')} to switch or pull models`,
+    `  Use ${cyan('/config')} to switch provider, model, or API key`,
     '',
   ]
 
@@ -280,7 +275,7 @@ export function toolResultSummary(name: string, args: Record<string, unknown>, r
   if (summary) write(gray(`  ${summary}`) + '\n')
 }
 
-export function toolMsg(name: string, result: string): void {
+export function toolMsg(_name: string, result: string): void {
   const preview = result.length > 600 ? result.slice(0, 600) + '…' : result
   const body = preview.trim()
     ? preview.split('\n').map(l => gray('    ' + l)).join('\n')

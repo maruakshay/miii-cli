@@ -1,5 +1,3 @@
-import { readFile } from '../files/ops.js'
-import { resolve } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -18,33 +16,12 @@ export async function buildGitContext(cwd: string, lastStatusRef: { current: str
     if (!status || status === lastStatusRef.current) return { prefix: '', label: '' }
     lastStatusRef.current = status
 
-    const MAX_TOTAL = 40_000
-    const MAX_FILE  = 15_000
-    let total = 0
-    const parts: string[] = []
-    const skipped: string[] = []
+    const files = status.split('\n')
+      .map(l => l.slice(3).trim().replace(/^"|"$/g, ''))
+      .filter(Boolean)
 
-    for (const line of status.split('\n')) {
-      const code = line.slice(0, 2)
-      if (code.includes('D')) continue
-      const raw = line.slice(3).trim().replace(/^"|"$/g, '')
-      const arrowIdx = raw.lastIndexOf(' -> ')
-      const rel = arrowIdx !== -1 ? raw.slice(arrowIdx + 4) : raw
-      if (!rel) continue
-      try {
-        const content = readFile(resolve(cwd, rel))
-        if (!content || content.length > MAX_FILE) { skipped.push(rel); continue }
-        total += content.length
-        if (total > MAX_TOTAL) { skipped.push(rel); continue }
-        parts.push(`<file path="${rel}">\n${content}\n</file>`)
-      } catch { skipped.push(rel) }
-    }
-
-    if (!parts.length && !skipped.length) return { prefix: '', label: '' }
-    let prefix = '[Auto-context: git-changed files]\n' + parts.join('\n') + '\n'
-    if (skipped.length) prefix += `Files changed but too large to auto-load: ${skipped.join(', ')}\n`
-    prefix += '\n'
-    const label = `auto-loaded ${parts.length} changed file(s)${skipped.length ? `, skipped ${skipped.length} (too large)` : ''}`
+    const prefix = `[Git: ${files.length} changed file(s)]\n${status}\n\n`
+    const label = `git: ${files.length} changed file(s) in context`
     return { prefix, label }
   } catch {
     return { prefix: '', label: '' }

@@ -11,6 +11,68 @@ export interface ChatConfig {
   onDone: (fullText: string) => void | Promise<void>
   onError: (err: Error) => void
   onUsage?: (promptTokens: number, completionTokens: number) => void
+  onRetry?: (attempt: number, max: number, delayMs: number) => void
+}
+
+// Transient errors worth retrying: rate limits + server-side faults
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529])
+const MAX_RETRIES = 4
+const MAX_DELAY_MS = 30_000
+
+function retryDelay(attempt: number): number {
+  // Exponential backoff: 1s → 2s → 4s → 8s, capped at 30s, ±20% jitter
+  const base = 1_000 * Math.pow(2, attempt)
+  const capped = Math.min(base, MAX_DELAY_MS)
+  return Math.round(capped * (0.8 + Math.random() * 0.4))
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return }
+    const t = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')) }, { once: true })
+  })
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal | undefined,
+  onRetry?: ChatConfig['onRetry'],
+): Promise<Response> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(url, { ...init, signal })
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') throw err
+      if (attempt === MAX_RETRIES) throw err
+      const delayMs = retryDelay(attempt)
+      onRetry?.(attempt + 1, MAX_RETRIES, delayMs)
+      await sleep(delayMs, signal)
+      continue
+    }
+
+    if (res.ok || !RETRYABLE_STATUS.has(res.status) || attempt === MAX_RETRIES) return res
+
+    const retryAfterSec = Number(res.headers.get('retry-after') ?? 0)
+    const delayMs = retryAfterSec > 0 ? retryAfterSec * 1000 : retryDelay(attempt)
+    onRetry?.(attempt + 1, MAX_RETRIES, delayMs)
+    await sleep(delayMs, signal)
+  }
+  throw new Error('fetchWithRetry: exhausted retries without returning')
+}
+
+export async function warmup(provider: string, baseUrl: string, model: string): Promise<void> {
+  if (provider !== 'ollama') return
+  try {
+    await fetch(`${baseUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, keep_alive: '10m' }),
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch {}
 }
 
 export async function chat(cfg: ChatConfig): Promise<void> {
@@ -20,14 +82,18 @@ export async function chat(cfg: ChatConfig): Promise<void> {
 }
 
 async function chatOllama(cfg: ChatConfig): Promise<void> {
-  const { model, messages, baseUrl, signal, onDone, onError, onUsage, onChunk } = cfg
+  const { model, messages, baseUrl, signal, onDone, onError, onUsage, onChunk, onRetry } = cfg
   try {
-    const res = await fetch(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: !!onChunk }),
+    const res = await fetchWithRetry(
+      `${baseUrl}/api/chat`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages, stream: !!onChunk }),
+      },
       signal,
-    })
+      onRetry,
+    )
     if (!res.ok) { onError(new Error(`Ollama ${res.status}: ${await res.text()}`)); return }
 
     if (!onChunk) {
@@ -72,14 +138,18 @@ async function chatOllama(cfg: ChatConfig): Promise<void> {
 }
 
 async function chatOpenAI(cfg: ChatConfig): Promise<void> {
-  const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage, onChunk } = cfg
+  const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage, onChunk, onRetry } = cfg
   try {
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey ?? 'local'}` },
-      body: JSON.stringify({ model, messages, stream: !!onChunk }),
+    const res = await fetchWithRetry(
+      `${baseUrl}/v1/chat/completions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey ?? 'local'}` },
+        body: JSON.stringify({ model, messages, stream: !!onChunk }),
+      },
       signal,
-    })
+      onRetry,
+    )
     if (!res.ok) { onError(new Error(`LLM ${res.status}: ${await res.text()}`)); return }
 
     if (!onChunk) {
@@ -119,7 +189,7 @@ async function chatOpenAI(cfg: ChatConfig): Promise<void> {
 }
 
 async function chatAnthropic(cfg: ChatConfig): Promise<void> {
-  const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage } = cfg
+  const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage, onRetry } = cfg
   const url = baseUrl && baseUrl !== 'http://localhost:11434'
     ? `${baseUrl}/v1/messages`
     : 'https://api.anthropic.com/v1/messages'
@@ -135,16 +205,20 @@ async function chatAnthropic(cfg: ChatConfig): Promise<void> {
     }
     if (systemParts.length) body.system = systemParts.join('\n\n')
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey ?? '',
-        'anthropic-version': '2023-06-01',
+    const res = await fetchWithRetry(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey ?? '',
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
       signal,
-    })
+      onRetry,
+    )
     if (!res.ok) { onError(new Error(`Anthropic ${res.status}: ${await res.text()}`)); return }
 
     const obj = await res.json() as {

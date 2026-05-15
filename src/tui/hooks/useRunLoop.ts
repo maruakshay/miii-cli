@@ -6,14 +6,21 @@ import { chat } from '../../llm/stream.js'
 import { tools as staticTools } from '../../tools/index.js'
 import type { Tool } from '../../tools/index.js'
 import { StreamParser, extractBareToolCall } from '../../parser/stream-parser.js'
-import { shouldCompact, compactContext } from '../../tasks/compactor.js'
+import { shouldCompact, compactContext, contextSize } from '../../tasks/compactor.js'
 import * as printer from '../printer.js'
 
-const MAX_TOOL_DEPTH = 6
+const MAX_TOOL_DEPTH = 10
 const FILE_EDIT_TOOLS = new Set(['edit_file', 'create_file', 'patch_file', 'delete_file'])
 const SHOW_RESULT_TOOLS = new Set(['run_tests', 'git_commit'])
 const PERMISSION_TOOLS = new Set(['edit_file', 'patch_file', 'delete_file', 'create_file', 'move_file', 'run_command', 'git_commit'])
 const CHECKPOINT_TOOLS = new Set(['edit_file', 'patch_file', 'create_file', 'delete_file'])
+
+// Tool result messages that are ephemeral — never worth storing in memory or compact summaries
+const EPHEMERAL_PATTERN = /^Tool (read_file|list_files|run_tests) result:|^\[current state of|^\[Context compacted/
+
+export function stripEphemeral(messages: import('../../types.js').ChatMessage[]) {
+  return messages.filter(m => m.role !== 'user' || !EPHEMERAL_PATTERN.test(m.content))
+}
 
 export interface PermissionRequest {
   toolName: string
@@ -77,11 +84,12 @@ export function useRunLoop(
     if (shouldCompact(contextMsgs)) {
       const approved = await new Promise<boolean>(resolve => {
         compactResolveRef.current = resolve
-        setCompactRequest({ messageCount: contextMsgs.length })
+        setCompactRequest({ messageCount: Math.round(contextSize(contextMsgs) / 1000) })
       })
       if (approved) {
         printer.systemMsg('compacting context…')
-        msgs = await compactContext(contextMsgs, {
+        const toCompact = stripEphemeral(contextMsgs)
+        msgs = await compactContext(toCompact, {
           provider: config.provider,
           model: currentModelRef.current,
           baseUrl: config.baseUrl,
@@ -100,6 +108,9 @@ export function useRunLoop(
       baseUrl: config.baseUrl,
       messages: msgs,
       signal: abortRef.current.signal,
+      onRetry(attempt, max, delayMs) {
+        printer.systemMsg(`retry ${attempt}/${max} — waiting ${Math.round(delayMs / 1000)}s`)
+      },
 
       async onDone(fullText) {
         const pendingTools: Array<{ name: string; args: Record<string, unknown> }> = []

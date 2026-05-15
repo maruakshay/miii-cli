@@ -2,11 +2,17 @@ import type { ChatMessage } from '../types.js'
 import { chat } from '../llm/stream.js'
 import type { ChatConfig } from '../llm/stream.js'
 
-const COMPACT_THRESHOLD = 18
+// ~4 chars per token heuristic. 40K chars ≈ 10K tokens — safe floor for 7B local models.
+// Cloud providers can handle more but compacting early keeps responses fast regardless.
+const COMPACT_CHAR_THRESHOLD = 40_000
 const KEEP_RECENT = 6
 
+export function contextSize(messages: ChatMessage[]): number {
+  return messages.reduce((sum, m) => sum + m.content.length, 0)
+}
+
 export function shouldCompact(messages: ChatMessage[]): boolean {
-  return messages.length > COMPACT_THRESHOLD
+  return contextSize(messages) > COMPACT_CHAR_THRESHOLD
 }
 
 const COMPACT_SYSTEM = `You are a context summarizer for an AI coding agent session.
@@ -36,7 +42,7 @@ export async function compactContext(
   cfg: Pick<ChatConfig, 'provider' | 'model' | 'baseUrl' | 'apiKey'>,
   goal?: string,
 ): Promise<ChatMessage[]> {
-  if (messages.length <= COMPACT_THRESHOLD) return messages
+  if (contextSize(messages) <= COMPACT_CHAR_THRESHOLD) return messages
 
   const system   = messages[0]?.role === 'system' ? messages[0] : null
   const recent   = messages.slice(messages.length - KEEP_RECENT)
@@ -55,6 +61,7 @@ export async function compactContext(
   ].join('')
 
   let summary = ''
+  let compactErr = ''
   await chat({
     ...cfg,
     messages: [
@@ -62,8 +69,9 @@ export async function compactContext(
       { role: 'user',   content: userPrompt },
     ],
     onDone: (text) => { summary = text.trim() },
-    onError: () => {},
+    onError: (err) => { compactErr = err.message },
   })
+  if (compactErr) console.error(`[compactor] LLM error: ${compactErr}`)
 
   // Fallback to dumb compaction if LLM fails
   if (!summary) return dumbCompact(messages, goal)
@@ -81,6 +89,7 @@ export async function compactContext(
 }
 
 function dumbCompact(messages: ChatMessage[], goal?: string): ChatMessage[] {
+  if (contextSize(messages) <= COMPACT_CHAR_THRESHOLD) return messages
   const system   = messages[0]?.role === 'system' ? messages[0] : null
   const userGoal = messages.find(m => m.role === 'user' && !m.content.startsWith('['))
   const recent   = messages.slice(messages.length - KEEP_RECENT)
