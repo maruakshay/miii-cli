@@ -7,6 +7,7 @@ import { AtPicker } from './AtPicker.js';
 const BUILTIN_COMMANDS = [
     // ── Session ──────────────────────────────────────────────────────────────
     { ns: 'builtin', name: 'new', description: 'start a fresh session with a new auto-named history' },
+    { ns: 'builtin', name: 'compact', description: 'summarise conversation history now using the LLM — frees context before miii asks' },
     { ns: 'builtin', name: 'clear', description: 'wipe chat history for the current session' },
     { ns: 'builtin', name: 'sessions', description: 'list all saved sessions with message counts' },
     { ns: 'builtin', name: 'session', description: 'switch to a saved session — /session <name>' },
@@ -197,11 +198,15 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     useInput((input, key) => {
         if (permissionRequest && onPermissionResponse) {
             if (input === 'y' || input === 'Y') {
-                onPermissionResponse(true);
+                onPermissionResponse('yes');
+                return;
+            }
+            if (input === 'a' || input === 'A') {
+                onPermissionResponse('session');
                 return;
             }
             if (input === 'n' || input === 'N' || key.escape) {
-                onPermissionResponse(false);
+                onPermissionResponse('no');
                 return;
             }
             return;
@@ -445,13 +450,14 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     });
     const { stdout } = useStdout();
     const cols = stdout.columns ?? 80;
+    const availWidth = Math.max(20, cols - 4); // paddingX(2) + "> "(2)
     const isProcessing = status !== 'idle';
     const promptColor = (permissionRequest || compactRequest) ? 'yellow' : isProcessing ? 'yellow' : 'green';
     const inHistory = historyIdx !== -1;
     const hint = compactRequest
         ? 'y  compact   n  keep full context'
         : permissionRequest
-            ? 'y  approve   n  deny'
+            ? 'y  approve once   a  approve for session   n  deny'
             : isProcessing
                 ? 'esc  interrupt'
                 : pasteLines > 0
@@ -466,10 +472,28 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     const pastePreview = pasteRef.current
         ? pasteRef.current.split('\n')[0].slice(0, cols - 6)
         : '';
-    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: promptColor, bold: true, children: '> ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: (permissionRequest || compactRequest) ? (_jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "green", bold: true, children: "y  yes" }), _jsx(Text, { color: "red", bold: true, children: "n  no" })] })) : pasteLines > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " line", pasteLines !== 1 ? 's' : ''] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] }), pastePreview && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", pastePreview, pasteRef.current.split('\n')[0].length > cols - 6 ? '…' : ''] }))] })) : lines.length === 1 && !lines[0] ? (_jsx(Text, { children: isActive ? '█' : ' ' })) : (lines.map((line, i) => (_jsx(Text, { wrap: "wrap", children: i === cursor.row
-                                ? renderLineWithCursor(line, cursor.col, isActive)
-                                : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Text, { color: "gray", dimColor: true, children: ["  ", hint] })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: promptColor, bold: true, children: '> ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: permissionRequest ? (_jsxs(Box, { gap: 3, children: [_jsx(Text, { color: "green", bold: true, children: "y  once" }), _jsx(Text, { color: "cyan", bold: true, children: "a  session" }), _jsx(Text, { color: "red", bold: true, children: "n  deny" })] })) : compactRequest ? (_jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "green", bold: true, children: "y  yes" }), _jsx(Text, { color: "red", bold: true, children: "n  no" })] })) : pasteLines > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " line", pasteLines !== 1 ? 's' : ''] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] }), pastePreview && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", pastePreview, pasteRef.current.split('\n')[0].length > cols - 6 ? '…' : ''] }))] })) : lines.length === 1 && !lines[0] ? (_jsx(Text, { children: isActive ? '█' : ' ' })) : (lines.map((line, i) => (_jsx(Text, { children: i === cursor.row
+                                ? viewportLine(line, cursor.col, availWidth, isActive)
+                                : line.length > availWidth ? '…' + line.slice(line.length - availWidth + 1) : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Text, { color: "gray", dimColor: true, children: ["  ", hint] })] }));
 }
 function renderLineWithCursor(line, col, showCursor) {
     return line.slice(0, col) + (showCursor ? '█' : '') + line.slice(col);
+}
+function viewportLine(line, col, width, active) {
+    // If line fits, render normally
+    if (line.length < width)
+        return renderLineWithCursor(line, col, active);
+    // Slide window so cursor stays in view, roughly centered
+    let start = Math.max(0, col - Math.floor(width / 2));
+    if (start + width > line.length + 1) {
+        start = Math.max(0, line.length + 1 - width);
+    }
+    const hasLeft = start > 0;
+    const sliceW = width - (hasLeft ? 1 : 0) - 1; // -1 for right indicator space
+    const slice = line.slice(start, start + sliceW);
+    const hasRight = start + sliceW < line.length;
+    const adjCol = col - start;
+    return (hasLeft ? '…' : '') +
+        renderLineWithCursor(slice, Math.max(0, Math.min(adjCol, slice.length)), active) +
+        (hasRight ? '…' : '');
 }

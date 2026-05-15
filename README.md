@@ -72,20 +72,25 @@ This isn't autocomplete. Miii is a **full autonomous agent loop:**
 
   ● Researching: refactor auth module to use JWT
   ● Reading src/auth/session.ts
+    Read 42 lines
   ● Reading src/middleware/auth.ts
-  ● Reading src/routes/login.ts
+    Read 28 lines
 
-  Planning: 3 file(s) to change
+  ─ plan (2 actions)
+    ◦ edit_file src/auth/session.ts
+    ◦ edit_file src/middleware/auth.ts
 
   ⚠ edit_file  src/auth/session.ts   y approve  n deny
   > y
 
-  ● Editing src/auth/session.ts
-  ● Editing src/middleware/auth.ts
-  ● Editing src/routes/login.ts
-  ● Running tests
+  ● edit_file src/auth/session.ts
+    Wrote 12 lines
+  ● edit_file src/middleware/auth.ts
+    Wrote 8 lines
+  ● run_tests
+    ✅ Tests passed
 
-  ─ refactor done — 3 file(s) processed
+  ─ refactor done — 2 file(s) processed
 ```
 
 ---

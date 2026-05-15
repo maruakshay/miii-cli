@@ -7,6 +7,7 @@ import { getSystemPrompt } from '../../tools/index.js'
 import type { Tool } from '../../tools/index.js'
 import { saveConfig } from '../../config.js'
 import { loadSession, saveSession, listSessions, deleteSession, deleteAllSessions } from '../../sessions.js'
+import { compactContext } from '../../tasks/compactor.js'
 import { runDeepThink } from '../deepThink.js'
 import { buildGitContext, looksCodeRelated } from '../git-context.js'
 import { buildIndex } from '../../index/indexer.js'
@@ -184,6 +185,29 @@ export function useSubmit(deps: SubmitDeps) {
       setCurrentModel(name)
       currentModelRef.current = name
       printer.systemMsg(`model → ${name}`)
+      return
+    }
+
+    if (cmd === '/compact') {
+      const full = buildContext()
+      if (full.length <= 2) { printer.systemMsg('nothing to compact'); return }
+      printer.systemMsg(`compacting ${full.length} messages…`)
+      setStatus('thinking')
+      try {
+        const compacted = await compactContext(full, {
+          provider: config.provider,
+          model: currentModelRef.current,
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey,
+        }, undefined)
+        historyRef.current = compacted.filter(m => m.role !== 'system')
+        saveSession(sessionNameRef.current, historyRef.current)
+        printer.systemMsg(`compacted: ${full.length} → ${compacted.length} messages`)
+      } catch (e) {
+        printer.errorMsg(`compact failed: ${e}`)
+      } finally {
+        setStatus('idle')
+      }
       return
     }
 

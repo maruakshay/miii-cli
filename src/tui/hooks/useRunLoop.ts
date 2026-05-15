@@ -36,18 +36,19 @@ export function useRunLoop(
   const [currentTool, setCurrentTool] = useState<string | undefined>()
   const [taskLabel, setTaskLabel] = useState<string | undefined>()
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
-  const permissionResolveRef = useRef<((approved: boolean) => void) | null>(null)
+  const permissionResolveRef = useRef<((result: 'yes' | 'session' | 'no') => void) | null>(null)
   const [compactRequest, setCompactRequest] = useState<CompactRequest | null>(null)
   const compactResolveRef = useRef<((approved: boolean) => void) | null>(null)
   const checkpointRef = useRef<Map<string, string | null>>(new Map())
+  const sessionApprovedRef = useRef<Set<string>>(new Set())
   const thinkingStartRef = useRef<number>(0)
   const extraToolsRef = useRef(extraTools)
   extraToolsRef.current = extraTools
   const pushHistoryRef = useRef(pushHistory)
   useEffect(() => { pushHistoryRef.current = pushHistory }, [pushHistory])
 
-  const resolvePermission = useCallback((approved: boolean) => {
-    permissionResolveRef.current?.(approved)
+  const resolvePermission = useCallback((result: 'yes' | 'session' | 'no') => {
+    permissionResolveRef.current?.(result)
     permissionResolveRef.current = null
     setPermissionRequest(null)
   }, [])
@@ -78,8 +79,18 @@ export function useRunLoop(
         compactResolveRef.current = resolve
         setCompactRequest({ messageCount: contextMsgs.length })
       })
-      msgs = approved ? compactContext(contextMsgs, goal) : contextMsgs
-      if (!approved) printer.systemMsg('keeping full context — responses may be slower')
+      if (approved) {
+        printer.systemMsg('compacting context…')
+        msgs = await compactContext(contextMsgs, {
+          provider: config.provider,
+          model: currentModelRef.current,
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey,
+        }, goal)
+        printer.systemMsg(`compacted: ${contextMsgs.length} → ${msgs.length} messages`)
+      } else {
+        printer.systemMsg('keeping full context — responses may be slower')
+      }
     }
     abortRef.current = new AbortController()
 
@@ -107,6 +118,8 @@ export function useRunLoop(
         if (displayText) printer.assistantMsg(displayText)
         pushHistoryRef.current({ role: 'assistant', content: fullText })
 
+        if (pendingTools.length) printer.planSummary(pendingTools)
+
         if (!pendingTools.length) {
           const hasFencedCode = /```[\w]*\n[\s\S]{50,}?\n```/.test(fullText)
           if (hasFencedCode && depth < MAX_TOOL_DEPTH - 1) {
@@ -131,11 +144,18 @@ export function useRunLoop(
             setCurrentTool(tc.name)
 
             if (PERMISSION_TOOLS.has(tc.name)) {
-              const approved = await new Promise<boolean>(resolve => {
-                permissionResolveRef.current = resolve
-                setPermissionRequest({ toolName: tc.name, args: tc.args })
-              })
-              if (!approved) {
+              const sessionKey = tc.name
+              let decision: 'yes' | 'session' | 'no'
+              if (sessionApprovedRef.current.has(sessionKey)) {
+                decision = 'yes'
+              } else {
+                decision = await new Promise<'yes' | 'session' | 'no'>(resolve => {
+                  permissionResolveRef.current = resolve
+                  setPermissionRequest({ toolName: tc.name, args: tc.args })
+                })
+              }
+              if (decision === 'session') sessionApprovedRef.current.add(sessionKey)
+              if (decision === 'no') {
                 printer.systemMsg(`denied: ${tc.name}`)
                 next.push({ role: 'user', content: `Tool ${tc.name} was denied by the user` })
                 break
@@ -158,6 +178,7 @@ export function useRunLoop(
               try {
                 printer.toolCallStart(tc.name, tc.args)
                 const result = await tool.execute(tc.args)
+                printer.toolResultSummary(tc.name, tc.args, result)
                 if (SHOW_RESULT_TOOLS.has(tc.name)) printer.toolMsg(tc.name, result)
                 next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
               } catch (e) {
@@ -184,6 +205,7 @@ export function useRunLoop(
               printer.toolCallStart('run_tests', {})
               const testResult = await testTool.execute({})
               if (testResult && !testResult.startsWith('(no test script') && !testResult.startsWith('(no package.json')) {
+                printer.toolResultSummary('run_tests', {}, testResult)
                 printer.toolMsg('run_tests', testResult)
                 next.push({ role: 'user', content: `Test results after edits:\n${testResult}` })
               }
@@ -209,8 +231,9 @@ export function useRunLoop(
 
   const handleAbort = useCallback(() => {
     abortRef.current?.abort()
+    sessionApprovedRef.current.clear()
     if (permissionResolveRef.current) {
-      permissionResolveRef.current(false)
+      permissionResolveRef.current('no')
       permissionResolveRef.current = null
       setPermissionRequest(null)
     }

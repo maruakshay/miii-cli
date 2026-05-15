@@ -11,6 +11,7 @@ import { AtPicker } from './AtPicker.js'
 const BUILTIN_COMMANDS: Skill[] = [
   // ── Session ──────────────────────────────────────────────────────────────
   { ns: 'builtin', name: 'new',        description: 'start a fresh session with a new auto-named history' },
+  { ns: 'builtin', name: 'compact',    description: 'summarise conversation history now using the LLM — frees context before miii asks' },
   { ns: 'builtin', name: 'clear',      description: 'wipe chat history for the current session' },
   { ns: 'builtin', name: 'sessions',   description: 'list all saved sessions with message counts' },
   { ns: 'builtin', name: 'session',    description: 'switch to a saved session — /session <name>' },
@@ -51,7 +52,7 @@ interface Props {
   cwd: string
   planningMode?: boolean
   permissionRequest?: { toolName: string; args: Record<string, unknown> } | null
-  onPermissionResponse?: (approved: boolean) => void
+  onPermissionResponse?: (result: 'yes' | 'session' | 'no') => void
   compactRequest?: { messageCount: number } | null
   onCompactResponse?: (approved: boolean) => void
   onSubmit: (text: string) => void
@@ -226,8 +227,9 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
 
   useInput((input: string, key: Key) => {
     if (permissionRequest && onPermissionResponse) {
-      if (input === 'y' || input === 'Y') { onPermissionResponse(true); return }
-      if (input === 'n' || input === 'N' || key.escape) { onPermissionResponse(false); return }
+      if (input === 'y' || input === 'Y') { onPermissionResponse('yes'); return }
+      if (input === 'a' || input === 'A') { onPermissionResponse('session'); return }
+      if (input === 'n' || input === 'N' || key.escape) { onPermissionResponse('no'); return }
       return
     }
 
@@ -435,6 +437,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
 
   const { stdout } = useStdout()
   const cols = stdout.columns ?? 80
+  const availWidth = Math.max(20, cols - 4) // paddingX(2) + "> "(2)
 
   const isProcessing = status !== 'idle'
   const promptColor = (permissionRequest || compactRequest) ? 'yellow' : isProcessing ? 'yellow' : 'green'
@@ -443,7 +446,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
   const hint = compactRequest
     ? 'y  compact   n  keep full context'
     : permissionRequest
-    ? 'y  approve   n  deny'
+    ? 'y  approve once   a  approve for session   n  deny'
     : isProcessing
     ? 'esc  interrupt'
     : pasteLines > 0
@@ -472,7 +475,13 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
       <Box paddingX={1}>
         <Text color={promptColor} bold>{'> '}</Text>
         <Box flexDirection="column" flexGrow={1}>
-          {(permissionRequest || compactRequest) ? (
+          {permissionRequest ? (
+            <Box gap={3}>
+              <Text color="green" bold>y  once</Text>
+              <Text color="cyan" bold>a  session</Text>
+              <Text color="red" bold>n  deny</Text>
+            </Box>
+          ) : compactRequest ? (
             <Box gap={2}>
               <Text color="green" bold>y  yes</Text>
               <Text color="red" bold>n  no</Text>
@@ -494,10 +503,10 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
             <Text>{isActive ? '█' : ' '}</Text>
           ) : (
             lines.map((line, i) => (
-              <Text key={i} wrap="wrap">
+              <Text key={i}>
                 {i === cursor.row
-                  ? renderLineWithCursor(line, cursor.col, isActive)
-                  : line}
+                  ? viewportLine(line, cursor.col, availWidth, isActive)
+                  : line.length > availWidth ? '…' + line.slice(line.length - availWidth + 1) : line}
               </Text>
             ))
           )}
@@ -511,4 +520,25 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
 
 function renderLineWithCursor(line: string, col: number, showCursor: boolean): string {
   return line.slice(0, col) + (showCursor ? '█' : '') + line.slice(col)
+}
+
+function viewportLine(line: string, col: number, width: number, active: boolean): string {
+  // If line fits, render normally
+  if (line.length < width) return renderLineWithCursor(line, col, active)
+
+  // Slide window so cursor stays in view, roughly centered
+  let start = Math.max(0, col - Math.floor(width / 2))
+  if (start + width > line.length + 1) {
+    start = Math.max(0, line.length + 1 - width)
+  }
+
+  const hasLeft  = start > 0
+  const sliceW   = width - (hasLeft ? 1 : 0) - 1 // -1 for right indicator space
+  const slice    = line.slice(start, start + sliceW)
+  const hasRight = start + sliceW < line.length
+  const adjCol   = col - start
+
+  return (hasLeft ? '…' : '') +
+    renderLineWithCursor(slice, Math.max(0, Math.min(adjCol, slice.length)), active) +
+    (hasRight ? '…' : '')
 }

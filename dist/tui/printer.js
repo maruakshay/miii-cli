@@ -192,12 +192,82 @@ function toolLabel(name, args) {
         }
     }
 }
+export function planSummary(tools) {
+    if (!tools.length)
+        return;
+    const header = gray(`─ plan (${tools.length} action${tools.length === 1 ? '' : 's'})`);
+    write(header + '\n');
+    for (const t of tools) {
+        const dot = DELETE_TOOLS.has(t.name) ? red('◦') : EDIT_TOOLS.has(t.name) ? green('◦') : blue('◦');
+        const label = toolLabel(t.name, t.args);
+        write(`  ${dot} ${gray(label)}\n`);
+    }
+}
 export function toolCallStart(name, args) {
     const dot = DELETE_TOOLS.has(name) ? red('●') : EDIT_TOOLS.has(name) ? green('●') : blue('●');
-    write(`  ${dot} ${toolLabel(name, args)}\n`);
+    write(`\n${dot} ${bold(toolLabel(name, args))}\n`);
+}
+export function toolResultSummary(name, args, result) {
+    const a = args;
+    const lines = result.trim().split('\n').filter(Boolean);
+    let summary = '';
+    switch (name) {
+        case 'edit_file':
+        case 'write_file': {
+            const n = (a.content ?? '').split('\n').length;
+            summary = `Wrote ${n} line${n === 1 ? '' : 's'}`;
+            break;
+        }
+        case 'create_file': {
+            const n = (a.content ?? '').split('\n').length;
+            summary = `Created file · ${n} line${n === 1 ? '' : 's'}`;
+            break;
+        }
+        case 'patch_file':
+            summary = lines[0] ?? 'Applied patch';
+            break;
+        case 'delete_file':
+            summary = 'Deleted';
+            break;
+        case 'move_file':
+            summary = `Moved → ${a.to ?? ''}`;
+            break;
+        case 'read_file': {
+            const n = lines.length;
+            summary = `Read ${n} line${n === 1 ? '' : 's'}`;
+            break;
+        }
+        case 'list_files':
+            summary = `Found ${lines.length} file${lines.length === 1 ? '' : 's'}`;
+            break;
+        case 'run_command':
+        case 'run_tests':
+        case 'git_commit':
+        case 'git_status':
+        case 'git_diff':
+        case 'git_log': {
+            const first = lines[0]?.slice(0, 80) ?? '';
+            const more = lines.length > 1 ? ` (+${lines.length - 1} more)` : '';
+            summary = first + more;
+            break;
+        }
+        case 'web_search':
+            summary = `Found ${lines.length} result${lines.length === 1 ? '' : 's'}`;
+            break;
+        case 'web_extract':
+            summary = `Extracted ${lines.length} line${lines.length === 1 ? '' : 's'}`;
+            break;
+        case 'search_codebase':
+            summary = lines[0]?.slice(0, 80) ?? 'Done';
+            break;
+        default:
+            summary = lines[0]?.slice(0, 80) ?? 'Done';
+    }
+    if (summary)
+        write(gray(`  ${summary}`) + '\n');
 }
 export function toolMsg(name, result) {
-    const preview = result.length > 250 ? result.slice(0, 250) + '…' : result;
+    const preview = result.length > 600 ? result.slice(0, 600) + '…' : result;
     const body = preview.trim()
         ? preview.split('\n').map(l => gray('    ' + l)).join('\n')
         : '';
