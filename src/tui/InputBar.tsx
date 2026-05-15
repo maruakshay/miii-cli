@@ -1,9 +1,10 @@
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { Box, Text, useStdout } from 'ink'
 import { InputArea } from './components/InputArea.js'
 import { ModelPicker } from './components/ModelPicker.js'
+import { ConfigPicker } from './components/ConfigPicker.js'
 import { Divider } from './components/StatusBar.js'
-import { tools } from '../tools/index.js'
+import { tools, getSystemPrompt } from '../tools/index.js'
 import type { Tool } from '../tools/index.js'
 import type { SkillLoader } from '../skills/loader.js'
 import type { Config } from '../types.js'
@@ -20,6 +21,8 @@ import { useSubmit } from './hooks/useSubmit.js'
 import { runDeepThink } from './deepThink.js'
 import { setInkInstance } from './printer.js'
 import { createSearchCodebaseTool } from '../index/tool.js'
+import { saveConfig } from '../config.js'
+import { getTavilyKey, saveTavilyKey } from '../tavily/client.js'
 
 interface Props {
   config: Config
@@ -27,6 +30,7 @@ interface Props {
   cwd: string
   session: string
   version?: string
+  mcpTools?: Tool[]
 }
 
 function formatElapsed(ms: number): string {
@@ -37,7 +41,8 @@ function formatElapsed(ms: number): string {
   return rem === 0 ? `${m}m` : `${m}m ${rem}s`
 }
 
-export function InputBar({ config, skills, cwd, session, version }: Props) {
+export function InputBar({ config: initialConfig, skills, cwd, session, version, mcpTools = [] }: Props) {
+  const [config, setConfig] = useState(initialConfig)
   const { stdout, write: stdoutWrite } = useStdout()
   const cols = stdout.columns ?? 80
 
@@ -48,6 +53,8 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
   , [])
 
   const [planningMode, setPlanningMode] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
+  const [tavilyKey, setTavilyKey] = useState(() => getTavilyKey())
   const macroQueueRef = useRef(new MacroQueue())
   const executorRef = useRef(new TaskExecutor(tools))
   const lastGitStatusRef = useRef<string>('')
@@ -57,13 +64,17 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
     setSessionName, sessionNameRef,
     historyRef, saveTimerRef, systemPromptRef,
     pushHistory, buildContext, renameFromMessage,
-  } = useSession(session, cwd, config)
+  } = useSession(session, cwd, config, mcpTools)
+
+  const sysPrompt = useCallback((extra = '') =>
+    getSystemPrompt(`\n- CWD: ${cwd}${extra}`, mcpTools)
+  , [mcpTools, cwd])
 
   const {
     currentModel, setCurrentModel, currentModelRef,
     pickerOpen, setPickerOpen,
     pickerModels, pickerLoading, pickerError, pullState,
-    openPicker, handleModelSelect, handleModelPull,
+    handleModelSelect, handleModelPull,
   } = useModelPicker(config)
 
   const deepThinkTool = useMemo<Tool>(() => ({
@@ -79,7 +90,7 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
   }), [config])
 
   const searchTool = useMemo<Tool>(() => createSearchCodebaseTool(config, cwd), [config, cwd])
-  const allTools = useMemo<Tool[]>(() => [...tools, deepThinkTool, searchTool], [deepThinkTool, searchTool])
+  const allTools = useMemo<Tool[]>(() => [...tools, deepThinkTool, searchTool, ...mcpTools], [deepThinkTool, searchTool, mcpTools])
 
   const {
     status, setStatus, tick,
@@ -88,6 +99,7 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
     thinkingStartRef,
     runLoop, handleAbort,
     permissionRequest, resolvePermission,
+    compactRequest, resolveCompact,
   } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef)
 
   const { runRefactor } = useRefactor({
@@ -101,17 +113,36 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
   const { handleSubmit } = useSubmit({
     config, skills, cwd, version, currentModelRef, setCurrentModel,
     historyRef, sessionNameRef, saveTimerRef, systemPromptRef, abortRef,
-    planningMode, setPlanningMode, runLoop, buildContext, pushHistory,
-    setSessionName, renameFromMessage, openPicker,
+    setPlanningMode, runLoop, buildContext, pushHistory,
+    setSessionName, renameFromMessage,
     setStatus, setTaskLabel, setCurrentTool,
-    runRefactor, handleGit, lastGitStatusRef,
+    runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig,
+    setConfigOpen,
   })
 
   const skillList = skills.list()
 
   return (
     <Box flexDirection="column">
-      {pickerOpen ? (
+      {configOpen ? (
+        <>
+          <ConfigPicker
+            config={config}
+            currentModel={currentModel}
+            tavilyKey={tavilyKey}
+            onUpdate={({ model, ...configPatch }) => {
+              if (model) setCurrentModel(model)
+              if (Object.keys(configPatch).length) {
+                setConfig(c => ({ ...c, ...configPatch }))
+                saveConfig(configPatch)
+              }
+            }}
+            onTavilyKey={(key) => { saveTavilyKey(key); setTavilyKey(key) }}
+            onClose={() => { setConfigOpen(false) }}
+          />
+          <Divider cols={cols} />
+        </>
+      ) : pickerOpen ? (
         <>
           <ModelPicker
             models={pickerModels}
@@ -125,6 +156,15 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
           />
           <Divider cols={cols} />
         </>
+      ) : compactRequest ? (
+        <Box paddingX={1} flexDirection="column">
+          <Box gap={1}>
+            <Text color="yellow">⚠</Text>
+            <Text color="white" bold>context is large</Text>
+            <Text color="gray">({compactRequest.messageCount} messages)</Text>
+          </Box>
+          <Text color="gray" dimColor>compact to keep responses fast, or keep full history</Text>
+        </Box>
       ) : permissionRequest ? (
         <Box paddingX={1} gap={1}>
           <Text color="yellow">⚠</Text>
@@ -153,6 +193,8 @@ export function InputBar({ config, skills, cwd, session, version }: Props) {
         planningMode={planningMode}
         permissionRequest={permissionRequest}
         onPermissionResponse={resolvePermission}
+        compactRequest={compactRequest}
+        onCompactResponse={resolveCompact}
         onSubmit={handleSubmit}
         onAbort={handleAbort}
         history={historyRef.current.filter(m => m.role === 'user').map(m => m.content)}

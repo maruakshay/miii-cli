@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { ChatMessage, Config } from '../../types.js'
 import { loadSession, saveSession, deleteSession } from '../../sessions.js'
 import { getSystemPrompt } from '../../tools/index.js'
+import type { Tool } from '../../tools/index.js'
 import { getTavilyKey, saveTavilyKey } from '../../tavily/client.js'
 import * as printer from '../printer.js'
 import { loadLongMemory, saveLongMemory, mergeFacts, formatMemoryBlock } from '../../memory/store.js'
@@ -10,25 +11,25 @@ import { extractFacts } from '../../memory/extractor.js'
 
 const SHORT_MEMORY_SIZE = 40
 
-function buildSystemPrompt(cwd: string, facts: MemoryFact[]): string {
-  return getSystemPrompt(`\n- CWD: ${cwd}`) + formatMemoryBlock(facts)
+function buildSystemPrompt(cwd: string, facts: MemoryFact[], extraTools: Tool[] = []): string {
+  return getSystemPrompt(`\n- CWD: ${cwd}`, extraTools) + formatMemoryBlock(facts)
 }
 
-export function useSession(initialSession: string, cwd: string, config: Config) {
+export function useSession(initialSession: string, cwd: string, config: Config, extraTools: Tool[] = []) {
   const [sessionName, setSessionName] = useState(initialSession)
   const sessionNameRef = useRef(initialSession)
   const historyRef = useRef<ChatMessage[]>([])
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const firstMessageSentRef = useRef(false)
   const longMemoryRef = useRef<MemoryFact[]>([])
-  const systemPromptRef = useRef(buildSystemPrompt(cwd, []))
+  const systemPromptRef = useRef(buildSystemPrompt(cwd, [], extraTools))
 
   useEffect(() => { sessionNameRef.current = sessionName }, [sessionName])
 
   useEffect(() => {
     const facts = loadLongMemory(initialSession)
     longMemoryRef.current = facts
-    systemPromptRef.current = buildSystemPrompt(cwd, facts)
+    systemPromptRef.current = buildSystemPrompt(cwd, facts, extraTools)
     if (facts.length) printer.systemMsg(`long memory: ${facts.length} facts loaded`)
 
     const history = loadSession(initialSession)
@@ -57,7 +58,7 @@ export function useSession(initialSession: string, cwd: string, config: Config) 
         if (!newFacts.length) return
         const updated = mergeFacts(longMemoryRef.current, newFacts)
         longMemoryRef.current = updated
-        systemPromptRef.current = buildSystemPrompt(cwd, updated)
+        systemPromptRef.current = buildSystemPrompt(cwd, updated, extraTools)
         saveLongMemory(sessionNameRef.current, updated)
       })
     }

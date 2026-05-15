@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { MutableRefObject } from 'react'
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
 import type { Config, ChatMessage, Status } from '../../types.js'
 import { chat } from '../../llm/stream.js'
 import { tools as staticTools } from '../../tools/index.js'
@@ -12,10 +13,15 @@ const MAX_TOOL_DEPTH = 6
 const FILE_EDIT_TOOLS = new Set(['edit_file', 'create_file', 'patch_file', 'delete_file'])
 const SHOW_RESULT_TOOLS = new Set(['run_tests', 'git_commit'])
 const PERMISSION_TOOLS = new Set(['edit_file', 'patch_file', 'delete_file', 'create_file', 'move_file', 'run_command', 'git_commit'])
+const CHECKPOINT_TOOLS = new Set(['edit_file', 'patch_file', 'create_file', 'delete_file'])
 
 export interface PermissionRequest {
   toolName: string
   args: Record<string, unknown>
+}
+
+export interface CompactRequest {
+  messageCount: number
 }
 
 export function useRunLoop(
@@ -31,6 +37,9 @@ export function useRunLoop(
   const [taskLabel, setTaskLabel] = useState<string | undefined>()
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
   const permissionResolveRef = useRef<((approved: boolean) => void) | null>(null)
+  const [compactRequest, setCompactRequest] = useState<CompactRequest | null>(null)
+  const compactResolveRef = useRef<((approved: boolean) => void) | null>(null)
+  const checkpointRef = useRef<Map<string, string | null>>(new Map())
   const thinkingStartRef = useRef<number>(0)
   const extraToolsRef = useRef(extraTools)
   extraToolsRef.current = extraTools
@@ -43,6 +52,12 @@ export function useRunLoop(
     setPermissionRequest(null)
   }, [])
 
+  const resolveCompact = useCallback((approved: boolean) => {
+    compactResolveRef.current?.(approved)
+    compactResolveRef.current = null
+    setCompactRequest(null)
+  }, [])
+
   useEffect(() => {
     if (status === 'idle') return
     const t = setInterval(() => setTick(n => n + 1), 80)
@@ -52,9 +67,20 @@ export function useRunLoop(
   const runLoop = useCallback(async (contextMsgs: ChatMessage[], depth = 0, goal?: string): Promise<void> => {
     if (depth >= MAX_TOOL_DEPTH) { abortRef.current = null; setStatus('idle'); return }
     setStatus('thinking')
-    if (depth === 0) thinkingStartRef.current = Date.now()
+    if (depth === 0) {
+      thinkingStartRef.current = Date.now()
+      checkpointRef.current.clear()
+    }
 
-    const msgs = shouldCompact(contextMsgs) ? compactContext(contextMsgs, goal) : contextMsgs
+    let msgs = contextMsgs
+    if (shouldCompact(contextMsgs)) {
+      const approved = await new Promise<boolean>(resolve => {
+        compactResolveRef.current = resolve
+        setCompactRequest({ messageCount: contextMsgs.length })
+      })
+      msgs = approved ? compactContext(contextMsgs, goal) : contextMsgs
+      if (!approved) printer.systemMsg('keeping full context — responses may be slower')
+    }
     abortRef.current = new AbortController()
 
     await chat({
@@ -113,6 +139,18 @@ export function useRunLoop(
                 printer.systemMsg(`denied: ${tc.name}`)
                 next.push({ role: 'user', content: `Tool ${tc.name} was denied by the user` })
                 break
+              }
+
+              // Checkpoint: store pre-execution file state
+              if (CHECKPOINT_TOOLS.has(tc.name)) {
+                const path = tc.args.path as string | undefined
+                if (path && !checkpointRef.current.has(path)) {
+                  try {
+                    checkpointRef.current.set(path, readFileSync(path, 'utf-8'))
+                  } catch {
+                    checkpointRef.current.set(path, null)
+                  }
+                }
               }
             }
 
@@ -176,6 +214,27 @@ export function useRunLoop(
       permissionResolveRef.current = null
       setPermissionRequest(null)
     }
+    if (compactResolveRef.current) {
+      compactResolveRef.current(false)
+      compactResolveRef.current = null
+      setCompactRequest(null)
+    }
+    // Restore checkpointed files
+    if (checkpointRef.current.size > 0) {
+      let restored = 0
+      for (const [path, content] of checkpointRef.current) {
+        try {
+          if (content === null) {
+            if (existsSync(path)) unlinkSync(path)
+          } else {
+            writeFileSync(path, content, 'utf-8')
+          }
+          restored++
+        } catch {}
+      }
+      checkpointRef.current.clear()
+      if (restored > 0) printer.systemMsg(`restored ${restored} file(s) to pre-session state`)
+    }
     setStatus('idle')
   }, [])
 
@@ -186,5 +245,6 @@ export function useRunLoop(
     thinkingStartRef,
     runLoop, handleAbort,
     permissionRequest, resolvePermission,
+    compactRequest, resolveCompact,
   }
 }

@@ -1,4 +1,6 @@
 export async function chat(cfg) {
+    if (cfg.provider === 'anthropic')
+        return chatAnthropic(cfg);
     if (cfg.provider === 'openai-compat')
         return chatOpenAI(cfg);
     return chatOllama(cfg);
@@ -109,6 +111,45 @@ async function chatOpenAI(cfg) {
             }
         }
         await onDone(full);
+    }
+    catch (err) {
+        if (err?.name !== 'AbortError')
+            onError(toError(err));
+    }
+}
+async function chatAnthropic(cfg) {
+    const { model, messages, baseUrl, apiKey, signal, onDone, onError, onUsage } = cfg;
+    const url = baseUrl && baseUrl !== 'http://localhost:11434'
+        ? `${baseUrl}/v1/messages`
+        : 'https://api.anthropic.com/v1/messages';
+    const systemParts = messages.filter(m => m.role === 'system').map(m => m.content);
+    const filtered = messages.filter(m => m.role !== 'system');
+    try {
+        const body = {
+            model,
+            max_tokens: 8192,
+            messages: filtered,
+        };
+        if (systemParts.length)
+            body.system = systemParts.join('\n\n');
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                'x-api-key': apiKey ?? '',
+                'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify(body),
+            signal,
+        });
+        if (!res.ok) {
+            onError(new Error(`Anthropic ${res.status}: ${await res.text()}`));
+            return;
+        }
+        const obj = await res.json();
+        const text = (obj.content ?? []).filter(c => c.type === 'text').map(c => c.text).join('');
+        onUsage?.(obj.usage?.input_tokens ?? 0, obj.usage?.output_tokens ?? 0);
+        await onDone(text);
     }
     catch (err) {
         if (err?.name !== 'AbortError')

@@ -4,10 +4,11 @@ import type { Config, ChatMessage, Status } from '../../types.js'
 import { readFile, guardPath } from '../../files/ops.js'
 import type { SkillLoader } from '../../skills/loader.js'
 import { getSystemPrompt } from '../../tools/index.js'
+import type { Tool } from '../../tools/index.js'
+import { saveConfig } from '../../config.js'
 import { loadSession, saveSession, listSessions, deleteSession, deleteAllSessions } from '../../sessions.js'
 import { runDeepThink } from '../deepThink.js'
 import { buildGitContext, looksCodeRelated } from '../git-context.js'
-import { getTavilyKey, saveTavilyKey } from '../../tavily/client.js'
 import { buildIndex } from '../../index/indexer.js'
 import { indexStats, clearIndex } from '../../index/store.js'
 import { embed } from '../../index/embedder.js'
@@ -45,20 +46,21 @@ interface SubmitDeps {
   saveTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>
   systemPromptRef: MutableRefObject<string>
   abortRef: MutableRefObject<AbortController | null>
-  planningMode: boolean
   setPlanningMode: (v: boolean) => void
   runLoop: (msgs: ChatMessage[], depth?: number, goal?: string) => Promise<void>
   buildContext: () => ChatMessage[]
   pushHistory: (msg: ChatMessage) => void
   setSessionName: (name: string) => void
   renameFromMessage: (text: string) => void
-  openPicker: () => Promise<void>
   setStatus: (s: Status) => void
   setTaskLabel: (l: string | undefined) => void
   setCurrentTool: (t: string | undefined) => void
   runRefactor: (goal: string) => Promise<void>
   handleGit: (sub: string) => Promise<void>
   lastGitStatusRef: MutableRefObject<string>
+  mcpTools: Tool[]
+  setConfig: (updater: (c: import('../../types.js').Config) => import('../../types.js').Config) => void
+  setConfigOpen: (v: boolean) => void
 }
 
 export function useSubmit(deps: SubmitDeps) {
@@ -69,10 +71,10 @@ export function useSubmit(deps: SubmitDeps) {
     const {
       config, skills, cwd, version, currentModelRef, setCurrentModel,
       historyRef, sessionNameRef, saveTimerRef, systemPromptRef, abortRef,
-      planningMode, setPlanningMode, runLoop, buildContext, pushHistory,
-      setSessionName, renameFromMessage, openPicker,
+      setPlanningMode, runLoop, buildContext, pushHistory,
+      setSessionName, renameFromMessage,
       setStatus, setTaskLabel, setCurrentTool,
-      runRefactor, handleGit, lastGitStatusRef,
+      runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig, setConfigOpen,
     } = depsRef.current
 
     const cmd = text.trim()
@@ -101,19 +103,6 @@ export function useSubmit(deps: SubmitDeps) {
       return
     }
 
-    if (cmd === '/tavily-key' || cmd.startsWith('/tavily-key ')) {
-      const key = cmd.slice(11).trim()
-      if (!key) {
-        const existing = getTavilyKey()
-        printer.systemMsg(existing ? 'Tavily key set (use /tavily-key <key> to update)' : 'No Tavily key set. Usage: /tavily-key tvly-...')
-        return
-      }
-      if (!key.startsWith('tvly-')) { printer.systemMsg('Key should start with tvly-. Get yours at https://tavily.com'); return }
-      saveTavilyKey(key)
-      printer.systemMsg('Tavily API key saved to ~/.config/miii/tavily.key (mode 600)')
-      return
-    }
-
     if (cmd === '/skills' || cmd.startsWith('/skills ')) {
       const sub = cmd.slice(7).trim()
       if (!sub || sub === 'list') {
@@ -138,6 +127,57 @@ export function useSubmit(deps: SubmitDeps) {
       return
     }
 
+    if (cmd === '/config' || cmd.startsWith('/config ')) {
+      const sub = cmd.slice(7).trim()
+
+      if (!sub) {
+        setConfigOpen(true)
+        return
+      }
+
+      if (sub.startsWith('provider ')) {
+        const val = sub.slice(9).trim() as typeof config.provider
+        const valid = ['ollama', 'anthropic', 'openai-compat']
+        if (!valid.includes(val)) { printer.systemMsg(`valid providers: ${valid.join(', ')}`); return }
+        setConfig(c => ({ ...c, provider: val }))
+        saveConfig({ provider: val })
+        printer.systemMsg(`provider → ${val}`)
+        return
+      }
+
+      if (sub.startsWith('model ')) {
+        const val = sub.slice(6).trim()
+        if (!val) { printer.systemMsg('usage: /config model <name>'); return }
+        setConfig(c => ({ ...c, model: val }))
+        saveConfig({ model: val })
+        setCurrentModel(val)
+        currentModelRef.current = val
+        printer.systemMsg(`model → ${val}`)
+        return
+      }
+
+      if (sub.startsWith('key ')) {
+        const val = sub.slice(4).trim()
+        if (!val) { printer.systemMsg('usage: /config key <api-key>'); return }
+        setConfig(c => ({ ...c, apiKey: val }))
+        saveConfig({ apiKey: val })
+        printer.systemMsg(`apiKey → ${val.slice(0, 8)}…`)
+        return
+      }
+
+      if (sub.startsWith('url ')) {
+        const val = sub.slice(4).trim()
+        if (!val) { printer.systemMsg('usage: /config url <base-url>'); return }
+        setConfig(c => ({ ...c, baseUrl: val }))
+        saveConfig({ baseUrl: val })
+        printer.systemMsg(`baseUrl → ${val}`)
+        return
+      }
+
+      printer.systemMsg('usage: /config [provider|model|key|url] <value>')
+      return
+    }
+
     if (cmd === '/model' || cmd.startsWith('/model ')) {
       const name = cmd.slice(6).trim()
       if (!name) { printer.systemMsg(`current model: ${currentModelRef.current}`); return }
@@ -147,8 +187,6 @@ export function useSubmit(deps: SubmitDeps) {
       return
     }
 
-    if (cmd === '/models') { await openPicker(); return }
-
     if (cmd === '/new') {
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
       saveSession(sessionNameRef.current, historyRef.current)
@@ -156,7 +194,7 @@ export function useSubmit(deps: SubmitDeps) {
       historyRef.current = []
       setSessionName(newName)
       setPlanningMode(false)
-      systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`)
+      systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`, mcpTools)
       printer.systemMsg(`new session → ${newName}`)
       return
     }
@@ -165,7 +203,7 @@ export function useSubmit(deps: SubmitDeps) {
       historyRef.current = []
       saveSession(sessionNameRef.current, [])
       setPlanningMode(false)
-      systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`)
+      systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`, mcpTools)
       printer.systemMsg('chat cleared')
       return
     }
@@ -221,7 +259,8 @@ export function useSubmit(deps: SubmitDeps) {
       const topic = cmd.slice(5).trim()
       setPlanningMode(true)
       systemPromptRef.current = getSystemPrompt(
-        `\n- CWD: ${cwd}\n- MODE: Planning assistant. Help the user plan step by step. Ask clarifying questions. Suggest concrete next steps. Use plain text only — no markdown, no headers, no bold, no bullets with asterisks, no backtick blocks. Use numbered lists and plain indentation for structure.`
+        `\n- CWD: ${cwd}\n- MODE: Planning assistant. Help the user plan step by step. Ask clarifying questions. Suggest concrete next steps. Use plain text only — no markdown, no headers, no bold, no bullets with asterisks, no backtick blocks. Use numbered lists and plain indentation for structure.`,
+        mcpTools
       )
       const msg = topic ? `I want to plan: ${topic}` : 'I want to start planning. Help me think through my goals step by step.'
       printer.userMsg(msg)
@@ -232,7 +271,7 @@ export function useSubmit(deps: SubmitDeps) {
 
     if (cmd === '/plan:done') {
       setPlanningMode(false)
-      systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`)
+      systemPromptRef.current = getSystemPrompt(`\n- CWD: ${cwd}`, mcpTools)
       printer.systemMsg('planning mode off')
       return
     }

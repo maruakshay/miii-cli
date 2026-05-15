@@ -8,15 +8,22 @@ export interface Message {
   timestamp: number
 }
 
+export interface MCPServerConfig {
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+}
+
 export interface Config {
   model: string
-  provider: 'ollama' | 'openai-compat'
+  provider: 'ollama' | 'openai-compat' | 'anthropic'
   baseUrl: string
   systemPrompt?: string
   apiKey?: string
   gitContext?: boolean  // default true — set false to disable auto git context injection
   tavilyApiKey?: string
   embedModel?: string
+  mcpServers?: Record<string, MCPServerConfig>
 }
 
 export interface ChatMessage {

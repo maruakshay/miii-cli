@@ -11,6 +11,8 @@ import { SkillLoader } from './skills/loader.js'
 import { InputBar } from './tui/InputBar.js'
 import { welcome } from './tui/printer.js'
 import { ensureOllama } from './llm/ollama.js'
+import { loadMCPTools } from './mcp/client.js'
+import { needsSetup, runSetup } from './setup.js'
 
 const require = createRequire(import.meta.url)
 
@@ -70,6 +72,8 @@ export async function lazyInit(): Promise<void> {
     alias: { m: 'model', u: 'url', p: 'provider', s: 'session' },
   })
 
+  if (needsSetup()) await runSetup()
+
   const config = loadConfig()
   if (argv.model) config.model = argv.model
   if (argv.url) config.baseUrl = argv.url
@@ -91,15 +95,26 @@ export async function lazyInit(): Promise<void> {
     checkLatestVersion(currentVersion, !!argv.update),
   ])
 
+  // Load MCP servers if configured
+  let mcpTools: import('./tools/index.js').Tool[] = []
+  let mcpClients: import('./mcp/client.js').MCPClient[] = []
+  if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+    const result = await loadMCPTools(config.mcpServers)
+    mcpTools = result.tools
+    mcpClients = result.clients
+    if (mcpTools.length) process.stderr.write(`MCP: loaded ${mcpTools.length} tool(s) from ${mcpClients.length} server(s)\n`)
+  }
+
   // Print welcome banner to scrollback BEFORE Ink starts
   welcome(config.provider, config.model, process.cwd(), currentVersion, updateAvailable, linked)
 
   const sessionName = (argv.session as string) || `s-${Date.now()}`
 
   const { waitUntilExit } = render(
-    React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName, version: currentVersion }),
+    React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName, version: currentVersion, mcpTools }),
     { exitOnCtrlC: false }
   )
 
   await waitUntilExit()
+  for (const c of mcpClients) c.close()
 }

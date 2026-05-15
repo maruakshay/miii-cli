@@ -1,10 +1,11 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { InputArea } from './components/InputArea.js';
 import { ModelPicker } from './components/ModelPicker.js';
+import { ConfigPicker } from './components/ConfigPicker.js';
 import { Divider } from './components/StatusBar.js';
-import { tools } from '../tools/index.js';
+import { tools, getSystemPrompt } from '../tools/index.js';
 import { toolArgSummary } from './printer.js';
 import { MacroQueue } from '../tasks/queue.js';
 import { TaskExecutor } from '../tasks/executor.js';
@@ -18,6 +19,8 @@ import { useSubmit } from './hooks/useSubmit.js';
 import { runDeepThink } from './deepThink.js';
 import { setInkInstance } from './printer.js';
 import { createSearchCodebaseTool } from '../index/tool.js';
+import { saveConfig } from '../config.js';
+import { getTavilyKey, saveTavilyKey } from '../tavily/client.js';
 function formatElapsed(ms) {
     const s = Math.floor(ms / 1000);
     if (s < 60)
@@ -26,18 +29,22 @@ function formatElapsed(ms) {
     const rem = s % 60;
     return rem === 0 ? `${m}m` : `${m}m ${rem}s`;
 }
-export function InputBar({ config, skills, cwd, session, version }) {
+export function InputBar({ config: initialConfig, skills, cwd, session, version, mcpTools = [] }) {
+    const [config, setConfig] = useState(initialConfig);
     const { stdout, write: stdoutWrite } = useStdout();
     const cols = stdout.columns ?? 80;
     useEffect(() => { setInkInstance(stdoutWrite); }, []);
     const phraseSeq = useMemo(() => Array.from({ length: 100 }, () => Math.floor(Math.random() * THINKING_PHRASES.length)), []);
     const [planningMode, setPlanningMode] = useState(false);
+    const [configOpen, setConfigOpen] = useState(false);
+    const [tavilyKey, setTavilyKey] = useState(() => getTavilyKey());
     const macroQueueRef = useRef(new MacroQueue());
     const executorRef = useRef(new TaskExecutor(tools));
     const lastGitStatusRef = useRef('');
     const abortRef = useRef(null);
-    const { setSessionName, sessionNameRef, historyRef, saveTimerRef, systemPromptRef, pushHistory, buildContext, renameFromMessage, } = useSession(session, cwd, config);
-    const { currentModel, setCurrentModel, currentModelRef, pickerOpen, setPickerOpen, pickerModels, pickerLoading, pickerError, pullState, openPicker, handleModelSelect, handleModelPull, } = useModelPicker(config);
+    const { setSessionName, sessionNameRef, historyRef, saveTimerRef, systemPromptRef, pushHistory, buildContext, renameFromMessage, } = useSession(session, cwd, config, mcpTools);
+    const sysPrompt = useCallback((extra = '') => getSystemPrompt(`\n- CWD: ${cwd}${extra}`, mcpTools), [mcpTools, cwd]);
+    const { currentModel, setCurrentModel, currentModelRef, pickerOpen, setPickerOpen, pickerModels, pickerLoading, pickerError, pullState, handleModelSelect, handleModelPull, } = useModelPicker(config);
     const deepThinkTool = useMemo(() => ({
         name: 'deep_think',
         description: 'Research tool: gather info from files and web before answering.',
@@ -48,8 +55,8 @@ export function InputBar({ config, skills, cwd, session, version }) {
         },
     }), [config]);
     const searchTool = useMemo(() => createSearchCodebaseTool(config, cwd), [config, cwd]);
-    const allTools = useMemo(() => [...tools, deepThinkTool, searchTool], [deepThinkTool, searchTool]);
-    const { status, setStatus, tick, currentTool, setCurrentTool, taskLabel, setTaskLabel, thinkingStartRef, runLoop, handleAbort, permissionRequest, resolvePermission, } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef);
+    const allTools = useMemo(() => [...tools, deepThinkTool, searchTool, ...mcpTools], [deepThinkTool, searchTool, mcpTools]);
+    const { status, setStatus, tick, currentTool, setCurrentTool, taskLabel, setTaskLabel, thinkingStartRef, runLoop, handleAbort, permissionRequest, resolvePermission, compactRequest, resolveCompact, } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef);
     const { runRefactor } = useRefactor({
         config, currentModelRef, systemPromptRef, abortRef,
         macroQueueRef, executorRef,
@@ -59,13 +66,21 @@ export function InputBar({ config, skills, cwd, session, version }) {
     const { handleSubmit } = useSubmit({
         config, skills, cwd, version, currentModelRef, setCurrentModel,
         historyRef, sessionNameRef, saveTimerRef, systemPromptRef, abortRef,
-        planningMode, setPlanningMode, runLoop, buildContext, pushHistory,
-        setSessionName, renameFromMessage, openPicker,
+        setPlanningMode, runLoop, buildContext, pushHistory,
+        setSessionName, renameFromMessage,
         setStatus, setTaskLabel, setCurrentTool,
-        runRefactor, handleGit, lastGitStatusRef,
+        runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig,
+        setConfigOpen,
     });
     const skillList = skills.list();
-    return (_jsxs(Box, { flexDirection: "column", children: [pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : permissionRequest ? (_jsxs(Box, { paddingX: 1, gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: permissionRequest.toolName }), _jsx(Text, { color: "gray", children: toolArgSummary(permissionRequest.args) })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Box, { children: status === 'thinking'
+    return (_jsxs(Box, { flexDirection: "column", children: [configOpen ? (_jsxs(_Fragment, { children: [_jsx(ConfigPicker, { config: config, currentModel: currentModel, tavilyKey: tavilyKey, onUpdate: ({ model, ...configPatch }) => {
+                            if (model)
+                                setCurrentModel(model);
+                            if (Object.keys(configPatch).length) {
+                                setConfig(c => ({ ...c, ...configPatch }));
+                                saveConfig(configPatch);
+                            }
+                        }, onTavilyKey: (key) => { saveTavilyKey(key); setTavilyKey(key); }, onClose: () => { setConfigOpen(false); } }), _jsx(Divider, { cols: cols })] })) : pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : compactRequest ? (_jsxs(Box, { paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: "context is large" }), _jsxs(Text, { color: "gray", children: ["(", compactRequest.messageCount, " messages)"] })] }), _jsx(Text, { color: "gray", dimColor: true, children: "compact to keep responses fast, or keep full history" })] })) : permissionRequest ? (_jsxs(Box, { paddingX: 1, gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: permissionRequest.toolName }), _jsx(Text, { color: "gray", children: toolArgSummary(permissionRequest.args) })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Box, { children: status === 'thinking'
                             ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]] })] })
-                            : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, onSubmit: handleSubmit, onAbort: handleAbort, history: historyRef.current.filter(m => m.role === 'user').map(m => m.content) })] }));
+                            : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, compactRequest: compactRequest, onCompactResponse: resolveCompact, onSubmit: handleSubmit, onAbort: handleAbort, history: historyRef.current.filter(m => m.role === 'user').map(m => m.content) })] }));
 }

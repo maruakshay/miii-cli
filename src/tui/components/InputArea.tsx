@@ -9,33 +9,38 @@ import { CommandPalette } from './CommandPalette.js'
 import { AtPicker } from './AtPicker.js'
 
 const BUILTIN_COMMANDS: Skill[] = [
-  { ns: 'builtin', name: 'new',         description: 'start a fresh session (auto-named)' },
-  { ns: 'builtin', name: 'models',      description: 'switch or pull Ollama models' },
-  { ns: 'builtin', name: 'clear',       description: 'clear chat history for current session' },
-  { ns: 'builtin', name: 'sessions',    description: 'list all saved sessions' },
-  { ns: 'builtin', name: 'session',     description: 'switch session  /session <name>' },
-  { ns: 'builtin', name: 'exit',        description: 'exit miii' },
-  { ns: 'builtin', name: 'model',       description: 'switch model mid-session  /model <name>' },
-  { ns: 'builtin', name: 'version',     description: 'show current miii version' },
-  { ns: 'builtin', name: 'tavily-key',  description: 'set Tavily API key for web search  /tavily-key tvly-...' },
-  { ns: 'builtin', name: 'skills',      description: 'install/uninstall/list npm skills  /skills install <name>' },
-  { ns: 'builtin', name: 'list',        description: 'list all loaded skills' },
-  { ns: 'builtin', name: 'plan',        description: 'start planning mode  /plan [topic]' },
-  { ns: 'builtin', name: 'refactor',    description: 'multi-file AI refactor  /refactor <goal>' },
-  { ns: 'git',     name: 'status',      description: 'show git working tree status' },
-  { ns: 'git',     name: 'diff',        description: 'show unstaged diff' },
-  { ns: 'git',     name: 'diff --staged', description: 'show staged diff' },
-  { ns: 'git',     name: 'log',         description: 'show recent commits' },
-  { ns: 'git',     name: 'review',      description: 'review current changes with AI' },
-  { ns: 'git',     name: 'branch',      description: 'list branches' },
-  { ns: 'git',     name: 'commit',      description: 'stage all and commit  /git commit <msg>' },
+  // ── Session ──────────────────────────────────────────────────────────────
+  { ns: 'builtin', name: 'new',        description: 'start a fresh session with a new auto-named history' },
+  { ns: 'builtin', name: 'clear',      description: 'wipe chat history for the current session' },
+  { ns: 'builtin', name: 'sessions',   description: 'list all saved sessions with message counts' },
+  { ns: 'builtin', name: 'session',    description: 'switch to a saved session — /session <name>' },
+  { ns: 'builtin', name: 'exit',       description: 'exit miii (saves session first)' },
+  // ── Config ───────────────────────────────────────────────────────────────
+  { ns: 'builtin', name: 'config',     description: 'open config picker — change provider, model, API key, base URL, Tavily key with arrow-key navigation' },
+  { ns: 'builtin', name: 'model',      description: 'quickly switch model for this session — /model <name>' },
+  { ns: 'builtin', name: 'version',    description: 'show the current miii version' },
+  // ── Skills ───────────────────────────────────────────────────────────────
+  { ns: 'builtin', name: 'skills',     description: 'install, uninstall, or list npm skill packages' },
+  { ns: 'builtin', name: 'list',       description: 'list all loaded skills and their descriptions' },
+  // ── AI modes ─────────────────────────────────────────────────────────────
+  { ns: 'builtin', name: 'plan',       description: 'enter planning mode — AI helps think through a goal step-by-step' },
+  { ns: 'builtin', name: 'refactor',   description: 'multi-file AI refactor — plans, reads, then edits — /refactor <goal>' },
+  { ns: 'builtin', name: 'think',      description: 'deep research before answering — reads files + optional web — /think <query>' },
+  // ── Git ───────────────────────────────────────────────────────────────────
+  { ns: 'git',     name: 'status',     description: 'show git working tree status (modified, staged, untracked)' },
+  { ns: 'git',     name: 'diff',       description: 'show unstaged changes as a diff' },
+  { ns: 'git',     name: 'diff --staged', description: 'show staged changes ready to commit' },
+  { ns: 'git',     name: 'log',        description: 'show recent commit history (last 10)' },
+  { ns: 'git',     name: 'review',     description: 'AI code review of current uncommitted changes' },
+  { ns: 'git',     name: 'branch',     description: 'list local branches' },
+  { ns: 'git',     name: 'commit',     description: 'stage everything and commit — /git commit <message>' },
 ]
 
 const PLANNING_COMMANDS: Skill[] = [
-  { ns: 'plan', name: 'next',      description: 'suggest next concrete steps' },
-  { ns: 'plan', name: 'breakdown', description: 'break current topic into subtasks' },
-  { ns: 'plan', name: 'review',    description: 'review and critique the plan so far' },
-  { ns: 'plan', name: 'done',      description: 'exit planning mode' },
+  { ns: 'plan', name: 'next',      description: 'suggest the next concrete steps to take' },
+  { ns: 'plan', name: 'breakdown', description: 'break the current goal into specific subtasks' },
+  { ns: 'plan', name: 'review',    description: 'critique the plan so far — find gaps and risks' },
+  { ns: 'plan', name: 'done',      description: 'exit planning mode and return to normal chat' },
 ]
 
 type Overlay = 'none' | 'command' | 'at'
@@ -47,6 +52,8 @@ interface Props {
   planningMode?: boolean
   permissionRequest?: { toolName: string; args: Record<string, unknown> } | null
   onPermissionResponse?: (approved: boolean) => void
+  compactRequest?: { messageCount: number } | null
+  onCompactResponse?: (approved: boolean) => void
   onSubmit: (text: string) => void
   onAbort: () => void
   history?: string[]
@@ -68,7 +75,7 @@ function wordEndAfter(line: string, col: number): number {
   return i
 }
 
-export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort, history = [] }: Props) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, compactRequest, onCompactResponse, onSubmit, onAbort, history = [] }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
@@ -221,6 +228,12 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     if (permissionRequest && onPermissionResponse) {
       if (input === 'y' || input === 'Y') { onPermissionResponse(true); return }
       if (input === 'n' || input === 'N' || key.escape) { onPermissionResponse(false); return }
+      return
+    }
+
+    if (compactRequest && onCompactResponse) {
+      if (input === 'y' || input === 'Y') { onCompactResponse(true); return }
+      if (input === 'n' || input === 'N' || key.escape) { onCompactResponse(false); return }
       return
     }
 
@@ -424,10 +437,12 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
   const cols = stdout.columns ?? 80
 
   const isProcessing = status !== 'idle'
-  const promptColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'green'
+  const promptColor = (permissionRequest || compactRequest) ? 'yellow' : isProcessing ? 'yellow' : 'green'
   const inHistory = historyIdx !== -1
 
-  const hint = permissionRequest
+  const hint = compactRequest
+    ? 'y  compact   n  keep full context'
+    : permissionRequest
     ? 'y  approve   n  deny'
     : isProcessing
     ? 'esc  interrupt'
@@ -457,7 +472,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
       <Box paddingX={1}>
         <Text color={promptColor} bold>{'> '}</Text>
         <Box flexDirection="column" flexGrow={1}>
-          {permissionRequest ? (
+          {(permissionRequest || compactRequest) ? (
             <Box gap={2}>
               <Text color="green" bold>y  yes</Text>
               <Text color="red" bold>n  no</Text>
