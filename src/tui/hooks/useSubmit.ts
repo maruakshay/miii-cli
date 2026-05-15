@@ -66,6 +66,9 @@ interface SubmitDeps {
   setConfig: (updater: (c: import('../../types.js').Config) => import('../../types.js').Config) => void
   setConfigOpen: (v: boolean) => void
   updateMemory: (facts: string[]) => void
+  startWatch: () => void
+  stopWatch: () => void
+  watchActive: boolean
 }
 
 export function useSubmit(deps: SubmitDeps) {
@@ -80,6 +83,7 @@ export function useSubmit(deps: SubmitDeps) {
       setSessionName, renameFromMessage,
       setStatus, setTaskLabel, setCurrentTool,
       runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig, setConfigOpen, updateMemory,
+      startWatch, stopWatch,
     } = depsRef.current
 
     const cmd = text.trim()
@@ -449,6 +453,13 @@ export function useSubmit(deps: SubmitDeps) {
       }
 
       printer.systemMsg('usage: /index build | /index status | /index search <query> | /index clear')
+      return
+    }
+
+    if (cmd === '/watch' || cmd.startsWith('/watch ')) {
+      const sub = cmd.slice(6).trim()
+      if (sub === 'stop') { stopWatch(); return }
+      startWatch()
       return
     }
 

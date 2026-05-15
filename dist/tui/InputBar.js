@@ -16,6 +16,7 @@ import { useRunLoop } from './hooks/useRunLoop.js';
 import { useRefactor } from './hooks/useRefactor.js';
 import { useGit } from './hooks/useGit.js';
 import { useSubmit } from './hooks/useSubmit.js';
+import { useWatch } from './hooks/useWatch.js';
 import { runDeepThink } from './deepThink.js';
 import { setInkInstance } from './printer.js';
 import { createSearchCodebaseTool } from '../index/tool.js';
@@ -79,6 +80,7 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
         setStatus, setTaskLabel, setCurrentTool, pushHistory,
     });
     const { handleGit } = useGit({ pushHistory, buildContext, runLoop });
+    const { watchActive, startWatch, stopWatch } = useWatch(cwd, { runLoop, buildContext, pushHistory });
     const { handleSubmit } = useSubmit({
         config, skills, cwd, projectDir, version, currentModelRef, setCurrentModel,
         historyRef, sessionNameRef, saveTimerRef, systemPromptRef, abortRef,
@@ -87,6 +89,7 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
         setStatus, setTaskLabel, setCurrentTool,
         runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig,
         setConfigOpen, updateMemory,
+        startWatch, stopWatch, watchActive,
     });
     const skillList = skills.list();
     return (_jsxs(Box, { flexDirection: "column", children: [configOpen ? (_jsxs(_Fragment, { children: [_jsx(ConfigPicker, { config: config, currentModel: currentModel, tavilyKey: tavilyKey, onUpdate: ({ model, ...configPatch }) => {
@@ -98,5 +101,5 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
                             }
                         }, onTavilyKey: (key) => { saveTavilyKey(key); setTavilyKey(key); }, onClose: () => { setConfigOpen(false); } }), _jsx(Divider, { cols: cols })] })) : pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : compactRequest ? (_jsxs(Box, { paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: "context is large" }), _jsxs(Text, { color: "gray", children: ["(~", compactRequest.messageCount, "k chars)"] })] }), _jsx(Text, { color: "gray", dimColor: true, children: "compact to keep responses fast, or keep full history" })] })) : permissionRequest ? (_jsxs(Box, { paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: permissionRequest.toolName }), _jsx(Text, { color: "gray", children: toolArgSummary(permissionRequest.args) })] }), _jsx(DiffPreview, { toolName: permissionRequest.toolName, args: permissionRequest.args })] })) : (status === 'thinking' || status === 'tool') ? (_jsxs(Box, { flexDirection: "column", paddingX: 1, children: [_jsx(Box, { children: status === 'thinking'
                             ? _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", children: [SPARKLE[tick % SPARKLE.length], " "] }), _jsx(Text, { color: "gray", dimColor: true, italic: true, children: THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]] })] })
-                            : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, compactRequest: compactRequest, onCompactResponse: resolveCompact, onSubmit: handleSubmit, onAbort: handleAbort, history: historyRef.current.filter(m => m.role === 'user').map(m => m.content) })] }));
+                            : _jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }) }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })] })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, compactRequest: compactRequest, onCompactResponse: resolveCompact, onSubmit: handleSubmit, onAbort: handleAbort, history: historyRef.current.filter(m => m.role === 'user').map(m => m.content), watchActive: watchActive })] }));
 }

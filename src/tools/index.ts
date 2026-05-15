@@ -73,7 +73,8 @@ export const tools: Tool[] = [
     execute: async ({ path, old: oldStr, new: newStr }) => {
       const safe = guardPath(path as string)
       const current = readFile(safe)
-      if (!current) throw new Error(`file not found or empty: ${path}`)
+      if (current === null) throw new Error(`file not found: ${path}`)
+      if (current === '') throw new Error(`file empty: ${path}`)
       const old = oldStr as string
       const count = current.split(old).length - 1
       if (count === 0) {
@@ -88,7 +89,7 @@ export const tools: Tool[] = [
         )
       }
 
-      const updated = current.replace(old, newStr as string)
+      const updated = current.replace(old, String(newStr))
       writeFile(safe, updated)
 
       // Compute affected line range for the snippet

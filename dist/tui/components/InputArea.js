@@ -23,6 +23,7 @@ const BUILTIN_COMMANDS = [
     { ns: 'builtin', name: 'plan', description: 'enter planning mode — AI helps think through a goal step-by-step' },
     { ns: 'builtin', name: 'refactor', description: 'multi-file AI refactor — plans, reads, then edits — /refactor <goal>' },
     { ns: 'builtin', name: 'think', description: 'deep research before answering — reads files + optional web — /think <query>' },
+    { ns: 'builtin', name: 'watch', description: 'watch for file changes, run tests, auto-fix failures — /watch stop to cancel' },
     // ── Git ───────────────────────────────────────────────────────────────────
     { ns: 'git', name: 'status', description: 'show git working tree status (modified, staged, untracked)' },
     { ns: 'git', name: 'diff', description: 'show unstaged changes as a diff' },
@@ -55,7 +56,7 @@ function wordEndAfter(line, col) {
         i++;
     return i;
 }
-export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, compactRequest, onCompactResponse, onSubmit, onAbort, history = [] }) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, compactRequest, onCompactResponse, onSubmit, onAbort, history = [], watchActive = false }) {
     const [lines, setLines] = useState(['']);
     const [cursor, setCursor] = useState({ row: 0, col: 0 });
     const [overlay, setOverlay] = useState('none');
@@ -468,11 +469,15 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
                             ? `history ${historyIdx + 1}/${history.length}   ↑↓  navigate   esc  clear`
                             : planningMode
                                 ? 'planning mode   /plan:done  exit'
-                                : '?  for shortcuts';
+                                : watchActive
+                                    ? 'watch active   /watch stop to cancel'
+                                    : '?  for shortcuts';
     const pastePreview = pasteRef.current
         ? pasteRef.current.split('\n')[0].slice(0, cols - 6)
         : '';
-    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: promptColor, bold: true, children: '> ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: permissionRequest ? (_jsxs(Box, { gap: 3, children: [_jsx(Text, { color: "green", bold: true, children: "y  once" }), _jsx(Text, { color: "cyan", bold: true, children: "a  session" }), _jsx(Text, { color: "red", bold: true, children: "n  deny" })] })) : compactRequest ? (_jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "green", bold: true, children: "y  yes" }), _jsx(Text, { color: "red", bold: true, children: "n  no" })] })) : pasteLines > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " line", pasteLines !== 1 ? 's' : ''] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] }), pastePreview && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", pastePreview, pasteRef.current.split('\n')[0].length > cols - 6 ? '…' : ''] }))] })) : lines.length === 1 && !lines[0] ? (_jsx(Text, { children: isActive ? '█' : ' ' })) : (lines.map((line, i) => (_jsx(Text, { children: i === cursor.row
+    return (_jsxs(Box, { flexDirection: "column", children: [overlay === 'command' && (_jsx(CommandPalette, { skills: allCommands, query: commandQuery, idx: overlayIdx })), overlay === 'at' && (_jsx(AtPicker, { files: filteredFiles, query: atQuery, idx: overlayIdx })), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Box, { paddingX: 1, children: [_jsx(Text, { color: promptColor, bold: true, children: '> ' }), _jsx(Box, { flexDirection: "column", flexGrow: 1, children: permissionRequest ? (_jsxs(Box, { gap: 3, children: [_jsx(Text, { color: "green", bold: true, children: "y  once" }), _jsx(Text, { color: "cyan", bold: true, children: "a  session" }), _jsx(Text, { color: "red", bold: true, children: "n  deny" })] })) : compactRequest ? (_jsxs(Box, { gap: 2, children: [_jsx(Text, { color: "green", bold: true, children: "y  yes" }), _jsx(Text, { color: "red", bold: true, children: "n  no" })] })) : pasteLines > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "cyan", children: "\u2398" }), _jsxs(Text, { color: "cyan", children: ["pasted ", pasteLines, " line", pasteLines !== 1 ? 's' : ''] }), (lines.length > 1 || lines[0]) && (_jsx(Text, { color: "gray", dimColor: true, children: "+ typed text" }))] }), pastePreview && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", pastePreview, pasteRef.current.split('\n')[0].length > cols - 6 ? '…' : ''] }))] })) : lines.length === 1 && !lines[0] ? (watchActive && isActive
+                            ? _jsxs(Text, { children: [_jsx(Text, { color: "cyan", dimColor: true, children: "watching\u2026 " }), _jsx(Text, { children: "\u2588" })] })
+                            : _jsx(Text, { children: isActive ? '█' : ' ' })) : (lines.map((line, i) => (_jsx(Text, { children: i === cursor.row
                                 ? viewportLine(line, cursor.col, availWidth, isActive)
                                 : line.length > availWidth ? '…' + line.slice(line.length - availWidth + 1) : line }, i)))) })] }), _jsx(Text, { color: "gray", dimColor: true, children: '─'.repeat(Math.max(cols, 10)) }), _jsxs(Text, { color: "gray", dimColor: true, children: ["  ", hint] })] }));
 }

@@ -68,8 +68,10 @@ export const tools = [
         execute: async ({ path, old: oldStr, new: newStr }) => {
             const safe = guardPath(path);
             const current = readFile(safe);
-            if (!current)
-                throw new Error(`file not found or empty: ${path}`);
+            if (current === null)
+                throw new Error(`file not found: ${path}`);
+            if (current === '')
+                throw new Error(`file empty: ${path}`);
             const old = oldStr;
             const count = current.split(old).length - 1;
             if (count === 0) {
@@ -79,7 +81,7 @@ export const tools = [
             if (count > 1) {
                 throw new Error(`ambiguous: ${count} matches found in ${path} — extend <old> block with more surrounding lines to make it unique`);
             }
-            const updated = current.replace(old, newStr);
+            const updated = current.replace(old, String(newStr));
             writeFile(safe, updated);
             // Compute affected line range for the snippet
             const startLine = current.slice(0, current.indexOf(old)).split('\n').length;

@@ -18,6 +18,7 @@ import { useRunLoop } from './hooks/useRunLoop.js'
 import { useRefactor } from './hooks/useRefactor.js'
 import { useGit } from './hooks/useGit.js'
 import { useSubmit } from './hooks/useSubmit.js'
+import { useWatch } from './hooks/useWatch.js'
 import { runDeepThink } from './deepThink.js'
 import { setInkInstance } from './printer.js'
 import { createSearchCodebaseTool } from '../index/tool.js'
@@ -145,6 +146,8 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
 
   const { handleGit } = useGit({ pushHistory, buildContext, runLoop })
 
+  const { watchActive, startWatch, stopWatch } = useWatch(cwd, { runLoop, buildContext, pushHistory })
+
   const { handleSubmit } = useSubmit({
     config, skills, cwd, projectDir, version, currentModelRef, setCurrentModel,
     historyRef, sessionNameRef, saveTimerRef, systemPromptRef, abortRef,
@@ -153,6 +156,7 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
     setStatus, setTaskLabel, setCurrentTool,
     runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig,
     setConfigOpen, updateMemory,
+    startWatch, stopWatch, watchActive,
   })
 
   const skillList = skills.list()
@@ -236,6 +240,7 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
         onSubmit={handleSubmit}
         onAbort={handleAbort}
         history={historyRef.current.filter(m => m.role === 'user').map(m => m.content)}
+        watchActive={watchActive}
       />
     </Box>
   )

@@ -27,6 +27,7 @@ const BUILTIN_COMMANDS: Skill[] = [
   { ns: 'builtin', name: 'plan',       description: 'enter planning mode — AI helps think through a goal step-by-step' },
   { ns: 'builtin', name: 'refactor',   description: 'multi-file AI refactor — plans, reads, then edits — /refactor <goal>' },
   { ns: 'builtin', name: 'think',      description: 'deep research before answering — reads files + optional web — /think <query>' },
+  { ns: 'builtin', name: 'watch',      description: 'watch for file changes, run tests, auto-fix failures — /watch stop to cancel' },
   // ── Git ───────────────────────────────────────────────────────────────────
   { ns: 'git',     name: 'status',     description: 'show git working tree status (modified, staged, untracked)' },
   { ns: 'git',     name: 'diff',       description: 'show unstaged changes as a diff' },
@@ -58,6 +59,7 @@ interface Props {
   onSubmit: (text: string) => void
   onAbort: () => void
   history?: string[]
+  watchActive?: boolean
 }
 
 const PASTE_MIN_CHARS = 120
@@ -76,7 +78,7 @@ function wordEndAfter(line: string, col: number): number {
   return i
 }
 
-export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, compactRequest, onCompactResponse, onSubmit, onAbort, history = [] }: Props) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, compactRequest, onCompactResponse, onSubmit, onAbort, history = [], watchActive = false }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
@@ -457,6 +459,8 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     ? `history ${historyIdx + 1}/${history.length}   ↑↓  navigate   esc  clear`
     : planningMode
     ? 'planning mode   /plan:done  exit'
+    : watchActive
+    ? 'watch active   /watch stop to cancel'
     : '?  for shortcuts'
 
   const pastePreview = pasteRef.current
@@ -500,7 +504,9 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
               )}
             </Box>
           ) : lines.length === 1 && !lines[0] ? (
-            <Text>{isActive ? '█' : ' '}</Text>
+            watchActive && isActive
+              ? <Text><Text color="cyan" dimColor>watching… </Text><Text>█</Text></Text>
+              : <Text>{isActive ? '█' : ' '}</Text>
           ) : (
             lines.map((line, i) => (
               <Text key={i}>
