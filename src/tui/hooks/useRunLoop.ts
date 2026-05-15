@@ -176,11 +176,36 @@ export function useRunLoop(
 
             if (tool) {
               try {
+                // Guard: for patch_file, verify old text still matches before executing.
+                // If stale, inject fresh file content and skip — model will retry.
+                if (tc.name === 'patch_file') {
+                  const filePath = tc.args.path as string | undefined
+                  const oldText  = tc.args.old as string | undefined
+                  if (filePath && oldText && existsSync(filePath)) {
+                    const current = readFileSync(filePath, 'utf-8')
+                    if (!current.includes(oldText)) {
+                      printer.errorMsg(`patch stale: old text not found in ${filePath} — injecting fresh content`)
+                      next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
+                      next.push({ role: 'user', content: `patch_file failed: old text not found in ${filePath}. The file content above is the current state. Retry patch_file with the correct exact text.` })
+                      continue
+                    }
+                  }
+                }
+
                 printer.toolCallStart(tc.name, tc.args)
                 const result = await tool.execute(tc.args)
                 printer.toolResultSummary(tc.name, tc.args, result)
                 if (SHOW_RESULT_TOOLS.has(tc.name)) printer.toolMsg(tc.name, result)
                 next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
+
+                // After any file edit, inject fresh file state so next tool sees actual content
+                if (FILE_EDIT_TOOLS.has(tc.name)) {
+                  const filePath = tc.args.path as string | undefined
+                  if (filePath && existsSync(filePath)) {
+                    const fresh = readFileSync(filePath, 'utf-8')
+                    next.push({ role: 'user', content: `[current state of ${filePath} after edit]\n${fresh}` })
+                  }
+                }
               } catch (e) {
                 const err = `Tool ${tc.name} error: ${e}`
                 printer.errorMsg(err)
@@ -219,7 +244,22 @@ export function useRunLoop(
           }
         }
 
-        await runLoop(next, depth + 1, goal)
+        // For file-edit turns: slim context (system + goal + fresh file states + recent results)
+        // For non-edit turns: full next (model needs full conversational context)
+        if (didEditFiles) {
+          const systemMsg = msgs.find(m => m.role === 'system')
+          const goalMsg   = msgs.find(m => m.role === 'user' && !m.content.startsWith('[') && !m.content.startsWith('Tool '))
+          const batchStart = msgs.length + 1 // index in next where this batch's messages start
+          const batchMsgs  = next.slice(batchStart)
+          const slimCtx: ChatMessage[] = [
+            ...(systemMsg ? [systemMsg] : []),
+            ...(goalMsg   ? [goalMsg]   : []),
+            ...batchMsgs,
+          ]
+          await runLoop(slimCtx, depth + 1, goal)
+        } else {
+          await runLoop(next, depth + 1, goal)
+        }
       },
 
       onError(err) {

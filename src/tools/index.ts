@@ -38,7 +38,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'create_file',
-    description: 'Create a new file — fails if file already exists',
+    description: 'Create a new file with content — fails if file already exists. Prefer edit_file for new files.',
     params: '{"path": "string", "content": "string"}',
     execute: async ({ path, content }) => {
       const safe = guardPath(path as string)
@@ -49,16 +49,26 @@ export const tools: Tool[] = [
   },
   {
     name: 'edit_file',
-    description: 'Overwrite entire file — use only for new files or full rewrites',
+    description: 'Write a new file — only for files that do not exist yet. Use patch_file to modify existing files.',
     params: '{"path": "string", "content": "string"}',
     execute: async ({ path, content }) => {
-      writeFile(guardPath(path as string), content as string)
-      return `written: ${path}`
+      const safe = guardPath(path as string)
+      if (existsSync(safe)) {
+        throw new Error(
+          `edit_file cannot overwrite existing file: ${path}\n` +
+          `Use patch_file with <old> and <new> blocks to make targeted edits.\n` +
+          `Call read_file first to get the exact current text.`
+        )
+      }
+      const text = content as string
+      writeFile(safe, text)
+      const lines = text.split('\n').length
+      return `created: ${path} (${lines} line${lines === 1 ? '' : 's'})`
     },
   },
   {
     name: 'patch_file',
-    description: 'Replace an exact string in a file — use for targeted edits to existing files',
+    description: 'Replace an exact unique string in an existing file. Always call read_file first to get the exact text.',
     params: '{"path": "string", "old": "string", "new": "string"}',
     execute: async ({ path, old: oldStr, new: newStr }) => {
       const safe = guardPath(path as string)
@@ -66,10 +76,37 @@ export const tools: Tool[] = [
       if (!current) throw new Error(`file not found or empty: ${path}`)
       const old = oldStr as string
       const count = current.split(old).length - 1
-      if (count === 0) throw new Error(`old text not found in ${path}`)
-      if (count > 1) throw new Error(`ambiguous: ${count} matches found in ${path} — add more surrounding context to make unique`)
-      writeFile(safe, current.replace(old, newStr as string))
-      return `patched: ${path}`
+      if (count === 0) {
+        throw new Error(
+          `old text not found in ${path} — file may have changed since last read.\n` +
+          `Call read_file again to get current content, then retry with exact matching text.`
+        )
+      }
+      if (count > 1) {
+        throw new Error(
+          `ambiguous: ${count} matches found in ${path} — extend <old> block with more surrounding lines to make it unique`
+        )
+      }
+
+      const updated = current.replace(old, newStr as string)
+      writeFile(safe, updated)
+
+      // Compute affected line range for the snippet
+      const startLine   = current.slice(0, current.indexOf(old)).split('\n').length
+      const oldLines    = old.split('\n').length
+      const newLines    = (newStr as string).split('\n').length
+      const updatedArr  = updated.split('\n')
+      const snippetStart = Math.max(0, startLine - 3)
+      const snippetEnd   = Math.min(updatedArr.length, startLine + newLines + 2)
+      const snippet = updatedArr
+        .slice(snippetStart, snippetEnd)
+        .map((l, i) => `${String(snippetStart + i + 1).padStart(4)} │ ${l}`)
+        .join('\n')
+
+      const delta = newLines - oldLines
+      const deltaStr = delta === 0 ? '' : delta > 0 ? ` (+${delta} line${delta === 1 ? '' : 's'})` : ` (${delta} line${Math.abs(delta) === 1 ? '' : 's'})`
+
+      return `patched: ${path}${deltaStr}\n\nLines ${snippetStart + 1}–${snippetEnd}:\n${snippet}`
     },
   },
   {
@@ -259,9 +296,10 @@ ${toolDocs}
 ${deepThinkDoc}
 
 Rules:
-- To modify an existing file: use patch_file with the exact old text and new replacement — do NOT rewrite the whole file
-- To create a new file: use edit_file with full content in the <content> block
-- read_file before patch_file so you know the exact text to match
+- edit_file only works on NEW files — it throws an error if the file exists. Never call it on existing files
+- To modify any existing file: call read_file first, then patch_file with the exact text from that read as the <old> block
+- Never guess or reuse old text from earlier in the conversation — always re-read immediately before patching
+- If patch_file reports "old text not found", call read_file again and retry with the exact current text
 - Never delete without confirming
 - Use git_status and git_diff before any refactor to understand what has already changed
 - Use git_log to understand recent history before suggesting changes
