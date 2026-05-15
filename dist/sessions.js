@@ -52,9 +52,10 @@ export function loadSession(projectDir, name) {
     }
 }
 export function saveSession(projectDir, name, messages) {
+    const safeName = sanitizeName(name);
     ensureProjectDir(projectDir);
     try {
-        writeFileSync(join(sessionsDir(projectDir), `${sanitizeName(name)}.json`), JSON.stringify(messages), { mode: 0o600 });
+        writeFileSync(join(sessionsDir(projectDir), `${safeName}.json`), JSON.stringify(messages), { mode: 0o600 });
     }
     catch { }
 }

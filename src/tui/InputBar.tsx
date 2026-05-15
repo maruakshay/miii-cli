@@ -43,34 +43,72 @@ function formatElapsed(ms: number): string {
   return rem === 0 ? `${m}m` : `${m}m ${rem}s`
 }
 
-const MAX_DIFF_LINES = 5
+const MAX_DIFF_LINES = 40
+const DIFF_CTX = 2
+
+type DiffLine = { type: 'eq' | 'del' | 'add'; line: string }
+
+function lineDiff(oldText: string, newText: string): DiffLine[] {
+  const a = oldText.split('\n')
+  const b = newText.split('\n')
+  const m = a.length, n = b.length
+  if (m * n > 10000) {
+    return [...a.map(line => ({ type: 'del' as const, line })), ...b.map(line => ({ type: 'add' as const, line }))]
+  }
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = m - 1; i >= 0; i--)
+    for (let j = n - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? 1 + dp[i + 1][j + 1] : Math.max(dp[i + 1][j], dp[i][j + 1])
+  const result: DiffLine[] = []
+  let i = 0, j = 0
+  while (i < m || j < n) {
+    if (i < m && j < n && a[i] === b[j]) { result.push({ type: 'eq', line: a[i++] }); j++ }
+    else if (j < n && (i >= m || dp[i + 1][j] <= dp[i][j + 1])) { result.push({ type: 'add', line: b[j++] }) }
+    else { result.push({ type: 'del', line: a[i++] }) }
+  }
+  return result
+}
+
+function diffHunks(diff: DiffLine[]): DiffLine[] {
+  const changedIdxs = diff.reduce<number[]>((acc, d, i) => { if (d.type !== 'eq') acc.push(i); return acc }, [])
+  if (!changedIdxs.length) return []
+  const inHunk = new Set<number>()
+  for (const ci of changedIdxs)
+    for (let k = Math.max(0, ci - DIFF_CTX); k <= Math.min(diff.length - 1, ci + DIFF_CTX); k++)
+      inHunk.add(k)
+  return diff.filter((_, i) => inHunk.has(i))
+}
 
 function DiffPreview({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
-  if (toolName === 'patch_file' && (args.old || args.new)) {
-    const oldLines = String(args.old ?? '').split('\n')
-    const newLines = String(args.new ?? '').split('\n')
+  if (toolName === 'patch_file' && (args.old != null || args.new != null)) {
+    const path = String(args.path ?? '')
+    const diff = diffHunks(lineDiff(String(args.old ?? ''), String(args.new ?? '')))
+    const visible = diff.slice(0, MAX_DIFF_LINES)
+    const hidden = diff.length - visible.length
     return (
       <Box flexDirection="column" paddingLeft={2}>
-        {oldLines.slice(0, MAX_DIFF_LINES).map((line, i) => (
-          <Text key={`o${i}`} color="red" dimColor>- {line.slice(0, 72)}</Text>
+        <Text color="gray" dimColor>  {path}</Text>
+        {visible.map((d, i) => (
+          <Text key={i} color={d.type === 'del' ? 'red' : d.type === 'add' ? 'green' : 'gray'} dimColor={d.type === 'eq'}>
+            {d.type === 'del' ? '- ' : d.type === 'add' ? '+ ' : '  '}{d.line.slice(0, 76)}
+          </Text>
         ))}
-        {oldLines.length > MAX_DIFF_LINES && (
-          <Text color="gray" dimColor>  …{oldLines.length - MAX_DIFF_LINES} more</Text>
-        )}
-        {newLines.slice(0, MAX_DIFF_LINES).map((line, i) => (
-          <Text key={`n${i}`} color="green" dimColor>+ {line.slice(0, 72)}</Text>
-        ))}
-        {newLines.length > MAX_DIFF_LINES && (
-          <Text color="gray" dimColor>  …{newLines.length - MAX_DIFF_LINES} more</Text>
-        )}
+        {hidden > 0 && <Text color="gray" dimColor>  …{hidden} more line{hidden === 1 ? '' : 's'}</Text>}
       </Box>
     )
   }
   if ((toolName === 'edit_file' || toolName === 'create_file') && args.content) {
-    const n = String(args.content).split('\n').length
+    const path = String(args.path ?? '')
+    const lines = String(args.content).split('\n')
+    const visible = lines.slice(0, MAX_DIFF_LINES)
+    const hidden = lines.length - visible.length
     return (
-      <Box paddingLeft={2}>
-        <Text color="gray" dimColor>{n} line{n === 1 ? '' : 's'}</Text>
+      <Box flexDirection="column" paddingLeft={2}>
+        <Text color="gray" dimColor>  {path}</Text>
+        {visible.map((line, i) => (
+          <Text key={i} color="green">+ {line.slice(0, 76)}</Text>
+        ))}
+        {hidden > 0 && <Text color="gray" dimColor>  …{hidden} more line{hidden === 1 ? '' : 's'}</Text>}
       </Box>
     )
   }

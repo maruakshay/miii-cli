@@ -17,7 +17,7 @@ import { needsSetup, runSetup } from './setup.js'
 const require = createRequire(import.meta.url)
 
 const UPDATE_CACHE = join(homedir(), '.config', 'miii', 'update-check.json')
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000  // 6h
+const CHECK_INTERVAL_MS = 60 * 60 * 1000  // 1h
 
 function semverGt(a: string, b: string): boolean {
   const pa = a.split('.').map(Number)

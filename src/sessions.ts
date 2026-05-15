@@ -55,10 +55,11 @@ export function loadSession(projectDir: string, name: string): ChatMessage[] {
 }
 
 export function saveSession(projectDir: string, name: string, messages: ChatMessage[]) {
+  const safeName = sanitizeName(name)
   ensureProjectDir(projectDir)
   try {
     writeFileSync(
-      join(sessionsDir(projectDir), `${sanitizeName(name)}.json`),
+      join(sessionsDir(projectDir), `${safeName}.json`),
       JSON.stringify(messages),
       { mode: 0o600 },
     )

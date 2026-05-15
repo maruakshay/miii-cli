@@ -31,16 +31,60 @@ function formatElapsed(ms) {
     const rem = s % 60;
     return rem === 0 ? `${m}m` : `${m}m ${rem}s`;
 }
-const MAX_DIFF_LINES = 5;
+const MAX_DIFF_LINES = 40;
+const DIFF_CTX = 2;
+function lineDiff(oldText, newText) {
+    const a = oldText.split('\n');
+    const b = newText.split('\n');
+    const m = a.length, n = b.length;
+    if (m * n > 10000) {
+        return [...a.map(line => ({ type: 'del', line })), ...b.map(line => ({ type: 'add', line }))];
+    }
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = m - 1; i >= 0; i--)
+        for (let j = n - 1; j >= 0; j--)
+            dp[i][j] = a[i] === b[j] ? 1 + dp[i + 1][j + 1] : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const result = [];
+    let i = 0, j = 0;
+    while (i < m || j < n) {
+        if (i < m && j < n && a[i] === b[j]) {
+            result.push({ type: 'eq', line: a[i++] });
+            j++;
+        }
+        else if (j < n && (i >= m || dp[i + 1][j] <= dp[i][j + 1])) {
+            result.push({ type: 'add', line: b[j++] });
+        }
+        else {
+            result.push({ type: 'del', line: a[i++] });
+        }
+    }
+    return result;
+}
+function diffHunks(diff) {
+    const changedIdxs = diff.reduce((acc, d, i) => { if (d.type !== 'eq')
+        acc.push(i); return acc; }, []);
+    if (!changedIdxs.length)
+        return [];
+    const inHunk = new Set();
+    for (const ci of changedIdxs)
+        for (let k = Math.max(0, ci - DIFF_CTX); k <= Math.min(diff.length - 1, ci + DIFF_CTX); k++)
+            inHunk.add(k);
+    return diff.filter((_, i) => inHunk.has(i));
+}
 function DiffPreview({ toolName, args }) {
-    if (toolName === 'patch_file' && (args.old || args.new)) {
-        const oldLines = String(args.old ?? '').split('\n');
-        const newLines = String(args.new ?? '').split('\n');
-        return (_jsxs(Box, { flexDirection: "column", paddingLeft: 2, children: [oldLines.slice(0, MAX_DIFF_LINES).map((line, i) => (_jsxs(Text, { color: "red", dimColor: true, children: ["- ", line.slice(0, 72)] }, `o${i}`))), oldLines.length > MAX_DIFF_LINES && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  \u2026", oldLines.length - MAX_DIFF_LINES, " more"] })), newLines.slice(0, MAX_DIFF_LINES).map((line, i) => (_jsxs(Text, { color: "green", dimColor: true, children: ["+ ", line.slice(0, 72)] }, `n${i}`))), newLines.length > MAX_DIFF_LINES && (_jsxs(Text, { color: "gray", dimColor: true, children: ["  \u2026", newLines.length - MAX_DIFF_LINES, " more"] }))] }));
+    if (toolName === 'patch_file' && (args.old != null || args.new != null)) {
+        const path = String(args.path ?? '');
+        const diff = diffHunks(lineDiff(String(args.old ?? ''), String(args.new ?? '')));
+        const visible = diff.slice(0, MAX_DIFF_LINES);
+        const hidden = diff.length - visible.length;
+        return (_jsxs(Box, { flexDirection: "column", paddingLeft: 2, children: [_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", path] }), visible.map((d, i) => (_jsxs(Text, { color: d.type === 'del' ? 'red' : d.type === 'add' ? 'green' : 'gray', dimColor: d.type === 'eq', children: [d.type === 'del' ? '- ' : d.type === 'add' ? '+ ' : '  ', d.line.slice(0, 76)] }, i))), hidden > 0 && _jsxs(Text, { color: "gray", dimColor: true, children: ["  \u2026", hidden, " more line", hidden === 1 ? '' : 's'] })] }));
     }
     if ((toolName === 'edit_file' || toolName === 'create_file') && args.content) {
-        const n = String(args.content).split('\n').length;
-        return (_jsx(Box, { paddingLeft: 2, children: _jsxs(Text, { color: "gray", dimColor: true, children: [n, " line", n === 1 ? '' : 's'] }) }));
+        const path = String(args.path ?? '');
+        const lines = String(args.content).split('\n');
+        const visible = lines.slice(0, MAX_DIFF_LINES);
+        const hidden = lines.length - visible.length;
+        return (_jsxs(Box, { flexDirection: "column", paddingLeft: 2, children: [_jsxs(Text, { color: "gray", dimColor: true, children: ["  ", path] }), visible.map((line, i) => (_jsxs(Text, { color: "green", children: ["+ ", line.slice(0, 76)] }, i))), hidden > 0 && _jsxs(Text, { color: "gray", dimColor: true, children: ["  \u2026", hidden, " more line", hidden === 1 ? '' : 's'] })] }));
     }
     return null;
 }

@@ -30,6 +30,7 @@ export function useWatch(cwd: string, deps: WatchDeps) {
   const watcherRef = useRef<FSWatcher | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const changedRef = useRef<Set<string>>(new Set())
+  const fixRunningRef = useRef(false)
   // Always-fresh deps via ref — watcher callback is set up once
   const depsRef = useRef(deps)
   useEffect(() => { depsRef.current = deps })
@@ -39,6 +40,7 @@ export function useWatch(cwd: string, deps: WatchDeps) {
     watcherRef.current?.close()
     watcherRef.current = null
     changedRef.current.clear()
+    fixRunningRef.current = false
     setWatchActive(false)
     printer.systemMsg('watch: stopped')
   }, [])
@@ -73,6 +75,11 @@ export function useWatch(cwd: string, deps: WatchDeps) {
             : changed.join(', ')
           printer.systemMsg(`watch: ${label} — running tests`)
 
+          if (fixRunningRef.current) {
+            printer.systemMsg('watch: fix in progress — skipping this cycle')
+            return
+          }
+          fixRunningRef.current = true
           try {
             const result = await testTool.execute({})
             if (!result || result.startsWith('(no ')) return
@@ -91,6 +98,8 @@ export function useWatch(cwd: string, deps: WatchDeps) {
             }
           } catch (e) {
             printer.errorMsg(`watch: ${e}`)
+          } finally {
+            fixRunningRef.current = false
           }
         }, WATCH_DEBOUNCE_MS)
       })

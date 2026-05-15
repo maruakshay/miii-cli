@@ -99,9 +99,13 @@ export class MCPClient {
   private send(method: string, params?: unknown): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const id = this.nextId++
-      this.pending.set(id, { resolve, reject })
+      let timer: ReturnType<typeof setTimeout>
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v) },
+        reject: (e) => { clearTimeout(timer); reject(e) },
+      })
       this.proc!.stdin!.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
-      setTimeout(() => {
+      timer = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id)
           reject(new Error(`MCP timeout: ${method}`))

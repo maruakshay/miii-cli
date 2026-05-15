@@ -164,6 +164,7 @@ No API keys. No account. No sign-up form. First run walks you through setup inte
 | `/plan <topic>` | Structured planning mode before you write a line |
 | `/model <name>` | Hot-swap your LLM mid-conversation |
 | `/session <name>` | Switch between named project sessions |
+| `/watch <path>` | Monitor files for changes and trigger agent reactions |
 | `@filename` | Inject any file directly into context |
 
 ---
