@@ -80,6 +80,11 @@ const builtin = [
         },
     },
     {
+        name: 'test',
+        ns: 'builtin',
+        description: 'Run test suite — usage: /test [path]',
+    },
+    {
         name: 'touch',
         ns: 'default',
         description: 'Create empty file — usage: /touch <path>',

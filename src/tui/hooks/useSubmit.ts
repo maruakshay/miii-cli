@@ -456,6 +456,26 @@ export function useSubmit(deps: SubmitDeps) {
       return
     }
 
+    if (cmd === '/test' || cmd.startsWith('/test ')) {
+      const testPath = cmd.slice(5).trim()
+      const testTool = (await import('../../tools/index.js')).tools.find(t => t.name === 'run_tests')
+      if (!testTool) { printer.errorMsg('run_tests tool not found'); return }
+      setStatus('tool')
+      setCurrentTool('run_tests')
+      try {
+        printer.toolCallStart('run_tests', testPath ? { path: testPath } : {})
+        const result = await testTool.execute(testPath ? { path: testPath } : {})
+        printer.toolResultSummary('run_tests', {}, result)
+        printer.toolMsg('run_tests', result)
+      } catch (e) {
+        printer.errorMsg(`run_tests: ${e}`)
+      } finally {
+        setCurrentTool(undefined)
+        setStatus('idle')
+      }
+      return
+    }
+
     if (cmd === '/watch' || cmd.startsWith('/watch ')) {
       const sub = cmd.slice(6).trim()
       if (sub === 'stop') { stopWatch(); return }

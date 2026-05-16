@@ -239,32 +239,9 @@ export function useRunLoop(
           setCurrentTool(undefined)
         }
 
-        // Auto-run tests after file edits
-        const didEditFiles = pendingTools.some(tc => FILE_EDIT_TOOLS.has(tc.name))
-        if (didEditFiles) {
-          const testTool = staticTools.find(t => t.name === 'run_tests')
-          if (testTool) {
-            setCurrentTool('run_tests')
-            try {
-              printer.toolCallStart('run_tests', {})
-              const testResult = await testTool.execute({})
-              if (testResult && !testResult.startsWith('(no test script') && !testResult.startsWith('(no package.json')) {
-                printer.toolResultSummary('run_tests', {}, testResult)
-                printer.toolMsg('run_tests', testResult)
-                next.push({ role: 'user', content: `Test results after edits:\n${testResult}` })
-              }
-            } catch (e) {
-              const err = `run_tests error: ${e}`
-              printer.errorMsg(err)
-              next.push({ role: 'user', content: err })
-            } finally {
-              setCurrentTool(undefined)
-            }
-          }
-        }
-
         // For file-edit turns: slim context (system + goal + fresh file states + recent results)
         // For non-edit turns: full next (model needs full conversational context)
+        const didEditFiles = pendingTools.some(tc => FILE_EDIT_TOOLS.has(tc.name))
         if (didEditFiles) {
           const systemMsg = msgs.find(m => m.role === 'system')
           const goalMsg   = msgs.find(m => m.role === 'user' && !m.content.startsWith('[') && !m.content.startsWith('Tool '))
