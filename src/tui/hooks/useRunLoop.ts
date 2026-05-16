@@ -10,10 +10,10 @@ import { shouldCompact, compactContext, contextSize } from '../../tasks/compacto
 import * as printer from '../printer.js'
 
 const MAX_TOOL_DEPTH = 10
-const FILE_EDIT_TOOLS = new Set(['edit_file', 'create_file', 'patch_file', 'delete_file'])
+const FILE_EDIT_TOOLS = new Set(['edit_file', 'create_file', 'update_file', 'delete_file'])
 const SHOW_RESULT_TOOLS = new Set(['run_tests', 'git_commit'])
-const PERMISSION_TOOLS = new Set(['edit_file', 'patch_file', 'delete_file', 'create_file', 'move_file', 'run_command', 'git_commit'])
-const CHECKPOINT_TOOLS = new Set(['edit_file', 'patch_file', 'create_file', 'delete_file'])
+const PERMISSION_TOOLS = new Set(['edit_file', 'update_file', 'delete_file', 'create_file', 'move_file', 'run_command', 'git_commit'])
+const CHECKPOINT_TOOLS = new Set(['edit_file', 'update_file', 'create_file', 'delete_file'])
 
 // Tool result messages that are ephemeral — never worth storing in memory or compact summaries
 const EPHEMERAL_PATTERN = /^Tool (read_file|list_files|run_tests) result:|^\[current state of|^\[Context compacted/
@@ -136,7 +136,7 @@ export function useRunLoop(
           if (hasFencedCode && depth < MAX_TOOL_DEPTH - 1) {
             const nudge: ChatMessage = {
               role: 'user',
-              content: 'You showed code in your response but did not use any file tools. Use edit_file or patch_file to actually write the changes to disk.',
+              content: 'You showed code in your response but did not use any file tools. Use edit_file or update_file to actually write the changes to disk.',
             }
             await runLoop([...msgs, { role: 'assistant', content: fullText }, nudge], depth + 1, goal)
             return
@@ -188,9 +188,9 @@ export function useRunLoop(
 
             if (tool) {
               try {
-                // Guard: for patch_file, verify old text still matches before executing.
+                // Guard: for update_file, verify old text still matches before executing.
                 // If stale, inject fresh file content and skip — model will retry.
-                if (tc.name === 'patch_file') {
+                if (tc.name === 'update_file') {
                   const filePath = tc.args.path as string | undefined
                   const oldText  = tc.args.old as string | undefined
                   if (filePath && oldText && existsSync(filePath)) {
@@ -199,13 +199,13 @@ export function useRunLoop(
                     if (occurrences === 0) {
                       printer.errorMsg(`patch stale: old text not found in ${filePath} — injecting fresh content`)
                       next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
-                      next.push({ role: 'user', content: `patch_file failed: old text not found in ${filePath}. The file content above is the current state. Retry patch_file with the correct exact text.` })
+                      next.push({ role: 'user', content: `update_file failed: old text not found in ${filePath}. The file content above is the current state. Retry update_file with the correct exact text.` })
                       continue
                     }
                     if (occurrences > 1) {
                       printer.errorMsg(`patch ambiguous: old text matches ${occurrences} locations in ${filePath} — injecting fresh content`)
                       next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
-                      next.push({ role: 'user', content: `patch_file failed: old text matches ${occurrences} locations in ${filePath}. Use more surrounding context to make old text unique, then retry.` })
+                      next.push({ role: 'user', content: `update_file failed: old text matches ${occurrences} locations in ${filePath}. Use more surrounding context to make old text unique, then retry.` })
                       continue
                     }
                   }

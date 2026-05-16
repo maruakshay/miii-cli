@@ -8,7 +8,7 @@ Skip: trivial exchanges, transient state, tool output noise.
 Max 8 facts. Be specific and concrete.
 
 Example output:
-["User prefers patch_file over full rewrites","entry point is src/index.ts","decided to use Zod for validation"]`
+["User prefers update_file over full rewrites","entry point is src/index.ts","decided to use Zod for validation"]`
 
 export function extractFacts(messages: ChatMessage[], config: Config, model: string): Promise<string[]> {
   const lines = messages

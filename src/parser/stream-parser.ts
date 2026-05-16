@@ -81,7 +81,7 @@ function extractFileToolArgs(text: string, toolName: string): Record<string, unk
     }
   }
 
-  // For patch_file: extract old/new fields
+  // For update_file: extract old/new fields
   const oldM = text.match(/"old"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/)
   if (oldM) args.old = oldM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
   const newM = text.match(/"new"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/)
@@ -107,7 +107,7 @@ export function extractBareToolCall(text: string): { name: string; args: Record<
   }
 
   // Fallback: content-aware extraction for file-writing tools (immune to unescaped chars)
-  for (const name of ['edit_file', 'create_file', 'patch_file']) {
+  for (const name of ['edit_file', 'create_file', 'update_file']) {
     const args = extractFileToolArgs(text, name)
     if (args) return { name, args }
   }

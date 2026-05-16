@@ -72,7 +72,7 @@ function diffHunks(diff: DiffLine[]): DiffLine[] {
 }
 
 function DiffPreview({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
-  if (toolName === 'patch_file' && (args.old != null || args.new != null)) {
+  if (toolName === 'update_file' && (args.old != null || args.new != null)) {
     const path = String(args.path ?? '')
     const diff = diffHunks(lineDiff(String(args.old ?? ''), String(args.new ?? '')))
     const visible = diff.slice(0, MAX_DIFF_LINES)

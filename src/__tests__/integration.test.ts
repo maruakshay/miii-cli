@@ -4,7 +4,7 @@ import { join } from 'path'
 import { looksCodeRelated } from '../tui/git-context.js'
 import { tools } from '../tools/index.js'
 
-// patch_file uses guardPath which restricts to CWD — use a local scratch file
+// update_file uses guardPath which restricts to CWD — use a local scratch file
 const SCRATCH = join(process.cwd(), '.miii-test-scratch.txt')
 
 // ─── looksCodeRelated ─────────────────────────────────────────────────────────
@@ -31,10 +31,10 @@ describe('looksCodeRelated', () => {
   })
 })
 
-// ─── patch_file ───────────────────────────────────────────────────────────────
+// ─── update_file ───────────────────────────────────────────────────────────────
 
-describe('patch_file', () => {
-  const patchTool = tools.find(t => t.name === 'patch_file')!
+describe('update_file', () => {
+  const updateTool = tools.find(t => t.name === 'update_file')!
 
   afterEach(() => {
     try { unlinkSync(SCRATCH) } catch {}
@@ -42,19 +42,19 @@ describe('patch_file', () => {
 
   it('applies a unique patch correctly', async () => {
     writeFileSync(SCRATCH, 'hello world\ngoodbye world\n')
-    await patchTool.execute({ path: SCRATCH, old: 'hello world', new: 'hello earth' })
+    await updateTool.execute({ path: SCRATCH, old: 'hello world', new: 'hello earth' })
     expect(readFileSync(SCRATCH, 'utf-8')).toBe('hello earth\ngoodbye world\n')
   })
 
   it('throws when old text not found', async () => {
     writeFileSync(SCRATCH, 'hello world\n')
-    await expect(patchTool.execute({ path: SCRATCH, old: 'no such text', new: 'x' }))
+    await expect(updateTool.execute({ path: SCRATCH, old: 'no such text', new: 'x' }))
       .rejects.toThrow('old text not found')
   })
 
   it('throws on ambiguous match (2+ occurrences)', async () => {
     writeFileSync(SCRATCH, 'hello world\nhello world\n')
-    await expect(patchTool.execute({ path: SCRATCH, old: 'hello world', new: 'hi' }))
+    await expect(updateTool.execute({ path: SCRATCH, old: 'hello world', new: 'hi' }))
       .rejects.toThrow('ambiguous')
   })
 })

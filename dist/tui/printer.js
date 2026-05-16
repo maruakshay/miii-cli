@@ -1,4 +1,5 @@
 // ANSI-formatted stdout output — goes into terminal scrollback
+import { readFileSync, existsSync } from 'fs';
 let _inkWrite = null;
 export function setInkInstance(inkWrite) {
     _inkWrite = inkWrite;
@@ -158,7 +159,7 @@ export function assistantMsg(text) {
     const tail = lines.slice(idx + 1).join('\n');
     write(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}\n`);
 }
-const EDIT_TOOLS = new Set(['edit_file', 'patch_file', 'create_file', 'write_file']);
+const EDIT_TOOLS = new Set(['edit_file', 'update_file', 'create_file', 'write_file']);
 const DELETE_TOOLS = new Set(['delete_file', 'remove_file']);
 function toolLabel(name, args) {
     const a = args;
@@ -168,7 +169,7 @@ function toolLabel(name, args) {
         case 'list_files': return `Listing ${a.path || '.'}`;
         case 'create_file': return `Creating ${a.path ?? ''}`;
         case 'edit_file': return `Writing ${a.path ?? ''}`;
-        case 'patch_file': return `Editing ${a.path ?? ''}`;
+        case 'update_file': return `Updating ${a.path ?? ''}`;
         case 'delete_file': return `Deleting ${a.path ?? ''}`;
         case 'move_file': return `Moving ${a.from} → ${a.to}`;
         case 'create_folder': return `Creating folder ${a.path ?? ''}`;
@@ -199,9 +200,63 @@ export function planSummary(tools) {
         write(`  ${dot} ${gray(label)}\n`);
     }
 }
+const DIFF_CTX = 2;
+const DIFF_MAX = 40;
+function printUpdateDiff(filePath, oldText, newText) {
+    const oldLines = oldText.split('\n');
+    const newLines = newText.split('\n');
+    write(gray(`  └ Added ${newLines.length} line${newLines.length !== 1 ? 's' : ''}, removed ${oldLines.length} line${oldLines.length !== 1 ? 's' : ''}\n`));
+    let fileLines = [];
+    let lineOffset = 0;
+    try {
+        if (existsSync(filePath)) {
+            const content = readFileSync(filePath, 'utf-8');
+            fileLines = content.split('\n');
+            const idx = content.indexOf(oldText);
+            if (idx >= 0)
+                lineOffset = content.slice(0, idx).split('\n').length - 1;
+            else
+                fileLines = []; // old text not in file — skip context lines
+        }
+    }
+    catch { }
+    let shown = 0;
+    const ctxStart = Math.max(0, lineOffset - DIFF_CTX);
+    for (let i = ctxStart; i < lineOffset && shown < DIFF_MAX; i++, shown++) {
+        write(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`));
+    }
+    for (let i = 0; i < oldLines.length && shown < DIFF_MAX; i++, shown++) {
+        write(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${red('- ')}${red(oldLines[i])}\n`);
+    }
+    for (let i = 0; i < newLines.length && shown < DIFF_MAX; i++, shown++) {
+        write(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${green('+ ')}${green(newLines[i])}\n`);
+    }
+    const ctxEnd = Math.min(fileLines.length, lineOffset + oldLines.length + DIFF_CTX);
+    for (let i = lineOffset + oldLines.length; i < ctxEnd && shown < DIFF_MAX; i++, shown++) {
+        write(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`));
+    }
+}
+function printEditPreview(content) {
+    const lines = content.split('\n');
+    const visible = lines.slice(0, DIFF_MAX);
+    const hidden = lines.length - visible.length;
+    write(gray(`  └ ${lines.length} line${lines.length !== 1 ? 's' : ''}\n`));
+    visible.forEach((line, i) => {
+        write(`  ${gray(String(i + 1).padStart(4))} ${green('+ ')}${green(line)}\n`);
+    });
+    if (hidden > 0)
+        write(gray(`  …${hidden} more line${hidden !== 1 ? 's' : ''}\n`));
+}
 export function toolCallStart(name, args) {
     const dot = DELETE_TOOLS.has(name) ? red('●') : EDIT_TOOLS.has(name) ? green('●') : blue('●');
     write(`\n${dot} ${bold(toolLabel(name, args))}\n`);
+    const a = args;
+    if (name === 'update_file' && a.old && a.new && a.path) {
+        printUpdateDiff(a.path, a.old, a.new);
+    }
+    else if (name === 'edit_file' && a.content && a.path) {
+        printEditPreview(a.content);
+    }
 }
 export function toolResultSummary(name, args, result) {
     const a = args;
@@ -219,7 +274,7 @@ export function toolResultSummary(name, args, result) {
             summary = `Created file · ${n} line${n === 1 ? '' : 's'}`;
             break;
         }
-        case 'patch_file':
+        case 'update_file':
             summary = lines[0] ?? 'Applied patch';
             break;
         case 'delete_file':
