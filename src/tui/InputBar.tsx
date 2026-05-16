@@ -11,7 +11,7 @@ import { tools } from '../tools/index.js'
 import type { Tool } from '../tools/index.js'
 import type { SkillLoader } from '../skills/loader.js'
 import type { Config } from '../types.js'
-import { toolArgSummary, formatElapsed } from './printer.js'
+import { toolArgSummary, toolLabel, permissionDesc, formatElapsed, EDIT_TOOLS, DELETE_TOOLS } from './printer.js'
 import { MacroQueue } from '../tasks/queue.js'
 import { TaskExecutor } from '../tasks/executor.js'
 import { THINKING_PHRASES, SPARKLE } from './thinking.js'
@@ -262,11 +262,13 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
           total={DESIGN_TEACH_QUESTIONS.length}
         />
       ) : permissionRequest ? (
-        <Box paddingX={1} flexDirection="column">
+        <Box paddingX={1} flexDirection="column" gap={0}>
           <Box gap={1}>
-            <Text color="yellow">⚠</Text>
-            <Text color="white" bold>{permissionRequest.toolName}</Text>
-            <Text color="gray">{toolArgSummary(permissionRequest.args)}</Text>
+            <Text color={DELETE_TOOLS.has(permissionRequest.toolName) ? 'red' : EDIT_TOOLS.has(permissionRequest.toolName) ? 'green' : 'blue'}>●</Text>
+            <Text color="white" bold>{toolLabel(permissionRequest.toolName, permissionRequest.args)}</Text>
+          </Box>
+          <Box paddingLeft={2}>
+            <Text color="gray" dimColor>{'└ '}{permissionDesc(permissionRequest.toolName)}</Text>
           </Box>
           <DiffPreview toolName={permissionRequest.toolName} args={permissionRequest.args} />
         </Box>

@@ -441,7 +441,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
                     setOverlayIdx(0);
                 }
             }
-            else if (input === '@' || (overlay === 'at' && atQuery !== undefined)) {
+            else if (input === '@' || (overlay === 'at' && atQuery !== '')) {
                 setOverlay('at');
                 setOverlayIdx(0);
             }

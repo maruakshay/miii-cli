@@ -311,9 +311,10 @@ Impeccable design rules — follow strictly:
 - Write distinctive, crafted UI — not generic SaaS templates.
 - Write all code to files using tools. No code blocks in responses.`
 
+      const taskDesc = sub.replace(/@[\w./\-]+/g, '').trim()
       const taskPrompt = `${designContext}${impeccableRules}
 
-Design task: ${sub}
+Design task: ${taskDesc}
 
 Analyze what exists, then implement the design. Use the design system above if available. Make it distinctive and well-crafted.`
 

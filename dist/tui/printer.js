@@ -25,6 +25,8 @@ const gray = (s) => col(90, s);
 const yellow = (s) => col(93, s);
 const purple = (s) => col(95, s);
 const red = (s) => col(91, s);
+function bgRed(s) { return `\x1b[48;2;65;18;18m\x1b[91m${s}${R}`; }
+function bgGreen(s) { return `\x1b[48;2;14;46;14m\x1b[92m${s}${R}`; }
 function stripMarkdown(s) {
     return s
         .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
@@ -160,30 +162,42 @@ export function assistantMsg(text) {
     const tail = lines.slice(idx + 1).join('\n');
     write(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}\n`);
 }
-const EDIT_TOOLS = new Set(['edit_file', 'update_file', 'create_file', 'write_file']);
-const DELETE_TOOLS = new Set(['delete_file', 'remove_file']);
-function toolLabel(name, args) {
+export const EDIT_TOOLS = new Set(['edit_file', 'update_file', 'create_file', 'write_file']);
+export const DELETE_TOOLS = new Set(['delete_file', 'remove_file']);
+const PERM_DESC = {
+    delete_file: 'delete this file',
+    update_file: 'edit this file',
+    create_file: 'create this file',
+    edit_file: 'create this file',
+    move_file: 'move this file',
+    run_command: 'run in shell',
+    git_commit: 'commit to git',
+};
+export function permissionDesc(toolName) {
+    return PERM_DESC[toolName] ?? 'allow this action';
+}
+export function toolLabel(name, args) {
     const a = args;
     const short = (s, n = 55) => s.length > n ? s.slice(0, n) + '…' : s;
     switch (name) {
-        case 'read_file': return `Reading ${a.path ?? ''}`;
-        case 'list_files': return `Listing ${a.path || '.'}`;
-        case 'create_file': return `Creating ${a.path ?? ''}`;
-        case 'edit_file': return `Writing ${a.path ?? ''}`;
-        case 'update_file': return `Updating ${a.path ?? ''}`;
-        case 'delete_file': return `Deleting ${a.path ?? ''}`;
-        case 'move_file': return `Moving ${a.from} → ${a.to}`;
-        case 'create_folder': return `Creating folder ${a.path ?? ''}`;
-        case 'run_command': return `Running ${short(a.command ?? '')}`;
-        case 'git_status': return 'Checking git status';
-        case 'git_diff': return 'Reading diff';
-        case 'git_log': return 'Reading commits';
-        case 'git_commit': return `Committing: ${short(a.message ?? '')}`;
-        case 'run_tests': return a.path ? `Running tests › ${a.path}` : 'Running tests';
-        case 'web_search': return `Searching: ${short(a.query ?? '')}`;
-        case 'web_extract': return `Extracting page`;
-        case 'deep_think': return `Researching: ${short(a.query ?? '')}`;
-        case 'search_codebase': return `Searching codebase: ${short(a.query ?? '')}`;
+        case 'read_file': return `Read(${a.path ?? ''})`;
+        case 'list_files': return `List(${a.path || '.'})`;
+        case 'create_file': return `Create(${a.path ?? ''})`;
+        case 'edit_file': return `Create(${a.path ?? ''})`;
+        case 'update_file': return `Update(${a.path ?? ''})`;
+        case 'delete_file': return `Delete(${a.path ?? ''})`;
+        case 'move_file': return `Move(${a.from} → ${a.to})`;
+        case 'create_folder': return `Mkdir(${a.path ?? ''})`;
+        case 'run_command': return `Run(${short(a.command ?? '')})`;
+        case 'git_status': return 'Git(status)';
+        case 'git_diff': return 'Git(diff)';
+        case 'git_log': return 'Git(log)';
+        case 'git_commit': return `Git(commit: ${short(a.message ?? '')})`;
+        case 'run_tests': return a.path ? `Test(${a.path})` : 'Test(suite)';
+        case 'web_search': return `Search(${short(a.query ?? '')})`;
+        case 'web_extract': return `Extract(${Array.isArray(a.urls) ? String(a.urls[0] ?? '') : String(a.urls ?? 'url')})`;
+        case 'deep_think': return `Think(${short(a.query ?? '')})`;
+        case 'search_codebase': return `Index(${short(a.query ?? '')})`;
         default: {
             const s = toolArgSummary(args);
             return s ? `${name} ${s}` : name;
@@ -205,7 +219,19 @@ const DIFF_MAX = 40;
 function printUpdateDiff(filePath, oldText, newText) {
     const oldLines = oldText.split('\n');
     const newLines = newText.split('\n');
-    const out = [gray(`  └ Added ${newLines.length} line${newLines.length !== 1 ? 's' : ''}, removed ${oldLines.length} line${oldLines.length !== 1 ? 's' : ''}\n`)];
+    const addedCount = newLines.length;
+    const removedCount = oldLines.length;
+    const parts = [];
+    if (addedCount > 0 && removedCount > 0) {
+        parts.push(green(`+${addedCount}`), gray(' / '), red(`-${removedCount}`));
+    }
+    else if (addedCount > 0) {
+        parts.push(green(`+${addedCount} line${addedCount !== 1 ? 's' : ''}`));
+    }
+    else {
+        parts.push(red(`-${removedCount} line${removedCount !== 1 ? 's' : ''}`));
+    }
+    const out = [`  ${gray('└')} ${parts.join('')}\n`];
     let fileLines = [];
     let lineOffset = 0;
     try {
@@ -223,17 +249,17 @@ function printUpdateDiff(filePath, oldText, newText) {
     let shown = 0;
     const ctxStart = Math.max(0, lineOffset - DIFF_CTX);
     for (let i = ctxStart; i < lineOffset && shown < DIFF_MAX; i++, shown++) {
-        out.push(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`));
+        out.push(`  ${gray(String(i + 1).padStart(4))}  ${gray(fileLines[i] ?? '')}\n`);
     }
     for (let i = 0; i < oldLines.length && shown < DIFF_MAX; i++, shown++) {
-        out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${red('- ')}${red(oldLines[i])}\n`);
+        out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${bgRed(`- ${oldLines[i]}`)}\n`);
     }
     for (let i = 0; i < newLines.length && shown < DIFF_MAX; i++, shown++) {
-        out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${green('+ ')}${green(newLines[i])}\n`);
+        out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${bgGreen(`+ ${newLines[i]}`)}\n`);
     }
     const ctxEnd = Math.min(fileLines.length, lineOffset + oldLines.length + DIFF_CTX);
     for (let i = lineOffset + oldLines.length; i < ctxEnd && shown < DIFF_MAX; i++, shown++) {
-        out.push(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`));
+        out.push(`  ${gray(String(i + 1).padStart(4))}  ${gray(fileLines[i] ?? '')}\n`);
     }
     return out.join('');
 }
@@ -241,9 +267,9 @@ function printEditPreview(content) {
     const lines = content.split('\n');
     const visible = lines.slice(0, DIFF_MAX);
     const hidden = lines.length - visible.length;
-    const out = [gray(`  └ ${lines.length} line${lines.length !== 1 ? 's' : ''}\n`)];
+    const out = [`  ${gray('└')} ${green(`+${lines.length} line${lines.length !== 1 ? 's' : ''}`)}\n`];
     visible.forEach((line, i) => {
-        out.push(`  ${gray(String(i + 1).padStart(4))} ${green('+ ')}${green(line)}\n`);
+        out.push(`  ${gray(String(i + 1).padStart(4))} ${bgGreen(`+ ${line}`)}\n`);
     });
     if (hidden > 0)
         out.push(gray(`  …${hidden} more line${hidden !== 1 ? 's' : ''}\n`));
@@ -256,7 +282,7 @@ export function toolCallStart(name, args) {
     if (name === 'update_file' && a.old && a.new && a.path) {
         out += printUpdateDiff(a.path, a.old, a.new);
     }
-    else if (name === 'edit_file' && a.content && a.path) {
+    else if ((name === 'edit_file' || name === 'create_file') && a.content && a.path) {
         out += printEditPreview(a.content);
     }
     write(out);

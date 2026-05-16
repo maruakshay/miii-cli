@@ -433,7 +433,7 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
           setOverlay('command')
           setOverlayIdx(0)
         }
-      } else if (input === '@' || (overlay === 'at' && atQuery !== undefined)) {
+      } else if (input === '@' || (overlay === 'at' && atQuery !== '')) {
         setOverlay('at')
         setOverlayIdx(0)
       } else if (overlay === 'command') {
