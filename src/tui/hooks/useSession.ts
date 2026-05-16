@@ -9,7 +9,7 @@ import { loadLongMemory, saveLongMemory, mergeFacts, formatMemoryBlock } from '.
 import type { MemoryFact } from '../../memory/store.js'
 import { extractFacts } from '../../memory/extractor.js'
 
-const SHORT_MEMORY_SIZE = 40
+const SHORT_MEMORY_SIZE = 50
 
 function buildSystemPrompt(cwd: string, facts: MemoryFact[], extraTools: Tool[] = []): string {
   return getSystemPrompt(`\n- CWD: ${cwd}`, extraTools) + formatMemoryBlock(facts)
@@ -95,6 +95,11 @@ export function useSession(initialSession: string, cwd: string, config: Config, 
     return ctx
   }
 
+  function setHistory(msgs: ChatMessage[]) {
+    historyRef.current = msgs
+    scheduleSave()
+  }
+
   function updateMemory(newFacts: string[]) {
     if (!newFacts.length) return
     const updated = mergeFacts(longMemoryRef.current, newFacts)
@@ -108,6 +113,6 @@ export function useSession(initialSession: string, cwd: string, config: Config, 
     sessionName, setSessionName, sessionNameRef,
     historyRef, saveTimerRef, systemPromptRef,
     longMemoryRef,
-    pushHistory, buildContext, renameFromMessage, updateMemory,
+    pushHistory, setHistory, buildContext, renameFromMessage, updateMemory,
   }
 }

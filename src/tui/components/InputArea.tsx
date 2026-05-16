@@ -54,8 +54,6 @@ interface Props {
   planningMode?: boolean
   permissionRequest?: { toolName: string; args: Record<string, unknown> } | null
   onPermissionResponse?: (result: 'yes' | 'session' | 'no') => void
-  compactRequest?: { messageCount: number } | null
-  onCompactResponse?: (approved: boolean) => void
   onSubmit: (text: string) => void
   onAbort: () => void
   history?: string[]
@@ -78,7 +76,7 @@ function wordEndAfter(line: string, col: number): number {
   return i
 }
 
-export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, compactRequest, onCompactResponse, onSubmit, onAbort, history = [], watchActive = false }: Props) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort, history = [], watchActive = false }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
@@ -232,12 +230,6 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
       if (input === 'y' || input === 'Y') { onPermissionResponse('yes'); return }
       if (input === 'a' || input === 'A') { onPermissionResponse('session'); return }
       if (input === 'n' || input === 'N' || key.escape) { onPermissionResponse('no'); return }
-      return
-    }
-
-    if (compactRequest && onCompactResponse) {
-      if (input === 'y' || input === 'Y') { onCompactResponse(true); return }
-      if (input === 'n' || input === 'N' || key.escape) { onCompactResponse(false); return }
       return
     }
 
@@ -442,12 +434,10 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
   const availWidth = Math.max(20, cols - 4) // paddingX(2) + "> "(2)
 
   const isProcessing = status !== 'idle'
-  const promptColor = (permissionRequest || compactRequest) ? 'yellow' : isProcessing ? 'yellow' : 'green'
+  const promptColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'green'
   const inHistory = historyIdx !== -1
 
-  const hint = compactRequest
-    ? 'y  compact   n  keep full context'
-    : permissionRequest
+  const hint = permissionRequest
     ? 'y  approve once   a  approve for session   n  deny'
     : isProcessing
     ? 'esc  interrupt'
@@ -484,11 +474,6 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
               <Text color="green" bold>y  once</Text>
               <Text color="cyan" bold>a  session</Text>
               <Text color="red" bold>n  deny</Text>
-            </Box>
-          ) : compactRequest ? (
-            <Box gap={2}>
-              <Text color="green" bold>y  yes</Text>
-              <Text color="red" bold>n  no</Text>
             </Box>
           ) : pasteLines > 0 ? (
             <Box flexDirection="column">

@@ -27,9 +27,6 @@ export interface PermissionRequest {
   args: Record<string, unknown>
 }
 
-export interface CompactRequest {
-  messageCount: number
-}
 
 export function useRunLoop(
   config: Config,
@@ -37,6 +34,7 @@ export function useRunLoop(
   pushHistory: (msg: ChatMessage) => void,
   extraTools: Tool[] = [],
   abortRef: MutableRefObject<AbortController | null>,
+  replaceHistory?: (msgs: ChatMessage[]) => void,
 ) {
   const [status, setStatus] = useState<Status>('idle')
   const [tick, setTick] = useState(0)
@@ -44,15 +42,15 @@ export function useRunLoop(
   const [taskLabel, setTaskLabel] = useState<string | undefined>()
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
   const permissionResolveRef = useRef<((result: 'yes' | 'session' | 'no') => void) | null>(null)
-  const [compactRequest, setCompactRequest] = useState<CompactRequest | null>(null)
-  const compactResolveRef = useRef<((approved: boolean) => void) | null>(null)
   const checkpointRef = useRef<Map<string, string | null>>(new Map())
   const sessionApprovedRef = useRef<Set<string>>(new Set())
   const thinkingStartRef = useRef<number>(0)
   const extraToolsRef = useRef(extraTools)
   extraToolsRef.current = extraTools
   const pushHistoryRef = useRef(pushHistory)
+  const replaceHistoryRef = useRef(replaceHistory)
   useEffect(() => { pushHistoryRef.current = pushHistory }, [pushHistory])
+  useEffect(() => { replaceHistoryRef.current = replaceHistory }, [replaceHistory])
 
   const resolvePermission = useCallback((result: 'yes' | 'session' | 'no') => {
     permissionResolveRef.current?.(result)
@@ -60,11 +58,6 @@ export function useRunLoop(
     setPermissionRequest(null)
   }, [])
 
-  const resolveCompact = useCallback((approved: boolean) => {
-    compactResolveRef.current?.(approved)
-    compactResolveRef.current = null
-    setCompactRequest(null)
-  }, [])
 
   useEffect(() => {
     if (status === 'idle') return
@@ -82,23 +75,16 @@ export function useRunLoop(
 
     let msgs = contextMsgs
     if (shouldCompact(contextMsgs)) {
-      const approved = await new Promise<boolean>(resolve => {
-        compactResolveRef.current = resolve
-        setCompactRequest({ messageCount: Math.round(contextSize(contextMsgs) / 1000) })
-      })
-      if (approved) {
-        printer.systemMsg('compacting context…')
-        const toCompact = stripEphemeral(contextMsgs)
-        msgs = await compactContext(toCompact, {
-          provider: config.provider,
-          model: currentModelRef.current,
-          baseUrl: config.baseUrl,
-          apiKey: config.apiKey,
-        }, goal)
-        printer.systemMsg(`compacted: ${contextMsgs.length} → ${msgs.length} messages`)
-      } else {
-        printer.systemMsg('keeping full context — responses may be slower')
-      }
+      printer.systemMsg('compacting context…')
+      const toCompact = stripEphemeral(contextMsgs)
+      msgs = await compactContext(toCompact, {
+        provider: config.provider,
+        model: currentModelRef.current,
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+      }, goal)
+      printer.systemMsg(`compacted: ${contextMsgs.length} → ${msgs.length} messages`)
+      replaceHistoryRef.current?.(msgs.filter(m => m.role !== 'system'))
     }
     abortRef.current = new AbortController()
 
@@ -217,12 +203,11 @@ export function useRunLoop(
                 if (SHOW_RESULT_TOOLS.has(tc.name)) printer.toolMsg(tc.name, result)
                 next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
 
-                // After any file edit, inject fresh file state so next tool sees actual content
                 if (FILE_EDIT_TOOLS.has(tc.name)) {
                   const filePath = tc.args.path as string | undefined
                   if (filePath && existsSync(filePath)) {
-                    const fresh = readFileSync(filePath, 'utf-8')
-                    next.push({ role: 'user', content: `[current state of ${filePath} after edit]\n${fresh}` })
+                    const lineCount = readFileSync(filePath, 'utf-8').split('\n').length
+                    next.push({ role: 'user', content: `[file updated: ${filePath} — ${lineCount} lines]` })
                   }
                 }
               } catch (e) {
@@ -273,11 +258,6 @@ export function useRunLoop(
       permissionResolveRef.current = null
       setPermissionRequest(null)
     }
-    if (compactResolveRef.current) {
-      compactResolveRef.current(false)
-      compactResolveRef.current = null
-      setCompactRequest(null)
-    }
     // Restore checkpointed files
     if (checkpointRef.current.size > 0) {
       let restored = 0
@@ -304,6 +284,5 @@ export function useRunLoop(
     thinkingStartRef,
     runLoop, handleAbort,
     permissionRequest, resolvePermission,
-    compactRequest, resolveCompact,
   }
 }

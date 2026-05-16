@@ -133,7 +133,7 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
     projectDir,
     setSessionName, sessionNameRef,
     historyRef, saveTimerRef, systemPromptRef,
-    pushHistory, buildContext, renameFromMessage, updateMemory,
+    pushHistory, setHistory, buildContext, renameFromMessage, updateMemory,
   } = useSession(session, cwd, config, mcpTools)
 
   const {
@@ -165,8 +165,7 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
     thinkingStartRef,
     runLoop, handleAbort,
     permissionRequest, resolvePermission,
-    compactRequest, resolveCompact,
-  } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef)
+  } = useRunLoop(config, currentModelRef, pushHistory, allTools, abortRef, setHistory)
 
   const { runRefactor } = useRefactor({
     config, currentModelRef, systemPromptRef, abortRef,
@@ -225,15 +224,6 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
           />
           <Divider cols={cols} />
         </>
-      ) : compactRequest ? (
-        <Box paddingX={1} flexDirection="column">
-          <Box gap={1}>
-            <Text color="yellow">⚠</Text>
-            <Text color="white" bold>context is large</Text>
-            <Text color="gray">(~{compactRequest.messageCount}k chars)</Text>
-          </Box>
-          <Text color="gray" dimColor>compact to keep responses fast, or keep full history</Text>
-        </Box>
       ) : permissionRequest ? (
         <Box paddingX={1} flexDirection="column">
           <Box gap={1}>
@@ -268,8 +258,6 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
         planningMode={planningMode}
         permissionRequest={permissionRequest}
         onPermissionResponse={resolvePermission}
-        compactRequest={compactRequest}
-        onCompactResponse={resolveCompact}
         onSubmit={handleSubmit}
         onAbort={handleAbort}
         history={historyRef.current.filter(m => m.role === 'user').map(m => m.content)}

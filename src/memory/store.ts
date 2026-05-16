@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 
-const MAX_FACTS = 200
+const MAX_FACTS = 50
 
 export interface MemoryFact {
   text: string

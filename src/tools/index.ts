@@ -125,7 +125,8 @@ export const tools: Tool[] = [
     params: '{"command": "string"}',
     execute: async ({ command }) => {
       const { stdout, stderr } = await run(command as string, { cwd: process.cwd(), timeout: EXEC_TIMEOUT_MS })
-      return [stdout, stderr ? `stderr: ${stderr}` : ''].filter(Boolean).join('\n').trim()
+      const out = [stdout, stderr ? `stderr: ${stderr}` : ''].filter(Boolean).join('\n').trim()
+      return out.length > 8000 ? out.slice(0, 8000) + '\n…[truncated]' : out
     },
   },
   {
@@ -264,16 +265,14 @@ export function getSystemPrompt(extra = '', extraTools: Tool[] = []): string {
   const toolDocs = allTools.map(t => `- ${t.name}(${t.params}): ${t.description}`).join('\n')
   const deepThinkDoc = `- deep_think({"query": "string", "needs_web": "boolean (optional)"}): Research tool — gathers information from files, git, and optionally the web before answering. Returns a compiled research summary. Guardrails: read-only tools only, max 6 tool calls, max 4 web calls inside. Use when a question requires reading multiple files or searching the web first.
 - search_codebase({"query": "string", "k": "number (optional)"}): Semantic vector search over the indexed codebase. Returns top-k relevant code snippets by meaning. Requires the user to have run /index build. Use this when you need to find code by concept rather than exact string — e.g. "authentication logic", "error handling patterns", "database queries".`
-  return `You are Miii — a fast, local AI coding assistant.
+  return `You are Miii — AI coding assistant.
 
-Use tools by emitting:
+Tools via:
 <tool_call>
 {"name": "tool_name", "args": {...}}
 </tool_call>
 
-Put file content in named blocks (never inside JSON — avoids escaping errors):
-
-For edit_file / create_file use <content> block:
+File content in named blocks (not inside JSON):
 <tool_call>
 {"name": "edit_file", "args": {"path": "src/foo.ts"}}
 <content>
@@ -281,7 +280,6 @@ full file content here
 </content>
 </tool_call>
 
-For update_file use <old> and <new> blocks:
 <tool_call>
 {"name": "update_file", "args": {"path": "src/foo.ts"}}
 <old>
@@ -297,26 +295,11 @@ ${toolDocs}
 ${deepThinkDoc}
 
 Rules:
-- edit_file only works on NEW files — it throws an error if the file exists. Never call it on existing files
-- To modify any existing file: call read_file first, then update_file with the exact text from that read as the <old> block
-- Never guess or reuse old text from earlier in the conversation — always re-read immediately before patching
-- If update_file reports "old text not found", call read_file again and retry with the exact current text
-- Never delete without confirming
-- Use git_status and git_diff before any refactor to understand what has already changed
-- Use git_log to understand recent history before suggesting changes
-- Always call git_status before git_commit to verify what will be staged
-- Be concise
-- Output plain text only — never use markdown formatting in your responses
-- No headers (no #, ##), no bold (**text**), no italic (*text*), no bullet points with *, no horizontal rules (---)
-- NEVER show file content or code in your text response — always use edit_file, update_file, or create_file tools to write code to files
-- If you want to show the user code, write it to the file with a tool call instead
-- No fenced code blocks (no \`\`\`). If you find yourself about to write a code block, use a tool call instead
-- Use plain indentation and labels for structure. This is a terminal, not a chat UI
-- After editing files that have tests, call run_tests to verify nothing broke
-- If run_tests fails, read the failing test output and fix the code, then run_tests again (max 3 retries)
-- You have web_search and web_extract tools — use them whenever the user asks about anything requiring internet access, current information, documentation, library versions, news, or external URLs
-- NEVER say you cannot search the web — always call web_search instead
-- web_search REQUIRES the "query" key exactly — never omit it, never use "q" or "search_query" or any other key name
-- Use deep_think when the question requires gathering from multiple files or sources before you can answer well — it runs a safe read-only research phase and returns a summary you can reason over
-- deep_think cannot edit files or run shell commands — it is purely for information gathering${extra}`
+- edit_file: new files only (errors if exists). For existing files: read_file then update_file with exact <old> text
+- Never guess old text — always re-read immediately before patching. If "old text not found": read_file again and retry
+- Plain text responses only. No markdown (#/*/\`), no code blocks — write code with tools, not in responses
+- git_status/git_diff before refactors. git_status before git_commit
+- run_tests after edits. Fix failures, retry up to 3 times
+- web_search requires "query" key exactly. Never say you can't search — always call web_search
+- deep_think: read-only research only, cannot edit files${extra}`
 }
