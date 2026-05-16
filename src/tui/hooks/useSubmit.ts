@@ -276,6 +276,8 @@ export function useSubmit(deps: SubmitDeps) {
     if (cmd.startsWith('/refactor ') || cmd === '/refactor') {
       const goal = cmd.slice(9).trim()
       if (!goal) { printer.systemMsg('usage: /refactor <goal>'); return }
+      const atRefactorContext = buildAtContext(text)
+      if (atRefactorContext) pushHistory({ role: 'user', content: atRefactorContext })
       await runRefactor(goal)
       return
     }
@@ -289,6 +291,7 @@ export function useSubmit(deps: SubmitDeps) {
       }
 
       // Design task phase: use DESIGN.md context + impeccable principles
+      const atDesignContext = buildAtContext(text)
       let designContext = ''
       try {
         const designFile = readFile(guardPath('DESIGN.md', cwd))
@@ -314,8 +317,8 @@ Design task: ${sub}
 
 Analyze what exists, then implement the design. Use the design system above if available. Make it distinctive and well-crafted.`
 
-      printer.userMsg(`/design ${sub}`)
-      pushHistory({ role: 'user', content: taskPrompt })
+      printer.userMsg(text)
+      pushHistory({ role: 'user', content: atDesignContext + taskPrompt })
       await runLoop(buildContext(), 0, sub)
       return
     }
@@ -323,7 +326,9 @@ Analyze what exists, then implement the design. Use the design system above if a
     if (cmd.startsWith('/think ') || cmd === '/think') {
       const query = cmd.slice(6).trim()
       if (!query) { printer.systemMsg('usage: /think <query>'); return }
-      printer.userMsg(`/think ${query}`)
+      const atThinkContext = buildAtContext(text)
+      if (atThinkContext) pushHistory({ role: 'user', content: atThinkContext })
+      printer.userMsg(text)
       setStatus('thinking')
       setTaskLabel(`gathering: ${query}`)
       abortRef.current = new AbortController()
@@ -538,6 +543,8 @@ Analyze what exists, then implement the design. Use the design system above if a
           return
         }
         if (skill.execute) {
+          const atContext = buildAtContext(text)
+          if (atContext) pushHistory({ role: 'user', content: atContext })
           const ctx = {
             messages: historyRef.current.map(m => ({ role: m.role, content: m.content })),
             appendMessage: (_role: string, content: string) => printer.systemMsg(content),
@@ -549,8 +556,9 @@ Analyze what exists, then implement the design. Use the design system above if a
           return
         }
         if (skill.prompt) {
-          printer.userMsg(skill.prompt)
-          pushHistory({ role: 'user', content: skill.prompt })
+          const atContext = buildAtContext(text)
+          printer.userMsg(text)
+          pushHistory({ role: 'user', content: atContext + skill.prompt })
           await runLoop(buildContext())
           return
         }

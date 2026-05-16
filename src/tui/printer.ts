@@ -125,6 +125,7 @@ export function welcome(provider: string, model: string, cwd: string, version?: 
     `  ${bold(yellow('Tips for getting started'))}`,
     `  Type ${cyan('@filename')} to inject file into context`,
     `  Use ${cyan('/skill')} to run a skill or command`,
+    `  Use ${cyan('/design teach')} to generate a design system`,
     `  Use ${cyan('/config')} to switch provider, model, or API key`,
     '',
   ]
@@ -202,22 +203,21 @@ function toolLabel(name: string, args: Record<string, unknown>): string {
 
 export function planSummary(tools: Array<{ name: string; args: Record<string, unknown> }>): void {
   if (!tools.length) return
-  const header = gray(`─ plan (${tools.length} action${tools.length === 1 ? '' : 's'})`)
-  write(header + '\n')
+  const lines: string[] = [gray(`─ plan (${tools.length} action${tools.length === 1 ? '' : 's'})`)]
   for (const t of tools) {
     const dot = DELETE_TOOLS.has(t.name) ? red('◦') : EDIT_TOOLS.has(t.name) ? green('◦') : blue('◦')
-    const label = toolLabel(t.name, t.args)
-    write(`  ${dot} ${gray(label)}\n`)
+    lines.push(`  ${dot} ${gray(toolLabel(t.name, t.args))}`)
   }
+  write(lines.join('\n') + '\n')
 }
 
 const DIFF_CTX = 2
 const DIFF_MAX = 40
 
-function printUpdateDiff(filePath: string, oldText: string, newText: string): void {
+function printUpdateDiff(filePath: string, oldText: string, newText: string): string {
   const oldLines = oldText.split('\n')
   const newLines = newText.split('\n')
-  write(gray(`  └ Added ${newLines.length} line${newLines.length !== 1 ? 's' : ''}, removed ${oldLines.length} line${oldLines.length !== 1 ? 's' : ''}\n`))
+  const out: string[] = [gray(`  └ Added ${newLines.length} line${newLines.length !== 1 ? 's' : ''}, removed ${oldLines.length} line${oldLines.length !== 1 ? 's' : ''}\n`)]
 
   let fileLines: string[] = []
   let lineOffset = 0
@@ -227,48 +227,51 @@ function printUpdateDiff(filePath: string, oldText: string, newText: string): vo
       fileLines = content.split('\n')
       const idx = content.indexOf(oldText)
       if (idx >= 0) lineOffset = content.slice(0, idx).split('\n').length - 1
-      else fileLines = [] // old text not in file — skip context lines
+      else fileLines = []
     }
   } catch {}
 
   let shown = 0
   const ctxStart = Math.max(0, lineOffset - DIFF_CTX)
   for (let i = ctxStart; i < lineOffset && shown < DIFF_MAX; i++, shown++) {
-    write(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`))
+    out.push(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`))
   }
   for (let i = 0; i < oldLines.length && shown < DIFF_MAX; i++, shown++) {
-    write(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${red('- ')}${red(oldLines[i])}\n`)
+    out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${red('- ')}${red(oldLines[i])}\n`)
   }
   for (let i = 0; i < newLines.length && shown < DIFF_MAX; i++, shown++) {
-    write(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${green('+ ')}${green(newLines[i])}\n`)
+    out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${green('+ ')}${green(newLines[i])}\n`)
   }
   const ctxEnd = Math.min(fileLines.length, lineOffset + oldLines.length + DIFF_CTX)
   for (let i = lineOffset + oldLines.length; i < ctxEnd && shown < DIFF_MAX; i++, shown++) {
-    write(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`))
+    out.push(gray(`  ${String(i + 1).padStart(4)}    ${fileLines[i] ?? ''}\n`))
   }
+  return out.join('')
 }
 
-function printEditPreview(content: string): void {
+function printEditPreview(content: string): string {
   const lines = content.split('\n')
   const visible = lines.slice(0, DIFF_MAX)
   const hidden = lines.length - visible.length
-  write(gray(`  └ ${lines.length} line${lines.length !== 1 ? 's' : ''}\n`))
+  const out: string[] = [gray(`  └ ${lines.length} line${lines.length !== 1 ? 's' : ''}\n`)]
   visible.forEach((line, i) => {
-    write(`  ${gray(String(i + 1).padStart(4))} ${green('+ ')}${green(line)}\n`)
+    out.push(`  ${gray(String(i + 1).padStart(4))} ${green('+ ')}${green(line)}\n`)
   })
-  if (hidden > 0) write(gray(`  …${hidden} more line${hidden !== 1 ? 's' : ''}\n`))
+  if (hidden > 0) out.push(gray(`  …${hidden} more line${hidden !== 1 ? 's' : ''}\n`))
+  return out.join('')
 }
 
 export function toolCallStart(name: string, args: Record<string, unknown>): void {
   const dot = DELETE_TOOLS.has(name) ? red('●') : EDIT_TOOLS.has(name) ? green('●') : blue('●')
-  write(`\n${dot} ${bold(toolLabel(name, args))}\n`)
+  let out = `\n${dot} ${bold(toolLabel(name, args))}\n`
 
   const a = args as Record<string, string>
   if (name === 'update_file' && a.old && a.new && a.path) {
-    printUpdateDiff(a.path, a.old, a.new)
+    out += printUpdateDiff(a.path, a.old, a.new)
   } else if (name === 'edit_file' && a.content && a.path) {
-    printEditPreview(a.content)
+    out += printEditPreview(a.content)
   }
+  write(out)
 }
 
 export function toolResultSummary(name: string, args: Record<string, unknown>, result: string): void {

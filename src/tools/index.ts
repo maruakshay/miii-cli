@@ -9,6 +9,13 @@ const run = promisify(exec)
 const runFile = promisify(execFile)
 const EXEC_TIMEOUT_MS = 30_000
 
+function requireArg(val: unknown, name: string, tool: string): string {
+  if (typeof val !== 'string' || !val.length) {
+    throw new Error(`${tool}: "${name}" argument is required and must be a non-empty string`)
+  }
+  return val
+}
+
 export interface Tool {
   name: string
   description: string
@@ -22,7 +29,7 @@ export const tools: Tool[] = [
     description: 'Read file contents',
     params: '{"path": "string"}',
     execute: async ({ path }) => {
-      try { return readFile(guardPath(path as string)) }
+      try { return readFile(guardPath(requireArg(path, 'path', 'read_file'))) }
       catch (e) { throw new Error(`read_file: ${e}`) }
     },
   },
@@ -31,7 +38,7 @@ export const tools: Tool[] = [
     description: 'List directory contents',
     params: '{"path": "string", "recursive": "boolean (optional)"}',
     execute: async ({ path, recursive = false }) => {
-      const entries = listFiles(guardPath(path as string), recursive as boolean)
+      const entries = listFiles(guardPath(requireArg(path, 'path', 'list_files')), recursive as boolean)
       if (!entries.length) return '(empty)'
       return entries.map(e => `${e.type === 'dir' ? 'd' : 'f'}  ${e.rel}`).join('\n')
     },
@@ -41,9 +48,9 @@ export const tools: Tool[] = [
     description: 'Create a new file with content — fails if file already exists. Prefer edit_file for new files.',
     params: '{"path": "string", "content": "string"}',
     execute: async ({ path, content }) => {
-      const safe = guardPath(path as string)
+      const safe = guardPath(requireArg(path, 'path', 'create_file'))
       if (existsSync(safe)) throw new Error(`file already exists: ${path}`)
-      writeFile(safe, content as string)
+      writeFile(safe, requireArg(content, 'content', 'create_file'))
       return `created: ${path}`
     },
   },
@@ -52,7 +59,7 @@ export const tools: Tool[] = [
     description: 'Write a new file — only for files that do not exist yet. Use update_file to modify existing files.',
     params: '{"path": "string", "content": "string"}',
     execute: async ({ path, content }) => {
-      const safe = guardPath(path as string)
+      const safe = guardPath(requireArg(path, 'path', 'edit_file'))
       if (existsSync(safe)) {
         throw new Error(
           `edit_file cannot overwrite existing file: ${path}\n` +
@@ -60,7 +67,7 @@ export const tools: Tool[] = [
           `Call read_file first to get the exact current text.`
         )
       }
-      const text = content as string
+      const text = requireArg(content, 'content', 'edit_file')
       writeFile(safe, text)
       const lines = text.split('\n').length
       return `created: ${path} (${lines} line${lines === 1 ? '' : 's'})`
@@ -71,11 +78,12 @@ export const tools: Tool[] = [
     description: 'Replace an exact unique string in an existing file. Always call read_file first to get the exact text.',
     params: '{"path": "string", "old": "string", "new": "string"}',
     execute: async ({ path, old: oldStr, new: newStr }) => {
-      const safe = guardPath(path as string)
+      const safe = guardPath(requireArg(path, 'path', 'update_file'))
       const current = readFile(safe)
       if (current === null) throw new Error(`file not found: ${path}`)
       if (current === '') throw new Error(`file empty: ${path}`)
-      const old = oldStr as string
+      const old = requireArg(oldStr, 'old', 'update_file')
+      if (newStr === undefined || newStr === null) throw new Error('update_file: "new" argument is required')
       const count = current.split(old).length - 1
       if (count === 0) {
         throw new Error(
@@ -115,7 +123,7 @@ export const tools: Tool[] = [
     description: 'Delete a file',
     params: '{"path": "string"}',
     execute: async ({ path }) => {
-      deleteFile(guardPath(path as string))
+      deleteFile(guardPath(requireArg(path, 'path', 'delete_file')))
       return `deleted: ${path}`
     },
   },
@@ -124,7 +132,7 @@ export const tools: Tool[] = [
     description: 'Run a shell command in cwd',
     params: '{"command": "string"}',
     execute: async ({ command }) => {
-      const { stdout, stderr } = await run(command as string, { cwd: process.cwd(), timeout: EXEC_TIMEOUT_MS })
+      const { stdout, stderr } = await run(requireArg(command, 'command', 'run_command'), { cwd: process.cwd(), timeout: EXEC_TIMEOUT_MS })
       const out = [stdout, stderr ? `stderr: ${stderr}` : ''].filter(Boolean).join('\n').trim()
       return out.length > 8000 ? out.slice(0, 8000) + '\n…[truncated]' : out
     },
@@ -134,7 +142,7 @@ export const tools: Tool[] = [
     description: 'Create a directory (and any missing parents)',
     params: '{"path": "string"}',
     execute: async ({ path }) => {
-      createDir(guardPath(path as string))
+      createDir(guardPath(requireArg(path, 'path', 'create_folder')))
       return `created: ${path}`
     },
   },
@@ -143,7 +151,7 @@ export const tools: Tool[] = [
     description: 'Move or rename a file or directory',
     params: '{"from": "string", "to": "string"}',
     execute: async ({ from, to }) => {
-      moveFile(guardPath(from as string), guardPath(to as string))
+      moveFile(guardPath(requireArg(from, 'from', 'move_file')), guardPath(requireArg(to, 'to', 'move_file')))
       return `moved: ${from} → ${to}`
     },
   },

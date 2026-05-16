@@ -16,7 +16,7 @@ const PERMISSION_TOOLS = new Set(['edit_file', 'update_file', 'delete_file', 'cr
 const CHECKPOINT_TOOLS = new Set(['edit_file', 'update_file', 'create_file', 'delete_file'])
 
 // Tool result messages that are ephemeral — never worth storing in memory or compact summaries
-const EPHEMERAL_PATTERN = /^Tool (read_file|list_files|run_tests) result:|^\[current state of|^\[Context compacted/
+const EPHEMERAL_PATTERN = /^Tool (read_file|list_files|run_tests) result:|^\[current state of|^\[Context compacted|^\[file updated:/
 
 export function stripEphemeral(messages: import('../../types.js').ChatMessage[]) {
   return messages.filter(m => m.role !== 'user' || !EPHEMERAL_PATTERN.test(m.content))
@@ -185,13 +185,13 @@ export function useRunLoop(
                     if (occurrences === 0) {
                       printer.errorMsg(`patch stale: old text not found in ${filePath} — injecting fresh content`)
                       next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
-                      next.push({ role: 'user', content: `update_file failed: old text not found in ${filePath}. The file content above is the current state. Retry update_file with the correct exact text.` })
+                      next.push({ role: 'user', content: `update_file failed: the <old> text you used does not exist in ${filePath}. The CURRENT file content is shown above. Re-read it carefully, find the exact text you want to replace, and retry update_file using text that exactly matches what is in the file now.` })
                       continue
                     }
                     if (occurrences > 1) {
                       printer.errorMsg(`patch ambiguous: old text matches ${occurrences} locations in ${filePath} — injecting fresh content`)
                       next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
-                      next.push({ role: 'user', content: `update_file failed: old text matches ${occurrences} locations in ${filePath}. Use more surrounding context to make old text unique, then retry.` })
+                      next.push({ role: 'user', content: `update_file failed: the <old> text matches ${occurrences} locations in ${filePath}. Add more surrounding lines to the <old> block to make it unique, then retry.` })
                       continue
                     }
                   }
@@ -230,7 +230,7 @@ export function useRunLoop(
         if (didEditFiles) {
           const systemMsg = msgs.find(m => m.role === 'system')
           const goalMsg   = msgs.find(m => m.role === 'user' && !m.content.startsWith('[') && !m.content.startsWith('Tool '))
-          const batchStart = msgs.length + 1 // index in next where this batch's messages start
+          const batchStart = msgs.length // include assistant message so model sees its own tool call on retry
           const batchMsgs  = next.slice(batchStart)
           const slimCtx: ChatMessage[] = [
             ...(systemMsg ? [systemMsg] : []),

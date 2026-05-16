@@ -211,18 +211,18 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
   }
 
   function selectFile(file: FileEntry) {
+    const r = cursor.row
+    const line = lines[r]
+    const before = line.slice(0, cursor.col)
+    const atIdx = before.lastIndexOf('@')
+    if (atIdx === -1) return
+    const newLine = line.slice(0, atIdx) + '@' + file.rel + ' ' + line.slice(cursor.col)
     setLines(prev => {
       const next = [...prev]
-      const r = cursor.row
-      const line = next[r]
-      const before = line.slice(0, cursor.col)
-      const atIdx = before.lastIndexOf('@')
-      if (atIdx === -1) return prev
-      const newLine = line.slice(0, atIdx) + '@' + file.rel + ' ' + line.slice(cursor.col)
       next[r] = newLine
-      setCursor({ row: r, col: atIdx + 1 + file.rel.length + 1 })
       return next
     })
+    setCursor({ row: r, col: atIdx + 1 + file.rel.length + 1 })
     setOverlay('none')
     setOverlayIdx(0)
   }
@@ -423,7 +423,12 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
 
       if (prospective.startsWith('/')) {
         if (prospective.slice(1).includes(' ')) {
-          setOverlay('none')
+          if (input === '@' || overlay === 'at') {
+            setOverlay('at')
+            setOverlayIdx(0)
+          } else {
+            setOverlay('none')
+          }
         } else {
           setOverlay('command')
           setOverlayIdx(0)
