@@ -1,9 +1,12 @@
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { Box, Text, useStdout } from 'ink'
 import { InputArea } from './components/InputArea.js'
 import { ModelPicker } from './components/ModelPicker.js'
 import { ConfigPicker } from './components/ConfigPicker.js'
 import { Divider } from './components/StatusBar.js'
+import { DesignTeachModal, DESIGN_TEACH_QUESTIONS, buildDesignPrompt } from './components/DesignTeachModal.js'
 import { tools } from '../tools/index.js'
 import type { Tool } from '../tools/index.js'
 import type { SkillLoader } from '../skills/loader.js'
@@ -128,6 +131,8 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
   const executorRef = useRef(new TaskExecutor(tools))
   const lastGitStatusRef = useRef<string>('')
   const abortRef = useRef<AbortController | null>(null)
+  const [designTeachState, setDesignTeachState] = useState<{ answers: string[]; idx: number } | null>(null)
+  const [designReadyPrompt, setDesignReadyPrompt] = useState<string | null>(null)
 
   const {
     projectDir,
@@ -135,6 +140,24 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
     historyRef, saveTimerRef, systemPromptRef,
     pushHistory, setHistory, buildContext, renameFromMessage, updateMemory,
   } = useSession(session, cwd, config, mcpTools)
+
+  const startDesignTeach = useCallback(() => {
+    setDesignTeachState({ answers: [], idx: 0 })
+  }, [])
+
+  const handleDesignAnswer = useCallback((answer: string) => {
+    setDesignTeachState(prev => {
+      if (!prev) return null
+      const answers = [...prev.answers, answer]
+      const nextIdx = prev.idx + 1
+      if (nextIdx >= DESIGN_TEACH_QUESTIONS.length) {
+        const exists = existsSync(join(cwd, 'DESIGN.md'))
+        setDesignReadyPrompt(buildDesignPrompt(DESIGN_TEACH_QUESTIONS, answers, exists))
+        return null
+      }
+      return { answers, idx: nextIdx }
+    })
+  }, [])
 
   const {
     currentModel, setCurrentModel, currentModelRef,
@@ -186,7 +209,15 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
     runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig,
     setConfigOpen, updateMemory,
     startWatch, stopWatch, watchActive,
+    startDesignTeach,
   })
+
+  useEffect(() => {
+    if (!designReadyPrompt) return
+    setDesignReadyPrompt(null)
+    pushHistory({ role: 'user', content: designReadyPrompt })
+    runLoop(buildContext(), 0, 'create or update DESIGN.md')
+  }, [designReadyPrompt, pushHistory, buildContext, runLoop])
 
   const skillList = skills.list()
 
@@ -224,6 +255,12 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
           />
           <Divider cols={cols} />
         </>
+      ) : designTeachState ? (
+        <DesignTeachModal
+          question={DESIGN_TEACH_QUESTIONS[designTeachState.idx]}
+          index={designTeachState.idx}
+          total={DESIGN_TEACH_QUESTIONS.length}
+        />
       ) : permissionRequest ? (
         <Box paddingX={1} flexDirection="column">
           <Box gap={1}>
@@ -258,6 +295,12 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
         planningMode={planningMode}
         permissionRequest={permissionRequest}
         onPermissionResponse={resolvePermission}
+        designTeach={designTeachState ? {
+          question: DESIGN_TEACH_QUESTIONS[designTeachState.idx],
+          index: designTeachState.idx,
+          total: DESIGN_TEACH_QUESTIONS.length,
+        } : null}
+        onDesignTeachAnswer={handleDesignAnswer}
         onSubmit={handleSubmit}
         onAbort={handleAbort}
         history={historyRef.current.filter(m => m.role === 'user').map(m => m.content)}

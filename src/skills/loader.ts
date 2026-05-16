@@ -46,6 +46,11 @@ const builtin: Skill[] = [
     },
   },
   {
+    name: 'design',
+    ns: 'default',
+    description: 'Impeccable UI design — /design teach to learn brand, /design <task> to create',
+  },
+  {
     name: 'review',
     ns: 'default',
     description: 'Review codebase for bugs/security/quality',
@@ -56,7 +61,7 @@ const builtin: Skill[] = [
     ns: 'default',
     description: 'Show available commands',
     execute: (_, ctx) => {
-      return 'Built-in: /review /mkdir /mv /touch /models /sessions /session /clear /list /help\nType /list for all loaded skills.'
+      return 'Built-in: /review /mkdir /mv /touch /models /sessions /session /clear /list /help\n\nDesign:\n  /design teach    answer 7 questions → generates DESIGN.md (impeccable design system)\n  /design <task>   implement UI using DESIGN.md as brand context\n\nType /list for all loaded skills.'
     },
   },
   {

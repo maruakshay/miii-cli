@@ -56,7 +56,7 @@ function wordEndAfter(line, col) {
         i++;
     return i;
 }
-export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort, history = [], watchActive = false }) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, designTeach, onDesignTeachAnswer, onSubmit, onAbort, history = [], watchActive = false }) {
     const [lines, setLines] = useState(['']);
     const [cursor, setCursor] = useState({ row: 0, col: 0 });
     const [overlay, setOverlay] = useState('none');
@@ -266,6 +266,12 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
             }
         }
         if (key.return) {
+            if (designTeach && onDesignTeachAnswer) {
+                const answer = fullInput.trim();
+                clearInput();
+                onDesignTeachAnswer(answer || '(skipped)');
+                return;
+            }
             const typed = fullInput.trim();
             const pasted = pasteRef.current;
             const text = pasted
@@ -442,23 +448,25 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     const cols = stdout.columns ?? 80;
     const availWidth = Math.max(20, cols - 4); // paddingX(2) + "> "(2)
     const isProcessing = status !== 'idle';
-    const promptColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'green';
+    const promptColor = permissionRequest ? 'yellow' : designTeach ? 'cyan' : isProcessing ? 'yellow' : 'green';
     const inHistory = historyIdx !== -1;
-    const hint = permissionRequest
-        ? 'y  approve once   a  approve for session   n  deny'
-        : isProcessing
-            ? 'esc  interrupt'
-            : pasteLines > 0
-                ? 'backspace  remove paste   enter  send'
-                : overlay !== 'none'
-                    ? '↑↓  navigate   enter  select   esc  close'
-                    : inHistory
-                        ? `history ${historyIdx + 1}/${history.length}   ↑↓  navigate   esc  clear`
-                        : planningMode
-                            ? 'planning mode   /plan:done  exit'
-                            : watchActive
-                                ? 'watch active   /watch stop to cancel'
-                                : '?  for shortcuts';
+    const hint = designTeach
+        ? 'enter  submit answer   esc  skip'
+        : permissionRequest
+            ? 'y  approve once   a  approve for session   n  deny'
+            : isProcessing
+                ? 'esc  interrupt'
+                : pasteLines > 0
+                    ? 'backspace  remove paste   enter  send'
+                    : overlay !== 'none'
+                        ? '↑↓  navigate   enter  select   esc  close'
+                        : inHistory
+                            ? `history ${historyIdx + 1}/${history.length}   ↑↓  navigate   esc  clear`
+                            : planningMode
+                                ? 'planning mode   /plan:done  exit'
+                                : watchActive
+                                    ? 'watch active   /watch stop to cancel'
+                                    : '?  for shortcuts';
     const pastePreview = pasteRef.current
         ? pasteRef.current.split('\n')[0].slice(0, cols - 6)
         : '';

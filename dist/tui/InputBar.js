@@ -1,10 +1,13 @@
 import { jsxs as _jsxs, jsx as _jsx, Fragment as _Fragment } from "react/jsx-runtime";
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { Box, Text, useStdout } from 'ink';
 import { InputArea } from './components/InputArea.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { ConfigPicker } from './components/ConfigPicker.js';
 import { Divider } from './components/StatusBar.js';
+import { DesignTeachModal, DESIGN_TEACH_QUESTIONS, buildDesignPrompt } from './components/DesignTeachModal.js';
 import { tools } from '../tools/index.js';
 import { toolArgSummary, formatElapsed } from './printer.js';
 import { MacroQueue } from '../tasks/queue.js';
@@ -96,7 +99,26 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
     const executorRef = useRef(new TaskExecutor(tools));
     const lastGitStatusRef = useRef('');
     const abortRef = useRef(null);
+    const [designTeachState, setDesignTeachState] = useState(null);
+    const [designReadyPrompt, setDesignReadyPrompt] = useState(null);
     const { projectDir, setSessionName, sessionNameRef, historyRef, saveTimerRef, systemPromptRef, pushHistory, setHistory, buildContext, renameFromMessage, updateMemory, } = useSession(session, cwd, config, mcpTools);
+    const startDesignTeach = useCallback(() => {
+        setDesignTeachState({ answers: [], idx: 0 });
+    }, []);
+    const handleDesignAnswer = useCallback((answer) => {
+        setDesignTeachState(prev => {
+            if (!prev)
+                return null;
+            const answers = [...prev.answers, answer];
+            const nextIdx = prev.idx + 1;
+            if (nextIdx >= DESIGN_TEACH_QUESTIONS.length) {
+                const exists = existsSync(join(cwd, 'DESIGN.md'));
+                setDesignReadyPrompt(buildDesignPrompt(DESIGN_TEACH_QUESTIONS, answers, exists));
+                return null;
+            }
+            return { answers, idx: nextIdx };
+        });
+    }, []);
     const { currentModel, setCurrentModel, currentModelRef, pickerOpen, setPickerOpen, pickerModels, pickerLoading, pickerError, pullState, handleModelSelect, handleModelPull, } = useModelPicker(config);
     const deepThinkTool = useMemo(() => ({
         name: 'deep_think',
@@ -126,7 +148,15 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
         runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig,
         setConfigOpen, updateMemory,
         startWatch, stopWatch, watchActive,
+        startDesignTeach,
     });
+    useEffect(() => {
+        if (!designReadyPrompt)
+            return;
+        setDesignReadyPrompt(null);
+        pushHistory({ role: 'user', content: designReadyPrompt });
+        runLoop(buildContext(), 0, 'create or update DESIGN.md');
+    }, [designReadyPrompt, pushHistory, buildContext, runLoop]);
     const skillList = skills.list();
     return (_jsxs(Box, { flexDirection: "column", children: [configOpen ? (_jsxs(_Fragment, { children: [_jsx(ConfigPicker, { config: config, currentModel: currentModel, tavilyKey: tavilyKey, onUpdate: ({ model, ...configPatch }) => {
                             if (model)
@@ -135,7 +165,11 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
                                 setConfig(c => ({ ...c, ...configPatch }));
                                 saveConfig(configPatch);
                             }
-                        }, onTavilyKey: (key) => { saveTavilyKey(key); setTavilyKey(key); }, onClose: () => { setConfigOpen(false); } }), _jsx(Divider, { cols: cols })] })) : pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : permissionRequest ? (_jsxs(Box, { paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: permissionRequest.toolName }), _jsx(Text, { color: "gray", children: toolArgSummary(permissionRequest.args) })] }), _jsx(DiffPreview, { toolName: permissionRequest.toolName, args: permissionRequest.args })] })) : (status === 'thinking' || status === 'tool') ? (_jsx(Box, { paddingX: 1, gap: 1, children: status === 'thinking'
+                        }, onTavilyKey: (key) => { saveTavilyKey(key); setTavilyKey(key); }, onClose: () => { setConfigOpen(false); } }), _jsx(Divider, { cols: cols })] })) : pickerOpen ? (_jsxs(_Fragment, { children: [_jsx(ModelPicker, { models: pickerModels, current: currentModel, loading: pickerLoading, error: pickerError, pull: pullState, onSelect: handleModelSelect, onPull: handleModelPull, onClose: () => { setPickerOpen(false); } }), _jsx(Divider, { cols: cols })] })) : designTeachState ? (_jsx(DesignTeachModal, { question: DESIGN_TEACH_QUESTIONS[designTeachState.idx], index: designTeachState.idx, total: DESIGN_TEACH_QUESTIONS.length })) : permissionRequest ? (_jsxs(Box, { paddingX: 1, flexDirection: "column", children: [_jsxs(Box, { gap: 1, children: [_jsx(Text, { color: "yellow", children: "\u26A0" }), _jsx(Text, { color: "white", bold: true, children: permissionRequest.toolName }), _jsx(Text, { color: "gray", children: toolArgSummary(permissionRequest.args) })] }), _jsx(DiffPreview, { toolName: permissionRequest.toolName, args: permissionRequest.args })] })) : (status === 'thinking' || status === 'tool') ? (_jsx(Box, { paddingX: 1, gap: 1, children: status === 'thinking'
                     ? _jsxs(_Fragment, { children: [_jsx(Text, { color: "yellow", children: SPARKLE[tick % SPARKLE.length] }), _jsx(Text, { color: Math.floor(tick / 4) % 6 >= 2 && Math.floor(tick / 4) % 6 <= 4 ? 'white' : 'gray', italic: true, children: THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]] }), _jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] })
-                    : _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }), _jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] }) })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, onSubmit: handleSubmit, onAbort: handleAbort, history: historyRef.current.filter(m => m.role === 'user').map(m => m.content), watchActive: watchActive })] }));
+                    : _jsxs(_Fragment, { children: [_jsxs(Text, { color: "yellow", dimColor: true, children: ["\u2699 running ", currentTool ?? 'tool', "\u2026"] }), _jsx(Text, { color: "gray", dimColor: true, children: formatElapsed(Date.now() - thinkingStartRef.current) }), taskLabel && _jsx(Text, { color: "cyan", dimColor: true, children: taskLabel })] }) })) : null, _jsx(InputArea, { status: status, skills: skillList, cwd: cwd, planningMode: planningMode, permissionRequest: permissionRequest, onPermissionResponse: resolvePermission, designTeach: designTeachState ? {
+                    question: DESIGN_TEACH_QUESTIONS[designTeachState.idx],
+                    index: designTeachState.idx,
+                    total: DESIGN_TEACH_QUESTIONS.length,
+                } : null, onDesignTeachAnswer: handleDesignAnswer, onSubmit: handleSubmit, onAbort: handleAbort, history: historyRef.current.filter(m => m.role === 'user').map(m => m.content), watchActive: watchActive })] }));
 }

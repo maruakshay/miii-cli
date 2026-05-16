@@ -54,6 +54,8 @@ interface Props {
   planningMode?: boolean
   permissionRequest?: { toolName: string; args: Record<string, unknown> } | null
   onPermissionResponse?: (result: 'yes' | 'session' | 'no') => void
+  designTeach?: { question: string; index: number; total: number } | null
+  onDesignTeachAnswer?: (answer: string) => void
   onSubmit: (text: string) => void
   onAbort: () => void
   history?: string[]
@@ -76,7 +78,7 @@ function wordEndAfter(line: string, col: number): number {
   return i
 }
 
-export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, onSubmit, onAbort, history = [], watchActive = false }: Props) {
+export function InputArea({ status, skills, cwd, planningMode, permissionRequest, onPermissionResponse, designTeach, onDesignTeachAnswer, onSubmit, onAbort, history = [], watchActive = false }: Props) {
   const [lines, setLines] = useState<string[]>([''])
   const [cursor, setCursor] = useState({ row: 0, col: 0 })
   const [overlay, setOverlay] = useState<Overlay>('none')
@@ -266,6 +268,12 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
     }
 
     if (key.return) {
+      if (designTeach && onDesignTeachAnswer) {
+        const answer = fullInput.trim()
+        clearInput()
+        onDesignTeachAnswer(answer || '(skipped)')
+        return
+      }
       const typed = fullInput.trim()
       const pasted = pasteRef.current
       const text = pasted
@@ -434,10 +442,12 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
   const availWidth = Math.max(20, cols - 4) // paddingX(2) + "> "(2)
 
   const isProcessing = status !== 'idle'
-  const promptColor = permissionRequest ? 'yellow' : isProcessing ? 'yellow' : 'green'
+  const promptColor = permissionRequest ? 'yellow' : designTeach ? 'cyan' : isProcessing ? 'yellow' : 'green'
   const inHistory = historyIdx !== -1
 
-  const hint = permissionRequest
+  const hint = designTeach
+    ? 'enter  submit answer   esc  skip'
+    : permissionRequest
     ? 'y  approve once   a  approve for session   n  deny'
     : isProcessing
     ? 'esc  interrupt'

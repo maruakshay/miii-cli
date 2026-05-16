@@ -69,6 +69,7 @@ interface SubmitDeps {
   startWatch: () => void
   stopWatch: () => void
   watchActive: boolean
+  startDesignTeach: () => void
 }
 
 export function useSubmit(deps: SubmitDeps) {
@@ -83,7 +84,7 @@ export function useSubmit(deps: SubmitDeps) {
       setSessionName, renameFromMessage,
       setStatus, setTaskLabel, setCurrentTool,
       runRefactor, handleGit, lastGitStatusRef, mcpTools, setConfig, setConfigOpen, updateMemory,
-      startWatch, stopWatch,
+      startWatch, stopWatch, startDesignTeach,
     } = depsRef.current
 
     const cmd = text.trim()
@@ -102,7 +103,10 @@ export function useSubmit(deps: SubmitDeps) {
         '  @filename      inject file into context\n' +
         '  /cmd           open command palette\n' +
         '  esc            abort / clear input\n' +
-        '  ctrl+c         abort / exit'
+        '  ctrl+c         abort / exit\n' +
+        '\ndesign commands:\n' +
+        '  /design teach  answer 7 questions → generates DESIGN.md (impeccable system)\n' +
+        '  /design <task> design or implement UI using DESIGN.md as brand context'
       )
       return
     }
@@ -273,6 +277,46 @@ export function useSubmit(deps: SubmitDeps) {
       const goal = cmd.slice(9).trim()
       if (!goal) { printer.systemMsg('usage: /refactor <goal>'); return }
       await runRefactor(goal)
+      return
+    }
+
+    if (cmd === '/design' || cmd.startsWith('/design ')) {
+      const sub = cmd.slice(7).trim()
+
+      if (!sub || sub === 'teach') {
+        startDesignTeach()
+        return
+      }
+
+      // Design task phase: use DESIGN.md context + impeccable principles
+      let designContext = ''
+      try {
+        const designFile = readFile(guardPath('DESIGN.md', cwd))
+        if (designFile) designContext = `\n\nProject design system (from DESIGN.md):\n${designFile}\n`
+      } catch {}
+
+      const impeccableRules = `
+Impeccable design rules — follow strictly:
+- Typography: purposeful font selection, modular scale, intentional pairing. No Inter/Roboto by default.
+- Color: OKLCH-based system, tinted neutrals, 4.5:1 contrast minimum. No generic gray-on-white.
+- Spatial design: consistent spacing scale, clear visual hierarchy, intentional whitespace.
+- Motion: contemporary easing (cubic-bezier not linear), respect prefers-reduced-motion.
+- Interaction: visible focus states, loading patterns, meaningful hover states.
+- Responsive: mobile-first, fluid typography where appropriate.
+- UX copy: precise microcopy in labels, errors, empty states. No lorem ipsum.
+- Anti-patterns to eliminate: nested card shadows, purple-to-blue gradients, disabled gray without reason, centered walls of text, auto-playing anything.
+- Write distinctive, crafted UI — not generic SaaS templates.
+- Write all code to files using tools. No code blocks in responses.`
+
+      const taskPrompt = `${designContext}${impeccableRules}
+
+Design task: ${sub}
+
+Analyze what exists, then implement the design. Use the design system above if available. Make it distinctive and well-crafted.`
+
+      printer.userMsg(`/design ${sub}`)
+      pushHistory({ role: 'user', content: taskPrompt })
+      await runLoop(buildContext(), 0, sub)
       return
     }
 
