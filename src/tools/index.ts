@@ -191,7 +191,7 @@ export const tools: Tool[] = [
     execute: async ({ message, files = '-A' }) => {
       if (!message) throw new Error('git_commit: message required')
       const fileStr = String(files)
-      if (/\.\./.test(fileStr) || !/^(-A|\.|[\w./\-\s]+)$/.test(fileStr)) throw new Error('git_commit: invalid files argument — use -A, ., or space-separated paths (no .. allowed)')
+      if (/\.\./.test(fileStr) || !/^(-A|\.|[\w./\-]+(?: [\w./\-]+)*)$/.test(fileStr)) throw new Error('git_commit: invalid files argument — use -A, ., or space-separated paths (no .. allowed)')
       try {
         const fileArgs = fileStr === '-A' ? ['-A'] : fileStr === '.' ? ['.'] : fileStr.split(/\s+/).filter(Boolean)
         await runFile('git', ['add', ...fileArgs], { timeout: EXEC_TIMEOUT_MS })

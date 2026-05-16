@@ -8,7 +8,7 @@ import { tools } from '../tools/index.js'
 import type { Tool } from '../tools/index.js'
 import type { SkillLoader } from '../skills/loader.js'
 import type { Config } from '../types.js'
-import { toolArgSummary } from './printer.js'
+import { toolArgSummary, formatElapsed } from './printer.js'
 import { MacroQueue } from '../tasks/queue.js'
 import { TaskExecutor } from '../tasks/executor.js'
 import { THINKING_PHRASES, SPARKLE } from './thinking.js'
@@ -33,14 +33,6 @@ interface Props {
   session: string
   version?: string
   mcpTools?: Tool[]
-}
-
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  const rem = s % 60
-  return rem === 0 ? `${m}m` : `${m}m ${rem}s`
 }
 
 const MAX_DIFF_LINES = 40
@@ -252,17 +244,20 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
           <DiffPreview toolName={permissionRequest.toolName} args={permissionRequest.args} />
         </Box>
       ) : (status === 'thinking' || status === 'tool') ? (
-        <Box flexDirection="column" paddingX={1}>
-          <Box>
-            {status === 'thinking'
-              ? <><Text color="yellow">{SPARKLE[tick % SPARKLE.length]} </Text><Text color="gray" dimColor italic>{THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]]}</Text></>
-              : <Text color="yellow" dimColor>⚙ running {currentTool ?? 'tool'}…</Text>
-            }
-          </Box>
-          <Box gap={2}>
-            <Text color="gray" dimColor>{formatElapsed(Date.now() - thinkingStartRef.current)}</Text>
-            {taskLabel && <Text color="cyan" dimColor>{taskLabel}</Text>}
-          </Box>
+        <Box paddingX={1} gap={1}>
+          {status === 'thinking'
+            ? <>
+                <Text color="yellow">{SPARKLE[tick % SPARKLE.length]}</Text>
+                <Text color={Math.floor(tick / 4) % 6 >= 2 && Math.floor(tick / 4) % 6 <= 4 ? 'white' : 'gray'} italic>{THINKING_PHRASES[phraseSeq[Math.floor(tick / 62) % phraseSeq.length]]}</Text>
+                <Text color="gray" dimColor>{formatElapsed(Date.now() - thinkingStartRef.current)}</Text>
+                {taskLabel && <Text color="cyan" dimColor>{taskLabel}</Text>}
+              </>
+            : <>
+                <Text color="yellow" dimColor>⚙ running {currentTool ?? 'tool'}…</Text>
+                <Text color="gray" dimColor>{formatElapsed(Date.now() - thinkingStartRef.current)}</Text>
+                {taskLabel && <Text color="cyan" dimColor>{taskLabel}</Text>}
+              </>
+          }
         </Box>
       ) : null}
 

@@ -141,6 +141,7 @@ export function useRunLoop(
             await runLoop([...msgs, { role: 'assistant', content: fullText }, nudge], depth + 1, goal)
             return
           }
+          printer.systemMsg(`done in ${printer.formatElapsed(Date.now() - thinkingStartRef.current)}`)
           setStatus('idle')
           return
         }
@@ -194,10 +195,17 @@ export function useRunLoop(
                   const oldText  = tc.args.old as string | undefined
                   if (filePath && oldText && existsSync(filePath)) {
                     const current = readFileSync(filePath, 'utf-8')
-                    if (!current.includes(oldText)) {
+                    const occurrences = current.split(oldText).length - 1
+                    if (occurrences === 0) {
                       printer.errorMsg(`patch stale: old text not found in ${filePath} — injecting fresh content`)
                       next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
                       next.push({ role: 'user', content: `patch_file failed: old text not found in ${filePath}. The file content above is the current state. Retry patch_file with the correct exact text.` })
+                      continue
+                    }
+                    if (occurrences > 1) {
+                      printer.errorMsg(`patch ambiguous: old text matches ${occurrences} locations in ${filePath} — injecting fresh content`)
+                      next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
+                      next.push({ role: 'user', content: `patch_file failed: old text matches ${occurrences} locations in ${filePath}. Use more surrounding context to make old text unique, then retry.` })
                       continue
                     }
                   }

@@ -13,7 +13,7 @@
 
 **Miii is a fully autonomous coding agent that runs entirely on your machine.** It plans, edits files, runs your tests, searches the web, indexes your codebase semantically, and iterates until the job is done — all without a single byte of your code leaving your network.
 
-Zero subscription. Zero cloud dependency. Zero Python overhead. **176 KB total.**
+Zero subscription. Zero cloud dependency. Zero Python overhead. **Lightning fast startup.**
 
 ```bash
 npm install -g miii-cli && miii
@@ -52,9 +52,9 @@ Your compute. Your data. Your rules.
 
 ---
 
-## What Miii Actually Does
+## How it Works
 
-This isn't autocomplete. Miii is a **full autonomous agent loop:**
+Miii isn't just autocomplete—it's a **full autonomous agent loop** that reasons through complex tasks:
 
 1. You describe a goal
 2. Miii reads your codebase, plans the changes, edits the files
@@ -95,7 +95,7 @@ This isn't autocomplete. Miii is a **full autonomous agent loop:**
 
 ---
 
-## Killer Features
+## 🚀 Core Capabilities
 
 **🔒 Privacy-First, Local by Default**
 Run on Ollama and your code never leaves your machine. No account. No API key. No monthly bill. Switch to Anthropic or OpenAI when you need it — one command, live, mid-session.
@@ -132,7 +132,7 @@ Connect any MCP-compatible tool server. Miii discovers tools automatically and m
 
 ---
 
-## Get Running in 60 Seconds
+## ⚡ Quick Start
 
 ```bash
 # 1. Start Ollama and pull a model
@@ -150,7 +150,7 @@ No API keys. No account. No sign-up form. First run walks you through setup inte
 
 ---
 
-## Power Commands
+## ⌨️ Power Commands
 
 | Command | What it does |
 |---|---|

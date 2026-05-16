@@ -40,7 +40,9 @@ export function loadConfig(): Config {
           if (key in raw) (safe as Record<string, unknown>)[key] = raw[key]
         }
         return { ...defaults, ...safe }
-      } catch {}
+      } catch {
+        process.stderr.write(`Warning: could not parse config at ${p} — using defaults\n`)
+      }
     }
   }
   return { ...defaults }

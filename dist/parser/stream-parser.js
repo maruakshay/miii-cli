@@ -99,12 +99,12 @@ function extractFileToolArgs(text, toolName) {
         }
     }
     // For patch_file: extract old/new fields
-    const oldM = text.match(/"old"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})/);
+    const oldM = text.match(/"old"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
     if (oldM)
-        args.old = oldM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-    const newM = text.match(/"new"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})/);
+        args.old = oldM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    const newM = text.match(/"new"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
     if (newM)
-        args.new = newM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        args.new = newM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
     return Object.keys(args).length > 0 ? args : null;
 }
 // Extract a bare tool-call JSON from arbitrary text (LLM skipped <tool_call> wrapper)

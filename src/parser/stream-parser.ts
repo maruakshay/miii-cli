@@ -82,10 +82,10 @@ function extractFileToolArgs(text: string, toolName: string): Record<string, unk
   }
 
   // For patch_file: extract old/new fields
-  const oldM = text.match(/"old"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})/)
-  if (oldM) args.old = oldM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
-  const newM = text.match(/"new"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})/)
-  if (newM) args.new = newM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+  const oldM = text.match(/"old"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/)
+  if (oldM) args.old = oldM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+  const newM = text.match(/"new"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/)
+  if (newM) args.new = newM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
 
   return Object.keys(args).length > 0 ? args : null
 }

@@ -51,7 +51,10 @@ export function loadSession(projectDir: string, name: string): ChatMessage[] {
   try {
     const parsed = JSON.parse(readFileSync(p, 'utf-8'))
     return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
+  } catch {
+    process.stderr.write(`Warning: corrupt session file at ${p} — starting fresh\n`)
+    return []
+  }
 }
 
 export function saveSession(projectDir: string, name: string, messages: ChatMessage[]) {

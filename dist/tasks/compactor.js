@@ -66,9 +66,12 @@ export async function compactContext(messages, cfg, goal) {
         role: 'user',
         content: `[Context compacted — ${toSummarize.length} messages summarised]\n\n${summary}`,
     };
+    const needsBridge = recent.length > 0 && recent[0].role === 'user';
+    const bridgeMsg = { role: 'assistant', content: 'Understood. Continuing from the summarized context.' };
     return [
         ...(system ? [system] : []),
         summaryMsg,
+        ...(needsBridge ? [bridgeMsg] : []),
         ...recent,
     ];
 }

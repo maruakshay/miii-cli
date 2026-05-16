@@ -42,7 +42,9 @@ export function loadConfig() {
                 }
                 return { ...defaults, ...safe };
             }
-            catch { }
+            catch {
+                process.stderr.write(`Warning: could not parse config at ${p} — using defaults\n`);
+            }
         }
     }
     return { ...defaults };

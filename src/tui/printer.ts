@@ -295,3 +295,11 @@ export function divider(): void {
   const cols = process.stdout.columns ?? 80
   write(`${gray('─'.repeat(cols))}\n`)
 }
+
+export function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  return rem === 0 ? `${m}m` : `${m}m ${rem}s`
+}

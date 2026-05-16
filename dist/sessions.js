@@ -48,6 +48,7 @@ export function loadSession(projectDir, name) {
         return Array.isArray(parsed) ? parsed : [];
     }
     catch {
+        process.stderr.write(`Warning: corrupt session file at ${p} — starting fresh\n`);
         return [];
     }
 }
