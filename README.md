@@ -2,7 +2,7 @@
 
 > **Claude Code UX. Ollama models. No invoice.**
 
-![MIII Demo](mii-cli.gif)
+![MIII Demo](miii-demo.png)
 
 [![npm version](https://img.shields.io/npm/v/miii-cli)](https://www.npmjs.com/package/miii-cli)
 [![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
