@@ -1,6 +1,9 @@
 // ANSI-formatted stdout output — goes into terminal scrollback
 
-import { readFileSync, existsSync } from 'fs'
+import { writeFileSync, unlinkSync } from 'fs'
+import { execFileSync } from 'child_process'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 let _inkWrite: ((data: string) => void) | null = null
 
@@ -32,8 +35,38 @@ const yellow = (s: string) => col(93, s)
 const purple = (s: string) => col(95, s)
 const red    = (s: string) => col(91, s)
 
-function bgRed(s: string)   { return `\x1b[48;2;65;18;18m\x1b[91m${s}${R}` }
-function bgGreen(s: string) { return `\x1b[48;2;14;46;14m\x1b[92m${s}${R}` }
+const BG_RED   = '\x1b[48;2;65;18;18m'
+const BG_GREEN = '\x1b[48;2;14;46;14m'
+
+function syntaxHighlight(code: string): string {
+  const FG = '\x1b[39m'
+  const kw  = (s: string) => `\x1b[94m${s}${FG}`
+  const str = (s: string) => `\x1b[33m${s}${FG}`
+  const num = (s: string) => `\x1b[35m${s}${FG}`
+  const typ = (s: string) => `\x1b[96m${s}${FG}`
+  const cmt = (s: string) => `\x1b[90m${s}${FG}`
+
+  const KEYWORDS = new Set([
+    'const','let','var','function','return','if','else','for','while','do','class',
+    'import','export','default','from','async','await','new','this','typeof','instanceof',
+    'in','of','true','false','null','undefined','void','type','interface','extends',
+    'implements','enum','readonly','public','private','protected','static','abstract',
+    'override','declare','as','is','throw','try','catch','finally','switch','case',
+    'break','continue','delete','yield',
+  ])
+
+  // strings first so // inside strings isn't treated as comment
+  const TOKEN = /((?:`(?:\\[\s\S]|[^`\\])*`)|(?:"(?:\\[\s\S]|[^"\\])*")|(?:'(?:\\[\s\S]|[^'\\])*'))|(\/\/[^\n]*)|(\/\*[\s\S]*?\*\/)|(\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b)|([A-Za-z_$][A-Za-z0-9_$]*)(?=\s*\()|([A-Za-z_$][A-Za-z0-9_$]*)/g
+
+  return code.replace(TOKEN, (match, s, lc, bc, n, funcName, word) => {
+    if (s)        return str(match)
+    if (lc || bc) return cmt(match)
+    if (n)        return num(match)
+    if (funcName) return KEYWORDS.has(funcName) ? kw(match) : typ(match)
+    if (word)     return KEYWORDS.has(word) ? kw(word) : /^[A-Z]/.test(word) ? typ(word) : word
+    return match
+  })
+}
 
 function stripMarkdown(s: string): string {
   return s
@@ -230,63 +263,65 @@ export function planSummary(tools: Array<{ name: string; args: Record<string, un
   write(lines.join('\n') + '\n')
 }
 
-const DIFF_CTX = 2
-const DIFF_MAX = 40
+const PREVIEW_LINES = 6
 
-function printUpdateDiff(filePath: string, oldText: string, newText: string): string {
+function fallbackDiff(oldText: string, newText: string): string {
   const oldLines = oldText.split('\n')
   const newLines = newText.split('\n')
-  const addedCount   = newLines.length
-  const removedCount = oldLines.length
-  const parts: string[] = []
-  if (addedCount > 0 && removedCount > 0) {
-    parts.push(green(`+${addedCount}`), gray(' / '), red(`-${removedCount}`))
-  } else if (addedCount > 0) {
-    parts.push(green(`+${addedCount} line${addedCount !== 1 ? 's' : ''}`))
-  } else {
-    parts.push(red(`-${removedCount} line${removedCount !== 1 ? 's' : ''}`))
-  }
-  const out: string[] = [`  ${gray('└')} ${parts.join('')}\n`]
-
-  let fileLines: string[] = []
-  let lineOffset = 0
-  try {
-    if (existsSync(filePath)) {
-      const content = readFileSync(filePath, 'utf-8')
-      fileLines = content.split('\n')
-      const idx = content.indexOf(oldText)
-      if (idx >= 0) lineOffset = content.slice(0, idx).split('\n').length - 1
-      else fileLines = []
-    }
-  } catch {}
-
-  let shown = 0
-  const ctxStart = Math.max(0, lineOffset - DIFF_CTX)
-  for (let i = ctxStart; i < lineOffset && shown < DIFF_MAX; i++, shown++) {
-    out.push(`  ${gray(String(i + 1).padStart(4))}  ${gray(fileLines[i] ?? '')}\n`)
-  }
-  for (let i = 0; i < oldLines.length && shown < DIFF_MAX; i++, shown++) {
-    out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${bgRed(`- ${oldLines[i]}`)}\n`)
-  }
-  for (let i = 0; i < newLines.length && shown < DIFF_MAX; i++, shown++) {
-    out.push(`  ${gray(String(lineOffset + i + 1).padStart(4))} ${bgGreen(`+ ${newLines[i]}`)}\n`)
-  }
-  const ctxEnd = Math.min(fileLines.length, lineOffset + oldLines.length + DIFF_CTX)
-  for (let i = lineOffset + oldLines.length; i < ctxEnd && shown < DIFF_MAX; i++, shown++) {
-    out.push(`  ${gray(String(i + 1).padStart(4))}  ${gray(fileLines[i] ?? '')}\n`)
-  }
+  const out: string[] = [`  ${gray('└')} ${green(`+${newLines.length}`)}${gray(' / ')}${red(`-${oldLines.length}`)}\n`]
+  oldLines.forEach(l => out.push(`  ${BG_RED}-${syntaxHighlight(l)}\x1b[0m\n`))
+  newLines.forEach(l => out.push(`  ${BG_GREEN}+${syntaxHighlight(l)}\x1b[0m\n`))
   return out.join('')
+}
+
+function printUpdateDiff(_filePath: string, oldText: string, newText: string): string {
+  const key = `${process.pid}-${Date.now()}`
+  const tmpA = join(tmpdir(), `miii-old-${key}`)
+  const tmpB = join(tmpdir(), `miii-new-${key}`)
+  try {
+    writeFileSync(tmpA, oldText)
+    writeFileSync(tmpB, newText)
+    let diffOut = ''
+    try {
+      execFileSync('diff', ['-u', tmpA, tmpB], { encoding: 'utf-8' })
+    } catch (e: any) {
+      if (e.code === 'ENOENT') return fallbackDiff(oldText, newText)
+      diffOut = e.stdout || e.stderr || ''
+    }
+    if (!diffOut) return `  ${gray('└')} (no changes)\n`
+
+    const lines = diffOut.split('\n')
+    let added = 0, removed = 0
+    for (const l of lines) {
+      if (l.startsWith('+') && !l.startsWith('+++')) added++
+      if (l.startsWith('-') && !l.startsWith('---')) removed++
+    }
+    const parts: string[] = []
+    if (added > 0) parts.push(green(`+${added}`))
+    if (removed > 0) parts.push(red(`-${removed}`))
+    const out: string[] = [`  ${gray('└')} ${parts.join(gray(' / '))}\n`]
+
+    for (const line of lines) {
+      if (line.startsWith('---') || line.startsWith('+++')) continue
+      if (line.startsWith('@@')) out.push(`  ${cyan(line)}\n`)
+      else if (line.startsWith('+')) out.push(`  ${BG_GREEN}+${syntaxHighlight(line.slice(1))}\x1b[0m\n`)
+      else if (line.startsWith('-')) out.push(`  ${BG_RED}-${syntaxHighlight(line.slice(1))}\x1b[0m\n`)
+      else if (line) out.push(`  ${gray(line)}\n`)
+    }
+    return out.join('')
+  } finally {
+    try { unlinkSync(tmpA) } catch {}
+    try { unlinkSync(tmpB) } catch {}
+  }
 }
 
 function printEditPreview(content: string): string {
   const lines = content.split('\n')
-  const visible = lines.slice(0, DIFF_MAX)
+  const visible = lines.slice(0, PREVIEW_LINES)
   const hidden = lines.length - visible.length
   const out: string[] = [`  ${gray('└')} ${green(`+${lines.length} line${lines.length !== 1 ? 's' : ''}`)}\n`]
-  visible.forEach((line, i) => {
-    out.push(`  ${gray(String(i + 1).padStart(4))} ${bgGreen(`+ ${line}`)}\n`)
-  })
-  if (hidden > 0) out.push(gray(`  …${hidden} more line${hidden !== 1 ? 's' : ''}\n`))
+  visible.forEach(line => out.push(`  ${BG_GREEN}+ ${syntaxHighlight(line)}\x1b[0m\n`))
+  if (hidden > 0) out.push(`  ${gray(`  … ${hidden} more line${hidden !== 1 ? 's' : ''}`)}\n`)
   return out.join('')
 }
 

@@ -51,7 +51,8 @@ export class MCPClient {
       d.toString().split('\n').filter(Boolean).forEach(line => process.stderr.write(`[MCP:${this.name}] ${line}\n`))
     })
 
-    const rl = createInterface({ input: this.proc.stdout! })
+    if (!this.proc.stdout) throw new Error(`MCP server "${this.name}" has no stdout pipe`)
+    const rl = createInterface({ input: this.proc.stdout })
     rl.on('line', (line) => {
       if (!line.trim()) return
       try {

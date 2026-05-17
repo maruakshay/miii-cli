@@ -66,7 +66,9 @@ export function saveSession(projectDir: string, name: string, messages: ChatMess
       JSON.stringify(messages),
       { mode: 0o600 },
     )
-  } catch {}
+  } catch (e) {
+    process.stderr.write(`Warning: failed to save session "${name}": ${e}\n`)
+  }
 }
 
 export function deleteSession(projectDir: string, name: string) {

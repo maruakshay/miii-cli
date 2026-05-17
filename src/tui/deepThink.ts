@@ -100,12 +100,15 @@ Guardrails:
       const tool = gatherTools.find(t => t.name === tc.name)
       if (!tool) continue
 
+      if (signal?.aborted) return
+
       onStep?.(tc.name)
       totalCalls++
       if (isWeb) webCalls++
 
       try {
         const result = await tool.execute(tc.args)
+        if (signal?.aborted) return
         next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
       } catch (e) {
         next.push({ role: 'user', content: `Tool ${tc.name} error: ${e}` })

@@ -151,6 +151,7 @@ export function useRunLoop(
 
         setStatus('tool')
         const next: ChatMessage[] = [...msgs, { role: 'assistant', content: fullText }]
+        let actualEditsDone = false
         const allParallelSafe = pendingTools.every(tc => PARALLEL_SAFE.has(tc.name))
 
         if (allParallelSafe && pendingTools.length > 1) {
@@ -171,6 +172,7 @@ export function useRunLoop(
             for (const r of settled) {
               if (r.status === 'fulfilled') {
                 next.push({ role: 'user', content: `Tool ${r.value.tc.name} result:\n${r.value.result}` })
+                if (FILE_EDIT_TOOLS.has(r.value.tc.name)) actualEditsDone = true
               } else {
                 const err = `Tool error: ${r.reason}`
                 printer.errorMsg(err)
@@ -266,6 +268,7 @@ export function useRunLoop(
                 next.push({ role: 'user', content: `Tool ${tc.name} result:\n${result}` })
 
                 if (FILE_EDIT_TOOLS.has(tc.name)) {
+                  actualEditsDone = true
                   const filePath = tc.args.path as string | undefined
                   if (filePath && existsSync(filePath)) {
                     const lineCount = readFileSync(filePath, 'utf-8').split('\n').length
@@ -289,19 +292,24 @@ export function useRunLoop(
 
         // For file-edit turns: slim context (system + goal + fresh file states + recent results)
         // For non-edit turns: full next (model needs full conversational context)
-        const didEditFiles = pendingTools.some(tc => FILE_EDIT_TOOLS.has(tc.name))
+        const didEditFiles = actualEditsDone
         if (didEditFiles) {
           const systemMsg = msgs.find(m => m.role === 'system')
           const goalMsg   = msgs.find(m => m.role === 'user' && !m.content.startsWith('[') && !m.content.startsWith('Tool '))
                          ?? (goal ? { role: 'user' as const, content: goal } : undefined)
-          const batchStart = msgs.length // include assistant message so model sees its own tool call on retry
-          const batchMsgs  = next.slice(batchStart)
-          const slimCtx: ChatMessage[] = [
-            ...(systemMsg ? [systemMsg] : []),
-            ...(goalMsg   ? [goalMsg]   : []),
-            ...batchMsgs,
-          ]
-          await runLoop(slimCtx, depth + 1, goal)
+          // If no recoverable goal, skip slimming — model needs full context to make sense of situation
+          if (!goalMsg) {
+            await runLoop(next, depth + 1, goal)
+          } else {
+            const batchStart = msgs.length // include assistant message so model sees its own tool call on retry
+            const batchMsgs  = next.slice(batchStart)
+            const slimCtx: ChatMessage[] = [
+              ...(systemMsg ? [systemMsg] : []),
+              goalMsg,
+              ...batchMsgs,
+            ]
+            await runLoop(slimCtx, depth + 1, goal)
+          }
         } else {
           await runLoop(next, depth + 1, goal)
         }

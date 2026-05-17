@@ -1,13 +1,25 @@
 import {
-  readFileSync, writeFileSync, unlinkSync,
-  mkdirSync, readdirSync, statSync, existsSync, renameSync,
+  readFileSync, writeFileSync, unlinkSync, copyFileSync,
+  mkdirSync, readdirSync, statSync, existsSync, renameSync, realpathSync,
 } from 'fs'
-import { join, dirname, relative, extname, resolve, sep } from 'path'
+import { join, dirname, basename, relative, extname, resolve, sep } from 'path'
 
 export function guardPath(p: string, base = process.cwd()): string {
   const abs = resolve(base, p)
-  const root = resolve(base)
-  if (abs !== root && !abs.startsWith(root + sep)) {
+  let realRoot: string
+  try { realRoot = realpathSync(resolve(base)) } catch { realRoot = resolve(base) }
+
+  // Resolve symlinks — prevents traversal via symlinks inside cwd pointing outside
+  let realAbs: string
+  try {
+    realAbs = realpathSync(abs)
+  } catch {
+    // Path doesn't exist yet (new file write) — resolve parent's realpath
+    try { realAbs = join(realpathSync(dirname(abs)), basename(abs)) }
+    catch { realAbs = abs }
+  }
+
+  if (realAbs !== realRoot && !realAbs.startsWith(realRoot + sep)) {
     throw new Error(`path outside working directory: ${p}`)
   }
   return abs
@@ -65,7 +77,14 @@ export function createDir(p: string): void {
 
 export function moveFile(from: string, to: string): void {
   mkdirSync(dirname(to), { recursive: true })
-  renameSync(from, to)
+  try {
+    renameSync(from, to)
+  } catch (e: any) {
+    if (e.code === 'EXDEV') {
+      copyFileSync(from, to)
+      unlinkSync(from)
+    } else throw e
+  }
 }
 
 export interface FileEntry {

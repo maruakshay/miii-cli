@@ -135,7 +135,8 @@ async function chatOllama(cfg: ChatConfig): Promise<void> {
       return
     }
 
-    const reader = res.body!.getReader()
+    if (!res.body) { onError(new Error('Ollama: response has no body')); return }
+    const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let full = ''
     let promptTokens = 0
@@ -208,7 +209,8 @@ async function chatOpenAI(cfg: ChatConfig): Promise<void> {
       return
     }
 
-    const reader = res.body!.getReader()
+    if (!res.body) { onError(new Error('LLM: response has no body')); return }
+    const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let full = ''
     let buf = ''
@@ -313,7 +315,8 @@ async function chatAnthropic(cfg: ChatConfig): Promise<void> {
       return
     }
 
-    const reader = res.body!.getReader()
+    if (!res.body) { onError(new Error('Anthropic: response has no body')); return }
+    const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
     let fullText = ''
