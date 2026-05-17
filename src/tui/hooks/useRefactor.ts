@@ -47,7 +47,8 @@ export function useRefactor(deps: RefactorDeps) {
       },
     ]
 
-    abortRef.current = new AbortController()
+    const controller = new AbortController()
+    abortRef.current = controller
     let planText = ''
 
     await chat({
@@ -55,7 +56,7 @@ export function useRefactor(deps: RefactorDeps) {
       model: currentModelRef.current,
       baseUrl: config.baseUrl,
       messages: planCtx,
-      signal: abortRef.current.signal,
+      signal: controller.signal,
       async onDone(text) { planText = text },
       onError(err) { printer.errorMsg(err.message) },
     })
@@ -120,7 +121,7 @@ export function useRefactor(deps: RefactorDeps) {
         model: currentModelRef.current,
         baseUrl: config.baseUrl,
         messages: editCtx,
-        signal: abortRef.current?.signal,
+        signal: controller.signal,
         async onDone(text) { editText = text },
         onError(err) { printer.errorMsg(`edit LLM error: ${err.message}`) },
       })

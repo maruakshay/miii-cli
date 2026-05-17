@@ -101,7 +101,8 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
     const abortRef = useRef(null);
     const [designTeachState, setDesignTeachState] = useState(null);
     const [designReadyPrompt, setDesignReadyPrompt] = useState(null);
-    const { projectDir, setSessionName, sessionNameRef, historyRef, saveTimerRef, systemPromptRef, pushHistory, setHistory, buildContext, renameFromMessage, updateMemory, } = useSession(session, cwd, config, mcpTools);
+    const { currentModel, setCurrentModel, currentModelRef, pickerOpen, setPickerOpen, pickerModels, pickerLoading, pickerError, pullState, handleModelSelect, handleModelPull, } = useModelPicker(config);
+    const { projectDir, setSessionName, sessionNameRef, historyRef, saveTimerRef, systemPromptRef, pushHistory, setHistory, buildContext, renameFromMessage, updateMemory, } = useSession(session, cwd, config, mcpTools, currentModelRef);
     const startDesignTeach = useCallback(() => {
         setDesignTeachState({ answers: [], idx: 0 });
     }, []);
@@ -119,7 +120,6 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
             return { answers, idx: nextIdx };
         });
     }, []);
-    const { currentModel, setCurrentModel, currentModelRef, pickerOpen, setPickerOpen, pickerModels, pickerLoading, pickerError, pullState, handleModelSelect, handleModelPull, } = useModelPicker(config);
     const deepThinkTool = useMemo(() => ({
         name: 'deep_think',
         description: 'Research tool: gather info from files and web before answering.',

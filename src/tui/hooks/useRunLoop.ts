@@ -155,7 +155,9 @@ export function useRunLoop(
               if (decision === 'session') sessionApprovedRef.current.add(sessionKey)
               if (decision === 'no') {
                 printer.systemMsg(`denied: ${tc.name}`)
-                next.push({ role: 'user', content: `Tool ${tc.name} was denied by the user` })
+                const remaining = pendingTools.slice(pendingTools.indexOf(tc) + 1).map(t => t.name)
+                const skippedNote = remaining.length ? ` The following tools were also skipped: ${remaining.join(', ')}.` : ''
+                next.push({ role: 'user', content: `Tool ${tc.name} was denied by the user.${skippedNote} Do not retry these tools unless the user explicitly asks.` })
                 break
               }
 
@@ -180,8 +182,9 @@ export function useRunLoop(
                   const filePath = tc.args.path as string | undefined
                   const oldText  = tc.args.old as string | undefined
                   if (filePath && oldText && existsSync(filePath)) {
+                    const norm = (s: string) => s.replace(/\r\n/g, '\n')
                     const current = readFileSync(filePath, 'utf-8')
-                    const occurrences = current.split(oldText).length - 1
+                    const occurrences = norm(current).split(norm(oldText)).length - 1
                     if (occurrences === 0) {
                       printer.errorMsg(`patch stale: old text not found in ${filePath} — injecting fresh content`)
                       next.push({ role: 'user', content: `Tool read_file result:\n${current}` })
@@ -230,6 +233,7 @@ export function useRunLoop(
         if (didEditFiles) {
           const systemMsg = msgs.find(m => m.role === 'system')
           const goalMsg   = msgs.find(m => m.role === 'user' && !m.content.startsWith('[') && !m.content.startsWith('Tool '))
+                         ?? (goal ? { role: 'user' as const, content: goal } : undefined)
           const batchStart = msgs.length // include assistant message so model sees its own tool call on retry
           const batchMsgs  = next.slice(batchStart)
           const slimCtx: ChatMessage[] = [

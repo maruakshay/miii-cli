@@ -81,7 +81,7 @@ export function toolArgSummary(args) {
     const first = Object.values(args)[0];
     return first ? truncate(String(first), 60) : '';
 }
-export function welcome(provider, model, cwd, version, updateAvailable, linked) {
+export function welcome(cwd, version, updateAvailable, linked) {
     const cols = Math.min(process.stdout.columns ?? 80, 100);
     const innerW = cols - 2;
     const leftW = Math.floor(innerW * 0.44);
@@ -114,7 +114,6 @@ export function welcome(provider, model, cwd, version, updateAvailable, linked) 
         '',
         ...miniArt,
         '',
-        `  ${gray(model + ' · ' + provider)}`,
         `  ${gray(shortCwd)}`,
         '',
     ];

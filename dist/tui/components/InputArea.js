@@ -428,9 +428,13 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
             appendChar(input);
             if (prospective.startsWith('/')) {
                 if (prospective.slice(1).includes(' ')) {
-                    if (input === '@' || overlay === 'at') {
+                    if (input === '@') {
+                        filesLoadedRef.current = false;
                         setOverlay('at');
                         setOverlayIdx(0);
+                    }
+                    else if (overlay === 'at') {
+                        setOverlay('at');
                     }
                     else {
                         setOverlay('none');
@@ -441,9 +445,13 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
                     setOverlayIdx(0);
                 }
             }
-            else if (input === '@' || (overlay === 'at' && atQuery !== '')) {
+            else if (input === '@') {
+                filesLoadedRef.current = false;
                 setOverlay('at');
                 setOverlayIdx(0);
+            }
+            else if (overlay === 'at' && atQuery !== '') {
+                setOverlay('at');
             }
             else if (overlay === 'command') {
                 setOverlay('none');

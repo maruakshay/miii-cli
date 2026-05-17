@@ -180,8 +180,9 @@ export class SkillLoader {
     const pkg = nameOrPkg.includes('/') || nameOrPkg.startsWith('miii-skill-')
       ? nameOrPkg
       : `miii-skill-${nameOrPkg}`
+    if (!/^[a-zA-Z0-9@/._-]+$/.test(pkg)) throw new Error(`invalid package name: ${pkg}`)
     createDir(NPM_SKILLS_DIR)
-    const { stdout, stderr } = await run(`npm install --prefix ${JSON.stringify(NPM_SKILLS_DIR)} ${pkg}`)
+    const { stdout, stderr } = await run(`npm install --prefix ${JSON.stringify(NPM_SKILLS_DIR)} ${JSON.stringify(pkg)}`)
     const out = (stdout + stderr).trim()
     // Reload newly installed skill
     await this.loadAll()
@@ -192,7 +193,8 @@ export class SkillLoader {
     const pkg = nameOrPkg.includes('/') || nameOrPkg.startsWith('miii-skill-')
       ? nameOrPkg
       : `miii-skill-${nameOrPkg}`
-    const { stdout, stderr } = await run(`npm uninstall --prefix ${JSON.stringify(NPM_SKILLS_DIR)} ${pkg}`)
+    if (!/^[a-zA-Z0-9@/._-]+$/.test(pkg)) throw new Error(`invalid package name: ${pkg}`)
+    const { stdout, stderr } = await run(`npm uninstall --prefix ${JSON.stringify(NPM_SKILLS_DIR)} ${JSON.stringify(pkg)}`)
     const out = (stdout + stderr).trim()
     // Remove from map
     const shortName = pkg.replace(/^miii-skill-/, '')

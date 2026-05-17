@@ -5,7 +5,7 @@ import { createRequire } from 'module';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { loadConfig } from './config.js';
 import { SkillLoader } from './skills/loader.js';
 import { InputBar } from './tui/InputBar.js';
@@ -67,6 +67,45 @@ async function checkLatestVersion(current, force = false) {
     catch { }
     return undefined;
 }
+function promptYN(question) {
+    return new Promise(resolve => {
+        process.stdout.write(`  ${question} (y/N) `);
+        const onData = (key) => {
+            const k = key.toString();
+            process.stdin.setRawMode(false);
+            process.stdin.pause();
+            process.stdin.removeListener('data', onData);
+            process.stdout.write('\n');
+            if (k === '') {
+                process.exit(130);
+            } // ctrl+c in raw mode — exit cleanly
+            resolve(k.toLowerCase() === 'y');
+        };
+        try {
+            process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdin.setEncoding('utf-8');
+            process.stdin.on('data', onData);
+        }
+        catch {
+            // stdin not a TTY (piped input) — skip prompt
+            process.stdin.removeListener('data', onData);
+            process.stdout.write('\n');
+            resolve(false);
+        }
+    });
+}
+async function runAutoUpdate(latestVersion) {
+    process.stdout.write(`\n  Updating miii-cli to v${latestVersion}…\n\n`);
+    const result = spawnSync('npm', ['install', '-g', 'miii-cli'], { stdio: 'inherit', shell: true });
+    if (result.status === 0) {
+        process.stdout.write(`\n  Updated to v${latestVersion}. Restart miii.\n`);
+    }
+    else {
+        process.stdout.write(`\n  Update failed (exit ${result.status}). Run manually: npm install -g miii-cli\n`);
+    }
+    process.exit(result.status ?? 1);
+}
 export async function lazyInit() {
     const argv = minimist(process.argv.slice(2), {
         string: ['model', 'url', 'provider', 'session'],
@@ -105,7 +144,13 @@ export async function lazyInit() {
             process.stderr.write(`MCP: loaded ${mcpTools.length} tool(s) from ${mcpClients.length} server(s)\n`);
     }
     // Print welcome banner to scrollback BEFORE Ink starts
-    welcome(config.provider, config.model, process.cwd(), currentVersion, updateAvailable, linked);
+    welcome(process.cwd(), currentVersion, updateAvailable, linked);
+    // If update available and not a linked dev install, offer auto-update
+    if (updateAvailable && !linked && process.stdin.isTTY) {
+        const doUpdate = await promptYN(`Update available: v${updateAvailable}. Auto-update now?`);
+        if (doUpdate)
+            await runAutoUpdate(updateAvailable);
+    }
     const sessionName = argv.session || `s-${Date.now()}`;
     const { waitUntilExit } = render(React.createElement(InputBar, { config, skills, cwd: process.cwd(), session: sessionName, version: currentVersion, mcpTools }), { exitOnCtrlC: false });
     await waitUntilExit();

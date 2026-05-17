@@ -104,7 +104,8 @@ export class MCPClient {
         resolve: (v) => { clearTimeout(timer); resolve(v) },
         reject: (e) => { clearTimeout(timer); reject(e) },
       })
-      this.proc!.stdin!.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      if (!this.proc?.stdin?.writable) { this.pending.delete(id); reject(new Error('MCP process stdin not writable')); return }
+      this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
       timer = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id)

@@ -79,7 +79,7 @@ export function toolArgSummary(args: Record<string, unknown>): string {
   return first ? truncate(String(first), 60) : ''
 }
 
-export function welcome(provider: string, model: string, cwd: string, version?: string, updateAvailable?: string, linked?: boolean): void {
+export function welcome(cwd: string, version?: string, updateAvailable?: string, linked?: boolean): void {
   const cols = Math.min(process.stdout.columns ?? 80, 100)
 
   const innerW = cols - 2
@@ -118,7 +118,6 @@ export function welcome(provider: string, model: string, cwd: string, version?: 
     '',
     ...miniArt,
     '',
-    `  ${gray(model + ' · ' + provider)}`,
     `  ${gray(shortCwd)}`,
     '',
   ]

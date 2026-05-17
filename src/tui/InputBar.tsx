@@ -135,11 +135,18 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
   const [designReadyPrompt, setDesignReadyPrompt] = useState<string | null>(null)
 
   const {
+    currentModel, setCurrentModel, currentModelRef,
+    pickerOpen, setPickerOpen,
+    pickerModels, pickerLoading, pickerError, pullState,
+    handleModelSelect, handleModelPull,
+  } = useModelPicker(config)
+
+  const {
     projectDir,
     setSessionName, sessionNameRef,
     historyRef, saveTimerRef, systemPromptRef,
     pushHistory, setHistory, buildContext, renameFromMessage, updateMemory,
-  } = useSession(session, cwd, config, mcpTools)
+  } = useSession(session, cwd, config, mcpTools, currentModelRef)
 
   const startDesignTeach = useCallback(() => {
     setDesignTeachState({ answers: [], idx: 0 })
@@ -158,13 +165,6 @@ export function InputBar({ config: initialConfig, skills, cwd, session, version,
       return { answers, idx: nextIdx }
     })
   }, [])
-
-  const {
-    currentModel, setCurrentModel, currentModelRef,
-    pickerOpen, setPickerOpen,
-    pickerModels, pickerLoading, pickerError, pullState,
-    handleModelSelect, handleModelPull,
-  } = useModelPicker(config)
 
   const deepThinkTool = useMemo<Tool>(() => ({
     name: 'deep_think',

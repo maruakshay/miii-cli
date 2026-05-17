@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import type { MutableRefObject } from 'react'
 import type { ChatMessage, Config } from '../../types.js'
 import { getProjectDir, loadSession, saveSession, deleteSession } from '../../sessions.js'
 import { getSystemPrompt } from '../../tools/index.js'
@@ -15,7 +16,7 @@ function buildSystemPrompt(cwd: string, facts: MemoryFact[], extraTools: Tool[] 
   return getSystemPrompt(`\n- CWD: ${cwd}`, extraTools) + formatMemoryBlock(facts)
 }
 
-export function useSession(initialSession: string, cwd: string, config: Config, extraTools: Tool[] = []) {
+export function useSession(initialSession: string, cwd: string, config: Config, extraTools: Tool[] = [], currentModelRef?: MutableRefObject<string>) {
   const projectDir = getProjectDir(cwd)
 
   const [sessionName, setSessionName] = useState(initialSession)
@@ -58,7 +59,7 @@ export function useSession(initialSession: string, cwd: string, config: Config, 
     if (historyRef.current.length > SHORT_MEMORY_SIZE && !extractingRef.current) {
       const dropped = historyRef.current.splice(0, historyRef.current.length - SHORT_MEMORY_SIZE)
       extractingRef.current = true
-      extractFacts(dropped, config, config.model).then(newFacts => {
+      extractFacts(dropped, config, currentModelRef?.current ?? config.model).then(newFacts => {
         if (newFacts.length) {
           const updated = mergeFacts(longMemoryRef.current, newFacts)
           longMemoryRef.current = updated

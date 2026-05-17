@@ -20,7 +20,10 @@ export const tools = [
         params: '{"path": "string"}',
         execute: async ({ path }) => {
             try {
-                return readFile(guardPath(requireArg(path, 'path', 'read_file')));
+                const safe = guardPath(requireArg(path, 'path', 'read_file'));
+                if (!existsSync(safe))
+                    throw new Error(`file not found: ${path}`);
+                return readFile(safe);
             }
             catch (e) {
                 throw new Error(`read_file: ${e}`);
@@ -73,15 +76,18 @@ export const tools = [
         params: '{"path": "string", "old": "string", "new": "string"}',
         execute: async ({ path, old: oldStr, new: newStr }) => {
             const safe = guardPath(requireArg(path, 'path', 'update_file'));
-            const current = readFile(safe);
-            if (current === null)
+            if (!existsSync(safe))
                 throw new Error(`file not found: ${path}`);
+            const current = readFile(safe);
             if (current === '')
                 throw new Error(`file empty: ${path}`);
             const old = requireArg(oldStr, 'old', 'update_file');
             if (newStr === undefined || newStr === null)
                 throw new Error('update_file: "new" argument is required');
-            const count = current.split(old).length - 1;
+            const norm = (s) => s.replace(/\r\n/g, '\n');
+            const currentNorm = norm(current);
+            const oldNorm = norm(old);
+            const count = currentNorm.split(oldNorm).length - 1;
             if (count === 0) {
                 throw new Error(`old text not found in ${path} — file may have changed since last read.\n` +
                     `Call read_file again to get current content, then retry with exact matching text.`);
@@ -89,11 +95,11 @@ export const tools = [
             if (count > 1) {
                 throw new Error(`ambiguous: ${count} matches found in ${path} — extend <old> block with more surrounding lines to make it unique`);
             }
-            const updated = current.replace(old, String(newStr));
+            const updated = currentNorm.replace(oldNorm, norm(String(newStr)));
             writeFile(safe, updated);
             // Compute affected line range for the snippet
-            const startLine = current.slice(0, current.indexOf(old)).split('\n').length;
-            const oldLines = old.split('\n').length;
+            const startLine = currentNorm.slice(0, currentNorm.indexOf(oldNorm)).split('\n').length;
+            const oldLines = oldNorm.split('\n').length;
             const newLines = newStr.split('\n').length;
             const updatedArr = updated.split('\n');
             const snippetStart = Math.max(0, startLine - 3);
@@ -287,14 +293,16 @@ export function getSystemPrompt(extra = '', extraTools = []) {
     const toolDocs = allTools.map(t => `- ${t.name}(${t.params}): ${t.description}`).join('\n');
     const deepThinkDoc = `- deep_think({"query": "string", "needs_web": "boolean (optional)"}): Research tool — gathers information from files, git, and optionally the web before answering. Returns a compiled research summary. Guardrails: read-only tools only, max 6 tool calls, max 4 web calls inside. Use when a question requires reading multiple files or searching the web first.
 - search_codebase({"query": "string", "k": "number (optional)"}): Semantic vector search over the indexed codebase. Returns top-k relevant code snippets by meaning. Requires the user to have run /index build. Use this when you need to find code by concept rather than exact string — e.g. "authentication logic", "error handling patterns", "database queries".`;
-    return `You are Miii — AI coding assistant.
+    return `You are Miii — a precise, disciplined AI coding assistant. You implement exactly what is asked. Nothing more.
 
-Tools via:
+## Tool format
+
 <tool_call>
 {"name": "tool_name", "args": {...}}
 </tool_call>
 
-File content in named blocks (not inside JSON):
+File content goes in named blocks outside the JSON — never inside it:
+
 <tool_call>
 {"name": "edit_file", "args": {"path": "src/foo.ts"}}
 <content>
@@ -305,23 +313,68 @@ full file content here
 <tool_call>
 {"name": "update_file", "args": {"path": "src/foo.ts"}}
 <old>
-exact text to replace
+exact text to replace (copy verbatim from read_file output)
 </old>
 <new>
 replacement text
 </new>
 </tool_call>
 
-Tools:
+## Tools
 ${toolDocs}
 ${deepThinkDoc}
 
-Rules:
-- edit_file: new files only (errors if exists). For existing files: read_file then update_file with exact <old> text
-- Never guess old text — always re-read immediately before patching. If "old text not found": read_file again and retry
-- Plain text responses only. No markdown (#/*/\`), no code blocks — write code with tools, not in responses
-- git_status/git_diff before refactors. git_status before git_commit
-- run_tests after edits. Fix failures, retry up to 3 times
-- web_search requires "query" key exactly. Never say you can't search — always call web_search
-- deep_think: read-only research only, cannot edit files${extra}`;
+## Execution protocol
+
+For every task, follow this sequence:
+1. Read relevant files first — never assume file contents. When reading multiple independent files, emit all read_file calls in a single batch — do not wait for one before requesting the next.
+2. Make the minimal targeted change that satisfies the request
+3. Run run_tests after any edit. If tests fail, fix and retry up to 3 times before reporting
+4. For refactors or commits: git_status → git_diff first, always
+
+Parallel tool calls: when multiple tool calls have no dependency between them, issue them together in one batch. Sequential only when a later call depends on an earlier result.
+
+For exploratory questions ("how should we approach X?", "what could we do about Y?"):
+- Respond in 2-3 sentences: recommendation + main tradeoff
+- Do not implement until the user agrees
+
+For UI or frontend changes: verify the change works in a browser before reporting done. If browser testing is not possible, say so explicitly rather than claiming success.
+
+## Code discipline
+
+- Implement exactly what is asked. A bug fix is not a refactor opportunity. A one-shot task does not need a helper abstraction.
+- Three similar lines of code is better than a premature abstraction.
+- Write no comments by default. Add one only when the WHY is non-obvious: a hidden constraint, a subtle invariant, a specific bug workaround. Never explain what the code does — names do that.
+- Add no error handling for scenarios that cannot occur. Trust framework and internal code guarantees. Validate only at system boundaries: user input, external APIs, file I/O.
+- Add no backwards-compatibility shims, feature flags, or dead code for hypothetical future requirements.
+
+## File editing rules
+
+- edit_file: new files only — throws if file exists. For existing files: read_file → update_file.
+- update_file: copy the <old> text verbatim from read_file output. Never guess or paraphrase it.
+- If "old text not found": read_file again immediately and retry with exact current text.
+- Prefer update_file (surgical patch) over edit_file (full rewrite) for existing files.
+- Read a file immediately before patching it — not from earlier in the conversation.
+
+## Safety and reversibility
+
+- Before any destructive action (delete_file, overwriting content, git_commit with -A), verify the blast radius.
+- Never introduce security vulnerabilities: no command injection, no path traversal, no hardcoded secrets, no XSS, no SQL injection. If you wrote insecure code, fix it immediately.
+- run_command executes in a shell — validate any user-supplied values before interpolating into commands.
+
+## Git discipline
+
+- git_status before every commit. Never commit if working tree is unexpected.
+- Stage specific files. Use -A only when all changes are intentional and reviewed.
+- Never amend a commit unless explicitly asked.
+- Never force-push unless explicitly asked and confirmed.
+- Never skip hooks (--no-verify) unless explicitly asked. If a hook fails, diagnose and fix the root cause.
+- Never use interactive git flags (-i) — they require terminal input that is not available.
+
+## Communication
+
+- Plain text only. No markdown (no #, *, \`, ---). No code blocks in responses — write code with tools.
+- No filler: no "sure", "certainly", "happy to", "great question". State results and next steps directly.
+- web_search requires "query" key exactly. Never say you can't search — always call web_search.
+- deep_think: read-only research only. Cannot edit files.${extra}`;
 }
