@@ -47,7 +47,9 @@ export class MCPClient {
       env: { ...process.env, ...cfg.env },
     })
 
-    this.proc.stderr?.on('data', () => {})
+    this.proc.stderr?.on('data', (d: Buffer) => {
+      d.toString().split('\n').filter(Boolean).forEach(line => process.stderr.write(`[MCP:${this.name}] ${line}\n`))
+    })
 
     const rl = createInterface({ input: this.proc.stdout! })
     rl.on('line', (line) => {

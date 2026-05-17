@@ -6,7 +6,7 @@ const defaults = {
     provider: 'ollama',
     baseUrl: 'http://localhost:11434',
 };
-const ALLOWED_KEYS = new Set(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey', 'gitContext', 'tavilyApiKey', 'embedModel']);
+const ALLOWED_KEYS = new Set(['model', 'provider', 'baseUrl', 'systemPrompt', 'apiKey', 'gitContext', 'streaming', 'tavilyApiKey', 'embedModel']);
 const PROJECT_CONFIG = join(process.cwd(), '.miii.json');
 const GLOBAL_CONFIG = join(homedir(), '.config', 'miii', 'config.json');
 export function saveConfig(config) {

@@ -171,8 +171,12 @@ export function assistantMsg(text: string): void {
   write(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}\n`)
 }
 
-export const EDIT_TOOLS   = new Set(['edit_file', 'update_file', 'create_file', 'write_file'])
-export const DELETE_TOOLS = new Set(['delete_file', 'remove_file'])
+export function streamStart(): void { write(`\n${blue('●')} `) }
+export function streamChunk(s: string): void { write(s) }
+export function streamEnd(): void { write('\n') }
+
+export const EDIT_TOOLS   = new Set(['edit_file', 'update_file', 'create_file'])
+export const DELETE_TOOLS = new Set(['delete_file'])
 
 const PERM_DESC: Record<string, string> = {
   delete_file:  'delete this file',
@@ -305,8 +309,7 @@ export function toolResultSummary(name: string, args: Record<string, unknown>, r
   let summary = ''
 
   switch (name) {
-    case 'edit_file':
-    case 'write_file': {
+    case 'edit_file': {
       const n = (a.content ?? '').split('\n').length
       summary = `Wrote ${n} line${n === 1 ? '' : 's'}`
       break

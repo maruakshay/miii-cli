@@ -1,6 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { MutableRefObject } from 'react'
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+const runCmd = promisify(exec)
 import type { Config, ChatMessage, Status } from '../../types.js'
 import { chat } from '../../llm/stream.js'
 import { tools as staticTools } from '../../tools/index.js'
@@ -14,6 +17,7 @@ const FILE_EDIT_TOOLS = new Set(['edit_file', 'create_file', 'update_file', 'del
 const SHOW_RESULT_TOOLS = new Set(['run_tests', 'git_commit'])
 const PERMISSION_TOOLS = new Set(['edit_file', 'update_file', 'delete_file', 'create_file', 'move_file', 'run_command', 'git_commit'])
 const CHECKPOINT_TOOLS = new Set(['edit_file', 'update_file', 'create_file', 'delete_file'])
+const PARALLEL_SAFE    = new Set(['read_file', 'list_files', 'git_status', 'git_log', 'git_diff', 'web_search', 'web_extract'])
 
 // Tool result messages that are ephemeral — never worth storing in memory or compact summaries
 const EPHEMERAL_PATTERN = /^Tool (read_file|list_files|run_tests) result:|^\[current state of|^\[Context compacted|^\[file updated:/
@@ -43,6 +47,7 @@ export function useRunLoop(
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null)
   const permissionResolveRef = useRef<((result: 'yes' | 'session' | 'no') => void) | null>(null)
   const checkpointRef = useRef<Map<string, string | null>>(new Map())
+  const autoBranchedRef = useRef<string | null>(null)
   const sessionApprovedRef = useRef<Set<string>>(new Set())
   const thinkingStartRef = useRef<number>(0)
   const extraToolsRef = useRef(extraTools)
@@ -65,14 +70,16 @@ export function useRunLoop(
     return () => clearInterval(t)
   }, [status])
 
-  const runLoop = useCallback(async (contextMsgs: ChatMessage[], depth = 0, goal?: string): Promise<void> => {
+  const runLoop = useCallback(async (contextMsgs: ChatMessage[], depth = 0, goal?: string, options?: { noTools?: boolean }): Promise<void> => {
     if (depth >= MAX_TOOL_DEPTH) { abortRef.current = null; setStatus('idle'); return }
     setStatus('thinking')
     if (depth === 0) {
       thinkingStartRef.current = Date.now()
       checkpointRef.current.clear()
+      autoBranchedRef.current = null
     }
 
+    abortRef.current = new AbortController()
     let msgs = contextMsgs
     if (shouldCompact(contextMsgs)) {
       printer.systemMsg('compacting context…')
@@ -82,18 +89,26 @@ export function useRunLoop(
         model: currentModelRef.current,
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
-      }, goal)
+      }, goal, abortRef.current.signal)
+      if (abortRef.current.signal.aborted) { setStatus('idle'); return }
       printer.systemMsg(`compacted: ${contextMsgs.length} → ${msgs.length} messages`)
       replaceHistoryRef.current?.(msgs.filter(m => m.role !== 'system'))
     }
-    abortRef.current = new AbortController()
+    let didStream = false
 
     await chat({
       provider: config.provider,
       model: currentModelRef.current,
       baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
       messages: msgs,
+      tools: config.provider !== 'ollama' && !(options?.noTools && depth === 0) ? [...staticTools, ...extraToolsRef.current] : undefined,
+      toolChoice: (options?.noTools && depth === 0) ? 'none' : undefined,
       signal: abortRef.current.signal,
+      onChunk: config.streaming ? (chunk) => {
+        if (!didStream) { printer.streamStart(); didStream = true }
+        printer.streamChunk(chunk)
+      } : undefined,
       onRetry(attempt, max, delayMs) {
         printer.systemMsg(`retry ${attempt}/${max} — waiting ${Math.round(delayMs / 1000)}s`)
       },
@@ -111,8 +126,9 @@ export function useRunLoop(
           if (bare) pendingTools.push({ name: bare.name, args: bare.args })
         }
 
+        if (didStream) printer.streamEnd()
         const displayText = textParts.join('').trim()
-        if (displayText) printer.assistantMsg(displayText)
+        if (displayText && !didStream) printer.assistantMsg(displayText)
         pushHistoryRef.current({ role: 'assistant', content: fullText })
 
         if (pendingTools.length) printer.planSummary(pendingTools)
@@ -127,6 +143,7 @@ export function useRunLoop(
             await runLoop([...msgs, { role: 'assistant', content: fullText }, nudge], depth + 1, goal)
             return
           }
+          if (autoBranchedRef.current) printer.systemMsg(`branch: ${autoBranchedRef.current}  (git checkout main when done)`)
           printer.systemMsg(`done in ${printer.formatElapsed(Date.now() - thinkingStartRef.current)}`)
           setStatus('idle')
           return
@@ -134,7 +151,36 @@ export function useRunLoop(
 
         setStatus('tool')
         const next: ChatMessage[] = [...msgs, { role: 'assistant', content: fullText }]
+        const allParallelSafe = pendingTools.every(tc => PARALLEL_SAFE.has(tc.name))
 
+        if (allParallelSafe && pendingTools.length > 1) {
+          try {
+            setCurrentTool(pendingTools[0].name)
+            const allTools = [...staticTools, ...extraToolsRef.current]
+            const settled = await Promise.allSettled(
+              pendingTools.map(async tc => {
+                const tool = allTools.find(t => t.name === tc.name)
+                printer.toolCallStart(tc.name, tc.args)
+                if (!tool) throw new Error(`unknown tool: ${tc.name}`)
+                const result = await tool.execute(tc.args)
+                printer.toolResultSummary(tc.name, tc.args, result)
+                if (SHOW_RESULT_TOOLS.has(tc.name)) printer.toolMsg(tc.name, result)
+                return { tc, result }
+              })
+            )
+            for (const r of settled) {
+              if (r.status === 'fulfilled') {
+                next.push({ role: 'user', content: `Tool ${r.value.tc.name} result:\n${r.value.result}` })
+              } else {
+                const err = `Tool error: ${r.reason}`
+                printer.errorMsg(err)
+                next.push({ role: 'user', content: err })
+              }
+            }
+          } finally {
+            setCurrentTool(undefined)
+          }
+        } else {
         try {
           for (const tc of pendingTools) {
             const allTools = [...staticTools, ...extraToolsRef.current]
@@ -161,7 +207,7 @@ export function useRunLoop(
                 break
               }
 
-              // Checkpoint: store pre-execution file state
+              // Checkpoint: store pre-execution file state + auto-branch on first edit
               if (CHECKPOINT_TOOLS.has(tc.name)) {
                 const path = tc.args.path as string | undefined
                 if (path && !checkpointRef.current.has(path)) {
@@ -170,6 +216,19 @@ export function useRunLoop(
                   } catch {
                     checkpointRef.current.set(path, null)
                   }
+                }
+                if (!autoBranchedRef.current) {
+                  try {
+                    const { stdout } = await runCmd('git rev-parse --abbrev-ref HEAD', { timeout: 3000 })
+                    const branch = stdout.trim()
+                    if (branch === 'main' || branch === 'master') {
+                      const ts = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')
+                      const newBranch = `miii/task-${ts}`
+                      await runCmd(`git checkout -b ${newBranch}`, { timeout: 5000 })
+                      autoBranchedRef.current = newBranch
+                      printer.systemMsg(`auto-branched: ${newBranch}`)
+                    }
+                  } catch {}
                 }
               }
             }
@@ -226,6 +285,7 @@ export function useRunLoop(
         } finally {
           setCurrentTool(undefined)
         }
+        } // end sequential else
 
         // For file-edit turns: slim context (system + goal + fresh file states + recent results)
         // For non-edit turns: full next (model needs full conversational context)
@@ -277,6 +337,10 @@ export function useRunLoop(
       }
       checkpointRef.current.clear()
       if (restored > 0) printer.systemMsg(`restored ${restored} file(s) to pre-session state`)
+    }
+    if (autoBranchedRef.current) {
+      printer.systemMsg(`task branch preserved: ${autoBranchedRef.current}`)
+      autoBranchedRef.current = null
     }
     setStatus('idle')
   }, [])

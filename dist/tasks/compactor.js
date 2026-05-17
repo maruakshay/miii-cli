@@ -30,7 +30,7 @@ What still needs to be done, if anything.
 Any constraints, errors encountered, important facts the agent must remember to continue correctly.
 
 Be factual. No padding. Include file paths, error messages, and command outputs verbatim when relevant.`;
-export async function compactContext(messages, cfg, goal) {
+export async function compactContext(messages, cfg, goal, signal) {
     if (contextSize(messages) <= COMPACT_CHAR_THRESHOLD)
         return messages;
     const system = messages[0]?.role === 'system' ? messages[0] : null;
@@ -50,6 +50,7 @@ export async function compactContext(messages, cfg, goal) {
     let compactErr = '';
     await chat({
         ...cfg,
+        signal,
         messages: [
             { role: 'system', content: COMPACT_SYSTEM },
             { role: 'user', content: userPrompt },
@@ -59,6 +60,8 @@ export async function compactContext(messages, cfg, goal) {
     });
     if (compactErr)
         console.error(`[compactor] LLM error: ${compactErr}`);
+    if (signal?.aborted)
+        return messages;
     // Fallback to dumb compaction if LLM fails
     if (!summary)
         return dumbCompact(messages, goal);

@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink'
 import type { Config } from '../../types.js'
 
 type Screen = 'menu' | 'provider' | 'model' | 'key' | 'url' | 'tavily'
+type MenuItem = Screen | 'streaming'
 
 interface Props {
   config: Config
@@ -19,12 +20,13 @@ const PROVIDERS: Array<{ key: Config['provider']; label: string; desc: string }>
   { key: 'openai-compat', label: 'OpenAI / Custom', desc: 'OpenAI or compatible endpoint'   },
 ]
 
-const MENU_ITEMS: Array<{ key: Screen; label: string }> = [
-  { key: 'provider', label: 'Provider'  },
-  { key: 'model',    label: 'Model'     },
-  { key: 'key',      label: 'API Key'   },
-  { key: 'url',      label: 'Base URL'  },
-  { key: 'tavily',   label: 'Tavily Key'},
+const MENU_ITEMS: Array<{ key: MenuItem; label: string }> = [
+  { key: 'provider',  label: 'Provider'  },
+  { key: 'model',     label: 'Model'     },
+  { key: 'key',       label: 'API Key'   },
+  { key: 'url',       label: 'Base URL'  },
+  { key: 'tavily',    label: 'Tavily Key'},
+  { key: 'streaming', label: 'Streaming' },
 ]
 
 function truncate(s: string, n: number) {
@@ -82,7 +84,12 @@ export function ConfigPicker({ config, currentModel, tavilyKey, onUpdate, onTavi
     if (screen === 'menu') {
       if (key.upArrow)   { setMenuIdx(i => Math.max(0, i - 1)); return }
       if (key.downArrow) { setMenuIdx(i => Math.min(MENU_ITEMS.length - 1, i + 1)); return }
-      if (key.return) { openScreen(MENU_ITEMS[menuIdx].key); return }
+      if (key.return) {
+        const item = MENU_ITEMS[menuIdx]
+        if (item.key === 'streaming') { onUpdate({ streaming: !config.streaming }); return }
+        openScreen(item.key as Screen)
+        return
+      }
       return
     }
 
@@ -142,18 +149,23 @@ export function ConfigPicker({ config, currentModel, tavilyKey, onUpdate, onTavi
       {screen === 'menu' && MENU_ITEMS.map((item, i) => {
         const active = i === menuIdx
         let val = ''
-        if (item.key === 'provider') val = config.provider
-        if (item.key === 'model')    val = truncate(currentModel, 32)
-        if (item.key === 'key')      val = keyDisplay
-        if (item.key === 'url')      val = truncate(config.baseUrl, 36)
-        if (item.key === 'tavily')   val = tavilyDisplay
+        if (item.key === 'provider')  val = config.provider
+        if (item.key === 'model')     val = truncate(currentModel, 32)
+        if (item.key === 'key')       val = keyDisplay
+        if (item.key === 'url')       val = truncate(config.baseUrl, 36)
+        if (item.key === 'tavily')    val = tavilyDisplay
+        const isStreaming = item.key === 'streaming'
+        const streamingOn = config.streaming === true
         return (
           <Box key={item.key}>
             <Text color={active ? 'cyan' : 'white'} bold={active}>
               {active ? '▶ ' : '  '}
               {item.label.padEnd(12)}
             </Text>
-            <Text color={active ? 'white' : 'gray'}>{val}</Text>
+            {isStreaming
+              ? <Text color={streamingOn ? 'green' : 'gray'}>{streamingOn ? 'on' : 'off'}</Text>
+              : <Text color={active ? 'white' : 'gray'}>{val}</Text>
+            }
           </Box>
         )
       })}

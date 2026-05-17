@@ -29,9 +29,20 @@ export function extractFacts(messages: ChatMessage[], config: Config, model: str
       ],
       onDone(text) {
         try {
-          const m = text.match(/\[[\s\S]*?\]/)
-          if (!m) { resolve([]); return }
-          const arr = JSON.parse(m[0])
+          const start = text.indexOf('[')
+          if (start === -1) { resolve([]); return }
+          let depth = 0, inStr = false, esc = false, end = -1
+          for (let i = start; i < text.length; i++) {
+            const ch = text[i]
+            if (esc) { esc = false; continue }
+            if (ch === '\\' && inStr) { esc = true; continue }
+            if (ch === '"') { inStr = !inStr; continue }
+            if (inStr) continue
+            if (ch === '[') depth++
+            else if (ch === ']') { depth--; if (depth === 0) { end = i; break } }
+          }
+          if (end === -1) { resolve([]); return }
+          const arr = JSON.parse(text.slice(start, end + 1))
           resolve(Array.isArray(arr) ? arr.filter((f): f is string => typeof f === 'string') : [])
         } catch { resolve([]) }
       },

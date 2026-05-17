@@ -161,8 +161,11 @@ export function assistantMsg(text) {
     const tail = lines.slice(idx + 1).join('\n');
     write(`\n${blue('●')} ${head}${tail ? '\n' + tail : ''}\n`);
 }
-export const EDIT_TOOLS = new Set(['edit_file', 'update_file', 'create_file', 'write_file']);
-export const DELETE_TOOLS = new Set(['delete_file', 'remove_file']);
+export function streamStart() { write(`\n${blue('●')} `); }
+export function streamChunk(s) { write(s); }
+export function streamEnd() { write('\n'); }
+export const EDIT_TOOLS = new Set(['edit_file', 'update_file', 'create_file']);
+export const DELETE_TOOLS = new Set(['delete_file']);
 const PERM_DESC = {
     delete_file: 'delete this file',
     update_file: 'edit this file',
@@ -291,8 +294,7 @@ export function toolResultSummary(name, args, result) {
     const lines = result.trim().split('\n').filter(Boolean);
     let summary = '';
     switch (name) {
-        case 'edit_file':
-        case 'write_file': {
+        case 'edit_file': {
             const n = (a.content ?? '').split('\n').length;
             summary = `Wrote ${n} line${n === 1 ? '' : 's'}`;
             break;

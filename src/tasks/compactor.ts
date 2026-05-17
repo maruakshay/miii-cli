@@ -41,6 +41,7 @@ export async function compactContext(
   messages: ChatMessage[],
   cfg: Pick<ChatConfig, 'provider' | 'model' | 'baseUrl' | 'apiKey'>,
   goal?: string,
+  signal?: AbortSignal,
 ): Promise<ChatMessage[]> {
   if (contextSize(messages) <= COMPACT_CHAR_THRESHOLD) return messages
 
@@ -64,6 +65,7 @@ export async function compactContext(
   let compactErr = ''
   await chat({
     ...cfg,
+    signal,
     messages: [
       { role: 'system', content: COMPACT_SYSTEM },
       { role: 'user',   content: userPrompt },
@@ -72,6 +74,7 @@ export async function compactContext(
     onError: (err) => { compactErr = err.message },
   })
   if (compactErr) console.error(`[compactor] LLM error: ${compactErr}`)
+  if (signal?.aborted) return messages
 
   // Fallback to dumb compaction if LLM fails
   if (!summary) return dumbCompact(messages, goal)

@@ -21,6 +21,7 @@ const BUILTIN_COMMANDS = [
     { ns: 'builtin', name: 'list', description: 'list all loaded skills and their descriptions' },
     // ── AI modes ─────────────────────────────────────────────────────────────
     { ns: 'builtin', name: 'plan', description: 'enter planning mode — AI helps think through a goal step-by-step' },
+    { ns: 'builtin', name: 'plan exec', description: 'two-phase: AI outputs plan first (no tools), say "go" to execute — /plan exec <task>' },
     { ns: 'builtin', name: 'refactor', description: 'multi-file AI refactor — plans, reads, then edits — /refactor <goal>' },
     { ns: 'builtin', name: 'think', description: 'deep research before answering — reads files + optional web — /think <query>' },
     { ns: 'builtin', name: 'watch', description: 'watch for file changes, run tests, auto-fix failures — /watch stop to cancel' },
@@ -176,8 +177,10 @@ export function InputArea({ status, skills, cwd, planningMode, permissionRequest
             : skill.ns === 'git'
                 ? `/git ${skill.name}`
                 : `/${skill.ns}:${skill.name}`;
-        clearInput();
-        onSubmit(name);
+        setLines([name]);
+        setCursor({ row: 0, col: name.length });
+        setOverlay('none');
+        setOverlayIdx(0);
     }
     function selectFile(file) {
         const r = cursor.row;

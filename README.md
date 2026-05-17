@@ -1,19 +1,20 @@
-# Miii — Local-First AI Coding Agent
+# miii — Ollama Coding CLI. 176 KB. No API Key.
 
-> **The only coding CLI that runs fully local or cloud — any model, zero lock-in, zero monthly bill.**
+> **Claude Code UX. Ollama models. No invoice.**
 
 ![MIII Demo](mii-cli.gif)
 
 [![npm version](https://img.shields.io/npm/v/miii-cli)](https://www.npmjs.com/package/miii-cli)
-[![npm downloads](https://img.shields.io/npm/dm/miii-cli)](https://www.npmjs.com/package/miii-cli)
 [![license](https://img.shields.io/npm/l/miii-cli)](LICENSE)
 [![node](https://img.shields.io/node/v/miii-cli)](https://nodejs.org)
 
+**176 KB · no API key · works offline**
+
 ---
 
-**Miii is a fully autonomous coding agent that runs entirely on your machine.** It plans, edits files, runs your tests, searches the web, indexes your codebase semantically, and iterates until the job is done — all without a single byte of your code leaving your network.
+Buy hardware once. Pay for AI never.
 
-Zero subscription. Zero cloud dependency. Zero Python overhead. **Lightning fast startup.**
+Your code never leaves your machine. Nothing sent to Anthropic, OpenAI, or anyone. If you're already running Ollama, miii adds $0 to your stack.
 
 ```bash
 npm install -g miii-cli && miii
@@ -23,13 +24,59 @@ npm install -g miii-cli && miii
 
 ## Why Miii Exists
 
-Claude Code is impressive. It's also cloud-only, costs $20–200/month, and sends every line of your codebase to a server you don't control.
+**You're probably paying for something miii does for free.**
 
-OpenCode and Codex CLI have the same problem — they're all cloud-first, all locked to specific providers, and all charge you indefinitely for the privilege of reading your private code.
+Claude Code bills against your Anthropic API key. miii runs open models on Ollama — Llama, Mistral, Qwen, Phi. Fully local. $0. Claude Code has no built-in undo for file changes. A bad edit is a bad edit. Miii checkpoints every file before touching it.
 
-**Miii flips the model.** Run on Ollama: $0/month, fully offline, code never leaves your machine. Switch to Anthropic or OpenAI when you need cloud power. Change providers live inside the app — no config files, no restarts.
+The gap is what miii adds on top: file checkpoints before every edit, npm skills, live model switching, and full air-gap support.
 
-Your compute. Your data. Your rules.
+- **16 GB RAM, a GPU** — if you're already running Ollama, miii adds $0 to your stack
+- **Try Llama 3, Mistral, Qwen, Phi** side by side without switching tools
+- **Literally cannot use cloud AI** — miii with Ollama is purpose-built for zero-internet environments
+
+---
+
+## What Miii Actually Does
+
+Not a chatbot with a file-write button. Miii is a **full autonomous agent loop** — reasons, plans, acts, self-corrects until the task is done.
+
+1. Describe a goal in plain English
+2. Miii reads your codebase, maps the changes, shows the plan
+3. Asks permission before touching anything — every edit, command, delete
+4. Shows exact diff of what changes *before* you approve
+5. Runs tests. If they fail, reads the error, fixes autonomously
+6. Every file checkpointed — hit Esc and everything rolls back
+
+---
+
+## What a Real Session Looks Like
+
+```
+> refactor the auth module to use JWT instead of sessions
+
+  ● thinking…
+  ● read_file src/auth/session.ts  (42 lines)
+  ● read_file src/middleware/auth.ts  (28 lines)
+
+  ─ plan  (2 actions)
+    ◦ edit_file  src/auth/session.ts
+    ◦ edit_file  src/middleware/auth.ts
+
+  ⚠  edit_file  src/auth/session.ts
+  ┌─ diff preview ──────────────────────┐
+  │ - const session = req.session.user  │
+  │ + const token = verifyJWT(req)      │
+  └─────────────────────────────────────┘
+  y approve   s approve all   n deny
+  > s
+
+  ● edit_file src/auth/session.ts    done
+  ● edit_file src/middleware/auth.ts  done
+  ● run_tests  ✅ passed
+  ─ done in 14.2s  ·  branch: miii/task-2025-05-17-14-32
+```
+
+Parallel file reads. Diff preview before approval. Auto-branched off `main`. Tests ran. Session over.
 
 ---
 
@@ -39,169 +86,153 @@ Your compute. Your data. Your rules.
 |---|:---:|:---:|:---:|:---:|:---:|
 | Monthly cost | **$0** | $20–200 | API cost | API cost | $0 |
 | Bundle size | **176 KB** | ~50 MB | ~30 MB | ~20 MB | ~200 MB |
+| Startup time | **<100ms** | ~2s | ~1s | ~1s | ~4s |
 | Local / offline (Ollama) | **✅** | ❌ | partial | ❌ | ⚠️ |
 | Air-gapped | **✅** | ❌ | ❌ | ❌ | ❌ |
-| Switch provider live | **✅** | ❌ | ❌ | ❌ | ❌ |
+| Any model | **✅** | ❌ | partial | ❌ | ✅ |
 | File checkpoints (undo) | **✅** | ❌ | ❌ | ❌ | ❌ |
-| Permission gates | **✅** | ✅ | partial | ✅ | ❌ |
-| MCP client | **✅** | ✅ | ✅ | ❌ | ❌ |
+| Diff preview before approve | **✅** | ❌ | ❌ | ❌ | ❌ |
+| Git auto-branch on edit | **✅** | ❌ | ❌ | ❌ | ❌ |
+| Switch provider live | **✅** | ❌ | ❌ | ❌ | ❌ |
+| Native tool_calls (Anthropic + OpenAI) | **✅** | ✅ | ✅ | ✅ | ❌ |
+| Parallel read-only tools | **✅** | partial | ❌ | ❌ | ❌ |
+| Two-phase plan→execute | **✅** | ❌ | ❌ | ❌ | ❌ |
+| Live streaming toggle | **✅** | always on | always on | always on | ❌ |
 | Semantic codebase index | **✅** | ❌ | ❌ | ❌ | ❌ |
-| Skill/extension system | **✅** | plugins | ❌ | ❌ | ❌ |
-| Startup time | **<100ms** | ~2s | ~1s | ~1s | ~4s |
+| npm skills | **✅** | plugins | ❌ | ❌ | ❌ |
+| MCP client | **✅** | ✅ | ✅ | ❌ | ❌ |
 | License | **MIT** | Proprietary | MIT | MIT | Apache 2.0 |
 
 ---
 
-## How it Works
+## Eight Core Capabilities
 
-Miii isn't just autocomplete—it's a **full autonomous agent loop** that reasons through complex tasks:
+**Local / Offline** — Ollama runs on your machine. No internet required after model pull.
 
-1. You describe a goal
-2. Miii reads your codebase, plans the changes, edits the files
-3. It asks your permission before touching anything (edit, delete, run commands)
-4. It runs your test suite automatically after every change
-5. If tests fail, it reads the error, fixes the code, re-runs
-6. It repeats until the work is done — and checkpoints every file so you can abort safely
+**Air-Gapped Ready** — regulated industries, defense, offline infrastructure. miii with Ollama works where cloud literally cannot.
+
+**Any Model** — Llama 3, Mistral, Qwen, Phi, or switch to Anthropic/OpenAI live. One tool, every model.
+
+**File Checkpoints** — every file snapshotted before edit. Abort = full rollback. No bad edits stick.
+
+**Permission Gates + Diff Preview** — approve every write, delete, or command. See the exact diff before you say yes.
+
+**MCP Client** — plug in any MCP-compatible tool server. Tools discovered automatically.
+
+**npm Skills** — extend miii with plain Markdown files or npm packages. Ship reusable agent behaviors to your whole team.
+
+**$0 / Month** — no subscription, no invoice, no API key required for local use.
 
 ---
 
-## What a Session Looks Like
+## Features Worth Knowing
 
+**Git Auto-Branch** — first approved edit auto-creates `miii/task-YYYY-MM-DD-HH-MM`. Your `main` is never touched until you decide.
+
+**Parallel Read-Only Tools** — reading five files + git status + web search? All fire at once. Write ops stay sequential. Speed where safe, safety where it matters.
+
+**Two-Phase Plan → Execute**
 ```
-> refactor the auth module to use JWT instead of sessions
-
-  ● Researching: refactor auth module to use JWT
-  ● Reading src/auth/session.ts
-    Read 42 lines
-  ● Reading src/middleware/auth.ts
-    Read 28 lines
-
-  ─ plan (2 actions)
-    ◦ edit_file src/auth/session.ts
-    ◦ edit_file src/middleware/auth.ts
-
-  ⚠ edit_file  src/auth/session.ts   y approve  n deny
-  > y
-
-  ● edit_file src/auth/session.ts
-    Wrote 12 lines
-  ● edit_file src/middleware/auth.ts
-    Wrote 8 lines
-  ● run_tests
-    ✅ Tests passed
-
-  ─ refactor done — 2 file(s) processed
+/plan exec refactor the payment module
 ```
+First turn: numbered plan, tools disabled — you read it, decide. Second turn: execution with plan as context. No surprises.
+
+**Native Tool Calls** — Anthropic uses `tool_use` blocks, OpenAI uses `tool_calls` arrays, exactly as the API intended. Faster, more reliable, less hallucination. Ollama uses compact XML fallback.
+
+**Live Streaming Toggle** — turn on in `/config` to watch tokens appear in real time. Turn off for clean batch output. Toggle mid-session, no restart.
+
+**Semantic Codebase Search** — local vector index, no embeddings sent anywhere. `/index build` once. Ask "where is the payment logic?" by meaning, not grep.
 
 ---
 
-## 🚀 Core Capabilities
-
-**🔒 Privacy-First, Local by Default**
-Run on Ollama and your code never leaves your machine. No account. No API key. No monthly bill. Switch to Anthropic or OpenAI when you need it — one command, live, mid-session.
-
-**🔄 Live Provider Switching**
-Type `/config` to open an interactive picker. Arrow-navigate between Ollama, Anthropic, and OpenAI-compatible endpoints. Change model, API key, base URL, or Tavily key without restarting. Config saves automatically.
-
-**🛡 Permission Gates + File Checkpoints**
-Miii asks before every edit, delete, or shell command — just like Claude Code. Every file is checkpointed before it's touched. Hit Esc to abort and all changes roll back automatically.
-
-**🔍 Semantic Codebase Indexing**
-Build a vector index of your entire codebase using local embeddings. Ask "where is the auth logic?" and Miii finds it by meaning, not keyword. No data leaves your machine.
-
-**🧠 Deep Think Engine**
-Before answering complex questions, Miii runs a constrained research phase — reading files, checking git history, searching the web — then synthesizes a grounded answer.
-
-**🌐 Real-Time Web Access**
-Tavily-powered web search, built in. Ask about breaking changes in a library you just upgraded. Get an answer that's actually current.
-
-**🛠 Surgical File Editing**
-`patch_file` replaces exact strings in your files. No full rewrites. No formatting destruction. Exactly the change, nothing more.
-
-**🔁 Self-Healing Test Loop**
-Runs `npm test` after every file change. If something breaks, reads the failure trace and fixes it autonomously — up to 3 retries before surfacing the issue.
-
-**📂 Persistent Sessions**
-Pick up exactly where you left off. Named sessions mean your context, history, and goal survive terminal restarts.
-
-**📦 Skill System**
-Extend Miii with plain Markdown files or npm packages. Ship reusable agent behaviors as versioned packages your whole team can pull.
-
-**🔌 MCP Client**
-Connect any MCP-compatible tool server. Miii discovers tools automatically and makes them available to the agent.
-
----
-
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
-# 1. Start Ollama and pull a model
+# Local — free, offline (recommended)
 ollama pull qwen2.5-coder:7b
-
-# 2. Install Miii
 npm install -g miii-cli
+cd your-project && miii
 
-# 3. Go to your project and start
-cd your-project
-miii
+# Anthropic Claude
+npm install -g miii-cli
+ANTHROPIC_API_KEY=sk-... miii
+
+# OpenAI or compatible endpoint
+npm install -g miii-cli
+miii   # set key + base URL in /config
 ```
 
-No API keys. No account. No sign-up form. First run walks you through setup interactively.
+Hardware requirements are real — this runs on your machine, not a server farm.
+
+| | Minimum | Recommended |
+|---|---|---|
+| RAM | 16 GB | 32 GB+ |
+| GPU | integrated | dedicated |
+| Storage | 10 GB | 20 GB+ |
 
 ---
 
-## ⌨️ Power Commands
+## Commands
 
 | Command | What it does |
 |---|---|
-| `/config` | Open interactive picker — change provider, model, API key, base URL, Tavily key live |
-| `/think <question>` | Deep research: reads files + web, then answers |
-| `/refactor <goal>` | Autonomous multi-file refactor with test validation |
-| `/index build` | Build semantic vector index of your codebase |
-| `/index search <query>` | Find code by meaning, not string match |
-| `/git review` | AI reviews your current diff for bugs and issues |
-| `/git commit <msg>` | Stage everything and commit in one shot |
-| `/plan <topic>` | Structured planning mode before you write a line |
-| `/model <name>` | Hot-swap your LLM mid-conversation |
-| `/session <name>` | Switch between named project sessions |
-| `/watch <path>` | Monitor files for changes and trigger agent reactions |
-| `@filename` | Inject any file directly into context |
+| `/config` | Interactive picker — provider, model, API key, base URL, Tavily, streaming |
+| `/plan exec <task>` | Two-phase: plan turn (no tools) → execute with plan as context |
+| `/think <question>` | Deep research: reads files + web, synthesizes answer |
+| `/index build` | Build local semantic vector index |
+| `/index search <q>` | Find code by concept, not string match |
+| `/git review` | AI reviews current diff — bugs, risks, style |
+| `/git commit <msg>` | Stage everything, commit in one shot |
+| `/model <name>` | Hot-swap LLM mid-conversation |
+| `/session <name>` | Named sessions — resume exactly where you left off |
+| `@filename` | Inject any file into context |
 
----
-
-## Semantic Codebase Indexing
-
-For large codebases, Miii builds and queries a local vector index — no third-party APIs, no embeddings sent anywhere.
-
-```bash
-# Pull an embedding model (one time)
-ollama pull nomic-embed-text
-
-# Index your project
-/index build
-
-# The agent calls search_codebase automatically when it needs to find code by concept
-```
+Commands open in a picker — select to insert into input, Enter to run.
 
 ---
 
 ## Configuration
 
-**Interactive (recommended):** type `/config` inside Miii to open the picker.
+**Interactive:** type `/config` inside miii.
 
-**File-based:** drop a `.miii.json` in your project root or `~/.config/miii/config.json` globally:
+**File-based:** `.miii.json` in project root or `~/.config/miii/config.json` globally:
 
 ```json
 {
-  "model": "qwen2.5-coder:7b",
   "provider": "ollama",
   "baseUrl": "http://localhost:11434",
   "gitContext": true,
+  "streaming": false,
   "embedModel": "nomic-embed-text"
 }
 ```
 
-Providers: `ollama` (local, free) · `anthropic` (Claude API) · `openai-compat` (OpenAI or any compatible endpoint)
+---
+
+## MCP — Connect Any Tool Server
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+    }
+  }
+}
+```
+
+Drop into global config. Tools discovered automatically.
+
+---
+
+## Semantic Index Setup
+
+```bash
+ollama pull nomic-embed-text   # one time
+/index build                   # inside your project
+# agent calls search_codebase automatically from here
+```
 
 ---
 
@@ -214,27 +245,28 @@ cd miii-cli && npm install && npm run build && npm link
 
 ---
 
-## Who Should Use Miii
+## Who This Is For
 
-- **Privacy-conscious developers** — won't send proprietary code to Anthropic or OpenAI
-- **Cost-sensitive teams** — API bills compound; Ollama is $0
-- **Air-gapped environments** — regulated industries, defense, offline infra
-- **Model experimenters** — want to try llama3, mistral, qwen, Claude side-by-side without switching tools
+**Privacy-conscious developers** — proprietary code stays on your machine, always.
 
----
+**Cost-sensitive teams** — API bills compound for every developer on the team, every month.
 
-## The Bottom Line
+**Air-gapped environments** — regulated industries, defense, offline infrastructure where cloud is not an option.
 
-The AI coding tools you're paying for right now will raise their prices, change their terms, and keep reading your code. **Miii won't.** It's MIT licensed, runs locally, and gets better every time Ollama ships a new model.
+**Model experimenters** — benchmark Llama 3 vs Qwen vs Claude vs GPT-4o in the same workflow.
 
-If this saves you time or money, **star the repo** — it's the only metric that tells other engineers this is worth their attention.
-
-**[⭐ Star on GitHub](https://github.com/maruakshay/miii-cli)**
-
-> Built by [@maruakshay](https://github.com/maruakshay) — open to PRs, issues, and model recommendations.
+**Anyone who's had an AI silently rewrite something they didn't want rewritten.**
 
 ---
 
-## License
+The AI coding tools you're paying for will raise prices, change terms, and keep reading your code. Miii won't. MIT licensed, runs locally, gets better every time Ollama ships a new model.
+
+**If this is the tool you've been waiting for — [⭐ star it](https://github.com/maruakshay/miii-cli) and tell someone.**
+
+> Built by [@maruakshay](https://github.com/maruakshay) — PRs, issues, and model recommendations welcome.
+> 
+> [miii.in](https://www.miii.in)
+
+---
 
 MIT — do whatever you want with it.

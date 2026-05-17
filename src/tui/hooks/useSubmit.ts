@@ -51,7 +51,7 @@ interface SubmitDeps {
   systemPromptRef: MutableRefObject<string>
   abortRef: MutableRefObject<AbortController | null>
   setPlanningMode: (v: boolean) => void
-  runLoop: (msgs: ChatMessage[], depth?: number, goal?: string) => Promise<void>
+  runLoop: (msgs: ChatMessage[], depth?: number, goal?: string, options?: { noTools?: boolean }) => Promise<void>
   buildContext: () => ChatMessage[]
   pushHistory: (msg: ChatMessage) => void
   setSessionName: (name: string) => void
@@ -356,6 +356,16 @@ Analyze what exists, then implement the design. Use the design system above if a
         setCurrentTool(undefined)
         setTaskLabel(undefined)
       }
+      return
+    }
+
+    if (cmd.startsWith('/plan exec ')) {
+      const task = cmd.slice(11).trim()
+      if (!task) { printer.systemMsg('usage: /plan exec <task>'); return }
+      const planPrompt = `PLANNING TURN — output a numbered plan of exactly what you will do to accomplish this task. List which files to read, which to edit, and what changes to make. Do NOT call any tools in this response. After I review the plan and respond "go", you will execute.\n\nTask: ${task}`
+      printer.userMsg(`/plan exec ${task}`)
+      pushHistory({ role: 'user', content: planPrompt })
+      await runLoop(buildContext(), 0, task, { noTools: true })
       return
     }
 

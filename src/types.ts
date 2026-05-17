@@ -21,6 +21,7 @@ export interface Config {
   systemPrompt?: string
   apiKey?: string
   gitContext?: boolean  // default true — set false to disable auto git context injection
+  streaming?: boolean  // default false — enable live token streaming
   tavilyApiKey?: string
   embedModel?: string
   mcpServers?: Record<string, MCPServerConfig>
