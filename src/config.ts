@@ -4,9 +4,13 @@ import { homedir } from 'os'
 
 export type Effort = 'low' | 'medium' | 'high'
 
+export type Provider = 'ollama' | 'lmstudio'
+
 export interface Config {
   model?: string
+  provider?: Provider
   ollamaHost?: string
+  lmstudioHost?: string
   effort?: Effort
 }
 
@@ -39,4 +43,8 @@ export function setModel(model: string): void {
 
 export function setEffort(effort: Effort): void {
   saveConfig({ ...loadConfig(), effort })
+}
+
+export function setProvider(provider: Provider): void {
+  saveConfig({ ...loadConfig(), provider })
 }

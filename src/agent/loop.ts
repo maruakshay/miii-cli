@@ -1,4 +1,4 @@
-import { chat } from '../ollama/client.js'
+import { chat } from '../llm/client.js'
 import { TOOLS, getTool, toOllamaTools } from '../tools/registry.js'
 import { validateInput } from '../tools/validate.js'
 import { buildSystemPrompt } from '../prompt/system.js'
@@ -14,7 +14,7 @@ import type {
 } from './types.js'
 
 const MAX_TURNS = 25
-const NUM_PREDICT = 4096
+const NUM_PREDICT = 8192
 const REPEAT_TAIL = 120
 const REPEAT_KILL = 4
 

@@ -15,13 +15,13 @@ import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync, rmSync
 import { join } from 'path'
 import { homedir } from 'os'
 import { randomUUID } from 'crypto'
-import { chat } from '../ollama/client.js'
+import { chat } from '../llm/client.js'
 import type { MiiMessage } from '../agent/types.js'
 import type { ChatMessage } from '../ui/types.js'
 
 /** Encode the cwd into a single dir-safe segment, Claude Code-style. */
 function encodeProjectDir(cwd: string): string {
-  return cwd.replace(/[/\\]/g, '-').replace(/^-+/, '')
+  return cwd.replace(/[:/\\]+/g, '-').replace(/^-+/, '')
 }
 
 const SESSION_DIR = join(homedir(), '.miii', 'projects', encodeProjectDir(process.cwd()), 'session')

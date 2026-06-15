@@ -1,5 +1,5 @@
 import type { Tool } from './types.js'
-import type { OllamaTool } from '../ollama/types.js'
+import type { OllamaTool } from '../llm/types.js'
 import { edit_file } from './edit_file.js'
 import { read_file } from './read_file.js'
 import { write_file } from './write_file.js'

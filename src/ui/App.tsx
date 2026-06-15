@@ -8,8 +8,8 @@ import { useState, useEffect } from 'react'
 import { Box, Text, useApp } from 'ink'
 import { homedir } from 'os'
 import { sep } from 'path'
-import { listModels, modelContext, ollamaInstalled, OLLAMA_NOT_INSTALLED } from '../ollama/client.js'
-import { loadConfig, type Effort } from '../config.js'
+import { listModels, modelContext, isAvailable, NOT_AVAILABLE, providerName } from '../llm/client.js'
+import { loadConfig, setProvider, type Effort, type Provider } from '../config.js'
 import { WelcomeBlock } from './WelcomeBlock.js'
 import { ModelList } from './ModelList.js'
 import { InputBar } from './InputBar.js'
@@ -61,8 +61,8 @@ export function App() {
     if (agent.agentHistory.length) persistSession(sessionId, agent.agentHistory)
   }, [agent.agentHistory, sessionId])
 
-  // Load available models on mount; advance past loading screen once done.
-  useEffect(() => {
+  const loadModels = () => {
+    setOllamaDown(false)
     listModels()
       .then((m) => {
         setModels(m)
@@ -78,12 +78,22 @@ export function App() {
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
-        agent.setError(ollamaInstalled() ? msg : OLLAMA_NOT_INSTALLED)
+        agent.setError(isAvailable() ? msg : NOT_AVAILABLE())
         setOllamaDown(true)
         setModels([])
         setState(cfg.model ? 'ready' : 'select-model')
       })
-  }, [])
+  }
+
+  // Load available models on mount; advance past loading screen once done.
+  useEffect(loadModels, [])
+
+  function switchProvider(p: Provider) {
+    setProvider(p)
+    setCfg((c) => ({ ...c, provider: p }))
+    agent.setError(null)
+    loadModels()
+  }
 
   // Wire keyboard — all key routing lives in useKeyboard.
   useKeyboard({
@@ -92,6 +102,7 @@ export function App() {
     agent,
     input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId, sessions, setSessions, setNotice,
+    switchProvider,
   })
 
   const effort: Effort = cfg.effort ?? 'medium'
@@ -117,7 +128,7 @@ export function App() {
 
       {state === 'loading' && !agent.error && (
         <Box marginLeft={2} marginBottom={1}>
-          <Text dimColor>connecting to ollama…</Text>
+          <Text dimColor>{`connecting to ${providerName()}…`}</Text>
         </Box>
       )}
 
@@ -133,13 +144,13 @@ export function App() {
 
       {state === 'select-model' && (
         <Box flexDirection="column" marginLeft={2}>
-          <Text dimColor>no model configured — select one</Text>
+          <Text dimColor>{`no model configured — select one (provider: ${providerName()})`}</Text>
           <Box marginTop={1}>
-            <ModelList models={models} cursor={cursor} />
+            <ModelList models={models} cursor={cursor} provider={providerName()} />
           </Box>
           {models.length > 0 && (
             <Box marginTop={1}>
-              <Text dimColor>↑↓ navigate   enter select   ctrl+c quit</Text>
+              <Text dimColor>↑↓ navigate   enter select   p toggle provider   ctrl+c quit</Text>
             </Box>
           )}
         </Box>
@@ -151,6 +162,7 @@ export function App() {
           cursor={cursor}
           model={cfg.model}
           ollamaHost={cfg.ollamaHost}
+          provider={providerName()}
           effort={effort}
         />
       )}

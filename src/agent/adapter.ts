@@ -1,4 +1,4 @@
-import type { OllamaMessage } from '../ollama/types.js'
+import type { OllamaMessage } from '../llm/types.js'
 import type { MiiMessage, ContentBlock, ToolUse, ToolResultBlock } from './types.js'
 
 export function mintToolUseId(): string {
@@ -28,6 +28,7 @@ export function toOllamaMessages(history: MiiMessage[], system: string): OllamaM
       const ollamaMsg: OllamaMessage = { role: 'assistant', content: text }
       if (tool_uses.length > 0) {
         ollamaMsg.tool_calls = tool_uses.map((u) => ({
+          id: u.id,
           function: { name: u.name, arguments: u.input },
         }))
       }
@@ -39,7 +40,7 @@ export function toOllamaMessages(history: MiiMessage[], system: string): OllamaM
       const tool_results = msg.content.filter((b): b is ToolResultBlock => b.type === 'tool_result')
       const texts = msg.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       for (const tr of tool_results) {
-        out.push({ role: 'tool', content: tr.content })
+        out.push({ role: 'tool', content: tr.content, tool_call_id: tr.tool_use_id })
       }
       if (texts.length > 0) {
         out.push({ role: 'user', content: texts.map((t) => t.text).join('') })

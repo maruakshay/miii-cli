@@ -5,7 +5,7 @@
  * Depends on refs/setters passed in from App state.
  */
 import { useInput } from 'ink'
-import { setModel, setEffort, type Effort } from '../../config.js'
+import { setModel, setEffort, type Provider, type Effort } from '../../config.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
@@ -34,7 +34,7 @@ interface KeyboardOptions {
   cursor: number
   setCursor: (fn: (i: number) => number) => void
   contexts: Record<string, number>
-  cfg: { model?: string; effort?: Effort }
+  cfg: { model?: string; provider?: Provider; effort?: Effort }
   setCfg: (fn: (c: any) => any) => void
   setActiveCtx: (n: number) => void
 
@@ -55,6 +55,9 @@ interface KeyboardOptions {
   sessions: SessionMeta[]
   setSessions: (s: SessionMeta[]) => void
   setNotice: (s: string | null) => void
+
+  // provider switching
+  switchProvider: (p: Provider) => void
 }
 
 export function useKeyboard(opts: KeyboardOptions) {
@@ -64,6 +67,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     agent,
     input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId, sessions, setSessions, setNotice,
+    switchProvider,
   } = opts
 
   const {
@@ -110,6 +114,13 @@ export function useKeyboard(opts: KeyboardOptions) {
         setCfg((c) => ({ ...c, model: chosen }))
         if (contexts[chosen]) setActiveCtx(contexts[chosen])
         setState('ready')
+        return
+      }
+      // provider toggle available on both screens
+      if (char === 'p') {
+        const next: Provider = cfg.provider === 'lmstudio' ? 'ollama' : 'lmstudio'
+        setNotice(`switched to ${next}`)
+        switchProvider(next)
         return
       }
       // effort adjustment only on /models screen
@@ -220,6 +231,12 @@ export function useKeyboard(opts: KeyboardOptions) {
           setState('sessions')
         } else if (trimmed === '/exit') {
           exit()
+        } else if (trimmed.startsWith('/provider ')) {
+          const p = trimmed.slice('/provider '.length).trim() as Provider
+          if (p === 'ollama' || p === 'lmstudio') {
+            setNotice(`switched to ${p}`)
+            switchProvider(p)
+          }
         } else if (trimmed) {
           setNotice(null)
           // On the first message of a session, summarise it into a title and
