@@ -1,6 +1,6 @@
 import { runScenario } from './runner.js'
 import { scenarios } from './scenarios.js'
-import { listModels } from '../src/ollama/client.js'
+import { listModels } from '../src/llm/client.js'
 import type { Result, Scenario } from './types.js'
 
 // Usage (standalone or via `miii eval`):

@@ -5,7 +5,7 @@
  * Depends on refs/setters passed in from App state.
  */
 import { useInput } from 'ink'
-import { setModel, setEffort, type Provider, type Effort } from '../../config.js'
+import { setModel, setEffort, type NamedProvider, type Provider, type Effort } from '../../config.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
@@ -38,6 +38,11 @@ interface KeyboardOptions {
   setCfg: (fn: (c: any) => any) => void
   setActiveCtx: (n: number) => void
 
+  // provider picker
+  providers: NamedProvider[]
+  pickerQuery: string
+  setPickerQuery: (s: string) => void
+
   // agent runner (streaming, permission, chat actions, refs)
   agent: ReturnType<typeof useAgentRunner>
 
@@ -64,6 +69,7 @@ export function useKeyboard(opts: KeyboardOptions) {
   const {
     exit, state, setState,
     models, cursor, setCursor, contexts, cfg, setCfg, setActiveCtx,
+    providers, pickerQuery, setPickerQuery,
     agent,
     input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId, sessions, setSessions, setNotice,
@@ -104,6 +110,32 @@ export function useKeyboard(opts: KeyboardOptions) {
       return
     }
 
+    // --- provider picker (opencode-style) ---
+    if (state === 'providers') {
+      if (key.upArrow) { setCursor((i) => Math.max(0, i - 1)); return }
+      if (key.downArrow) { setCursor((i) => Math.min(providers.length - 1, i + 1)); return }
+      if (key.escape) {
+        setPickerQuery('')
+        setCursor(() => 0)
+        setState(cfg.model ? 'models' : 'select-model')
+        return
+      }
+      if (key.return && providers[cursor]) {
+        const chosen = providers[cursor].name
+        setNotice(`switched to ${chosen}`)
+        // switchProvider reloads models and routes to the model picker (or back
+        // here on error).
+        switchProvider(chosen)
+        return
+      }
+      if (key.backspace || key.delete) { setPickerQuery(pickerQuery.slice(0, -1)); setCursor(() => 0); return }
+      if (char && !key.ctrl && !key.meta && char.length === 1 && char >= ' ') {
+        setPickerQuery(pickerQuery + char)
+        setCursor(() => 0)
+      }
+      return
+    }
+
     // --- model selection screen (initial pick or /models) ---
     if (state === 'select-model' || state === 'models') {
       if (key.upArrow) { setCursor((i) => Math.max(0, i - 1)); return }
@@ -113,29 +145,41 @@ export function useKeyboard(opts: KeyboardOptions) {
         setModel(chosen)
         setCfg((c) => ({ ...c, model: chosen }))
         if (contexts[chosen]) setActiveCtx(contexts[chosen])
+        setPickerQuery('')
+        setCursor(() => 0)
         setState('ready')
         return
       }
-      // provider toggle available on both screens
-      if (char === 'p') {
-        const next: Provider = cfg.provider === 'lmstudio' ? 'ollama' : 'lmstudio'
-        setNotice(`switched to ${next}`)
-        switchProvider(next)
+      // tab opens the provider picker
+      if (key.tab) {
+        setPickerQuery('')
+        setCursor(() => 0)
+        setState('providers')
         return
       }
-      // effort adjustment only on /models screen
-      if (state === 'models') {
-        if (key.rightArrow) {
-          const next = EFFORTS[Math.min(EFFORTS.indexOf(effort) + 1, EFFORTS.length - 1)]
-          setEffort(next)
-          setCfg((c) => ({ ...c, effort: next }))
-        } else if (key.leftArrow) {
-          const next = EFFORTS[Math.max(EFFORTS.indexOf(effort) - 1, 0)]
-          setEffort(next)
-          setCfg((c) => ({ ...c, effort: next }))
-        } else if (key.escape) {
-          setState('ready')
-        }
+      // effort adjustment with arrows
+      if (key.rightArrow) {
+        const next = EFFORTS[Math.min(EFFORTS.indexOf(effort) + 1, EFFORTS.length - 1)]
+        setEffort(next)
+        setCfg((c) => ({ ...c, effort: next }))
+        return
+      }
+      if (key.leftArrow) {
+        const next = EFFORTS[Math.max(EFFORTS.indexOf(effort) - 1, 0)]
+        setEffort(next)
+        setCfg((c) => ({ ...c, effort: next }))
+        return
+      }
+      // esc closes /models (but not the forced initial pick)
+      if (key.escape) {
+        if (state === 'models') { setPickerQuery(''); setCursor(() => 0); setState('ready') }
+        return
+      }
+      // type to filter
+      if (key.backspace || key.delete) { setPickerQuery(pickerQuery.slice(0, -1)); setCursor(() => 0); return }
+      if (char && !key.ctrl && !key.meta && char.length === 1 && char >= ' ') {
+        setPickerQuery(pickerQuery + char)
+        setCursor(() => 0)
       }
       return
     }
@@ -215,8 +259,13 @@ export function useKeyboard(opts: KeyboardOptions) {
       if (key.return) {
         const trimmed = input.trim()
         if (trimmed === '/models') {
+          setPickerQuery('')
           setCursor(() => Math.max(0, models.findIndex((m) => m === cfg.model)))
           setState('models')
+        } else if (trimmed === '/provider' || trimmed === '/providers') {
+          setPickerQuery('')
+          setCursor(() => Math.max(0, providers.findIndex((p) => p.name === cfg.provider)))
+          setState('providers')
         } else if (trimmed === '/clear') {
           clearSession()
         } else if (trimmed === '/new') {
@@ -233,9 +282,12 @@ export function useKeyboard(opts: KeyboardOptions) {
           exit()
         } else if (trimmed.startsWith('/provider ')) {
           const p = trimmed.slice('/provider '.length).trim() as Provider
-          if (p === 'ollama' || p === 'lmstudio') {
+          const names = providers.map((x) => x.name)
+          if (names.includes(p)) {
             setNotice(`switched to ${p}`)
             switchProvider(p)
+          } else {
+            setNotice(`unknown provider "${p}" — configured: ${names.join(', ')}`)
           }
         } else if (trimmed) {
           setNotice(null)

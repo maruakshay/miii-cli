@@ -1,49 +1,40 @@
-import { loadConfig } from '../config.js'
+import { resolveProvider, type ProviderEntry } from '../config.js'
 import type { OllamaMessage, OllamaTool, ChatChunk, ChatOptions } from './types.js'
 import * as ollama from './ollama.js'
-import * as lmstudio from './lmstudio.js'
+import * as openai from './openai.js'
 
-interface LLMProvider {
-  isAvailable(): boolean
-  listModels(): Promise<string[]>
-  modelContext(model: string): Promise<number>
-  chat(
-    model: string,
-    messages: OllamaMessage[],
-    tools?: OllamaTool[],
-    opts?: ChatOptions,
-  ): AsyncGenerator<ChatChunk>
-}
-
-const providers: Record<string, LLMProvider> = { ollama, lmstudio }
-
-function current(): LLMProvider {
-  const cfg = loadConfig()
-  return providers[cfg.provider ?? 'ollama']
+function active(): { name: string; entry: ProviderEntry } {
+  return resolveProvider()
 }
 
 export function providerName(): string {
-  const cfg = loadConfig()
-  return cfg.provider ?? 'ollama'
+  return active().name
+}
+
+export function activeHost(): string {
+  return active().entry.baseUrl
 }
 
 export function isAvailable(): boolean {
-  return current().isAvailable()
+  const { entry } = active()
+  return entry.type === 'ollama' ? ollama.isAvailable(entry) : openai.isAvailable(entry)
 }
 
 export function NOT_AVAILABLE(): string {
-  const cfg = loadConfig()
-  return cfg.provider === 'lmstudio'
-    ? lmstudio.NOT_AVAILABLE
-    : ollama.NOT_INSTALLED
+  const { entry } = active()
+  return entry.type === 'ollama' ? ollama.NOT_INSTALLED : openai.notAvailable(entry)
 }
 
 export async function listModels(): Promise<string[]> {
-  return current().listModels()
+  const { entry } = active()
+  return entry.type === 'ollama' ? ollama.listModels(entry) : openai.listModels(entry)
 }
 
 export async function modelContext(model: string): Promise<number> {
-  return current().modelContext(model)
+  const { entry } = active()
+  return entry.type === 'ollama'
+    ? ollama.modelContext(entry, model)
+    : openai.modelContext(entry, model)
 }
 
 export async function* chat(
@@ -52,5 +43,10 @@ export async function* chat(
   tools?: OllamaTool[],
   opts?: ChatOptions,
 ): AsyncGenerator<ChatChunk> {
-  yield* current().chat(model, messages, tools, opts)
+  const { entry } = active()
+  if (entry.type === 'ollama') {
+    yield* ollama.chat(entry, model, messages, tools, opts)
+  } else {
+    yield* openai.chat(entry, model, messages, tools, opts)
+  }
 }
