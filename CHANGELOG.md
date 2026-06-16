@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.14](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.13...miii-agent-v0.1.14) (2026-06-16)
+
+
+### Features
+
+* unified named-provider config with opencode-style picker ([88cadfe](https://github.com/maruakshay/miii-cli/commit/88cadfeaa780fa656016096ffdcfc32581acf5d8))
+* unified named-provider config with opencode-style picker ([f4dc609](https://github.com/maruakshay/miii-cli/commit/f4dc6098d852a8488d77f8614bd0d9f291862798))
+
+
+### Bug Fixes
+
+* encode Windows drive letter colon in session directory name ([dcbba4d](https://github.com/maruakshay/miii-cli/commit/dcbba4dbab89e6f254e35fca73f7c8987e88c04a))
+* encode Windows drive letter colon in session directory name ([80cacbd](https://github.com/maruakshay/miii-cli/commit/80cacbdc981b5ab7982ec6265aaab05c4301ad04))
+
 ## [0.1.13](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.12...miii-agent-v0.1.13) (2026-06-11)
 
 
