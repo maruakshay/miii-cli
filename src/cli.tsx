@@ -3,7 +3,7 @@ import { render } from 'ink'
 import { createElement } from 'react'
 import { App } from './ui/App.js'
 import { cleanupSpill } from './tools/spill.js'
-import { setProvider, type Provider } from './config.js'
+import { setProvider, listProviders, type Provider } from './config.js'
 
 // Drop yesterday's spilled tool output before starting. Best-effort.
 cleanupSpill()
@@ -15,7 +15,7 @@ let cmd: string | undefined
 for (let i = 0; i < args.length; i++) {
   if ((args[i] === '--provider' || args[i] === '-p') && i + 1 < args.length) {
     const p = args[++i] as Provider
-    if (p === 'ollama' || p === 'lmstudio') setProvider(p)
+    if (listProviders().includes(p)) setProvider(p)
   } else if (!cmd) {
     cmd = args[i]
   }

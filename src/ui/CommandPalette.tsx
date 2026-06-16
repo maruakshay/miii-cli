@@ -6,9 +6,8 @@ export interface Command {
 }
 
 export const COMMANDS: Command[] = [
-  { name: '/models', description: 'switch model, adjust effort, or change provider' },
-  { name: '/provider ollama', description: 'switch to Ollama backend' },
-  { name: '/provider lmstudio', description: 'switch to LM Studio backend' },
+  { name: '/models', description: 'pick model · tab to change provider · ←→ effort' },
+  { name: '/provider', description: 'open provider picker (configured in ~/.miii/config.json)' },
   { name: '/new',    description: 'save current session and start fresh' },
   { name: '/sessions', description: 'list sessions and resume one' },
   { name: '/clear',  description: 'clear chat and reset context' },

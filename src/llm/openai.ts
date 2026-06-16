@@ -1,21 +1,17 @@
+import type { ProviderEntry } from '../config.js'
 import type { OllamaMessage, OllamaTool, OllamaToolCall, ChatChunk, ChatOptions } from './types.js'
 
-export const PROVIDER_NAME = 'lmstudio'
-export const NOT_AVAILABLE =
-  'LM Studio is not running. Make sure the local inference server is running (Settings > Local Inference Server).'
-export const NOT_INSTALLED = NOT_AVAILABLE
+export const PROVIDER_NAME = 'openai'
 
-const DEFAULT_HOST = 'http://localhost:1234'
 const DEFAULT_CONTEXT = 4096
 
-function host(): string {
-  return process.env.LMSTUDIO_HOST ?? process.env.LLM_HOST ?? DEFAULT_HOST
+export function notAvailable(entry: ProviderEntry): string {
+  return `Cannot reach OpenAI-compatible provider at ${entry.baseUrl}. Make sure the server is running and the baseUrl is correct.`
 }
 
-function headers(): Record<string, string> {
+function headers(entry: ProviderEntry): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' }
-  const key = process.env.LMSTUDIO_API_KEY
-  if (key) h['Authorization'] = `Bearer ${key}`
+  if (entry.apiKey) h['Authorization'] = `Bearer ${entry.apiKey}`
   return h
 }
 
@@ -24,36 +20,36 @@ function isConnectionError(err: unknown): boolean {
   return msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('connect')
 }
 
-export function isAvailable(): boolean {
+export function isAvailable(_entry: ProviderEntry): boolean {
   return true
 }
 
-export async function listModels(): Promise<string[]> {
+export async function listModels(entry: ProviderEntry): Promise<string[]> {
   try {
-    const res = await fetch(`${host()}/v1/models`, {
-      headers: headers(),
+    const res = await fetch(`${entry.baseUrl}/v1/models`, {
+      headers: headers(entry),
       signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) {
       let detail = ''
       try { detail = await res.text() } catch {}
-      throw new Error(`LM Studio error (HTTP ${res.status}): ${detail || res.statusText}`)
+      throw new Error(`Provider error (HTTP ${res.status}): ${detail || res.statusText}`)
     }
     const body = await res.json() as { data: Array<{ id: string }> }
     return body.data.map((m) => m.id)
   } catch (err) {
     if (isConnectionError(err)) {
-      throw new Error(NOT_AVAILABLE)
+      throw new Error(notAvailable(entry))
     }
     throw err
   }
 }
 
-export async function modelContext(_model: string): Promise<number> {
+export async function modelContext(_entry: ProviderEntry, _model: string): Promise<number> {
   return DEFAULT_CONTEXT
 }
 
-function toLMStudioMessages(msgs: OllamaMessage[]): unknown[] {
+function toOpenAIMessages(msgs: OllamaMessage[]): unknown[] {
   return msgs.map((m) => {
     if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
       return {
@@ -80,7 +76,7 @@ function toLMStudioMessages(msgs: OllamaMessage[]): unknown[] {
   })
 }
 
-function toLMStudioTools(tools?: OllamaTool[]): unknown[] | undefined {
+function toOpenAITools(tools?: OllamaTool[]): unknown[] | undefined {
   if (!tools || tools.length === 0) return undefined
   return tools.map((t) => ({
     type: 'function',
@@ -104,6 +100,7 @@ function parseSSELine(line: string): unknown | null {
 }
 
 export async function* chat(
+  entry: ProviderEntry,
   model: string,
   messages: OllamaMessage[],
   tools?: OllamaTool[],
@@ -111,16 +108,16 @@ export async function* chat(
 ): AsyncGenerator<ChatChunk> {
   if (opts?.signal?.aborted) return
 
-  const lmMessages = toLMStudioMessages(messages)
-  const lmTools = toLMStudioTools(tools)
+  const oaMessages = toOpenAIMessages(messages)
+  const oaTools = toOpenAITools(tools)
 
   const body: Record<string, unknown> = {
     model,
-    messages: lmMessages,
+    messages: oaMessages,
     stream: true,
     temperature: opts?.temperature ?? 0.2,
   }
-  if (lmTools) body.tools = lmTools
+  if (oaTools) body.tools = oaTools
   if (opts?.num_predict && opts.num_predict > 0) body.max_tokens = opts.num_predict
 
   const toolCallAccum: Map<number, {
@@ -137,9 +134,9 @@ export async function* chat(
     : (opts?.signal ?? timeoutSignal)
 
   try {
-    const res = await fetch(`${host()}/v1/chat/completions`, {
+    const res = await fetch(`${entry.baseUrl}/v1/chat/completions`, {
       method: 'POST',
-      headers: headers(),
+      headers: headers(entry),
       body: JSON.stringify(body),
       signal: combinedSignal,
     })
@@ -148,9 +145,9 @@ export async function* chat(
       let detail = ''
       try { detail = await res.text() } catch {}
       if (res.status === 404) {
-        throw new Error(`Model "${model}" not found in LM Studio. Make sure it's loaded.`)
+        throw new Error(`Model "${model}" not found at ${entry.baseUrl}. Make sure it's available.`)
       }
-      throw new Error(`LM Studio error (HTTP ${res.status}): ${detail || res.statusText}`)
+      throw new Error(`Provider error (HTTP ${res.status}): ${detail || res.statusText}`)
     }
 
     const reader = res.body?.getReader()
@@ -221,10 +218,10 @@ export async function* chat(
       return
     }
     if (isConnectionError(err)) {
-      throw new Error(NOT_AVAILABLE)
+      throw new Error(notAvailable(entry))
     }
     if (timeoutSignal.aborted && !opts?.signal?.aborted) {
-      throw new Error(`LM Studio request timed out after ${TIMEOUT_MS / 1000}s. The model may still be loading or thinking.`)
+      throw new Error(`Provider request timed out after ${TIMEOUT_MS / 1000}s. The model may still be loading or thinking.`)
     }
     throw err
   }

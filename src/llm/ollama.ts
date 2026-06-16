@@ -1,17 +1,30 @@
 import { Ollama, type Message, type Tool, type ChatResponse } from 'ollama'
 import { execFileSync } from 'child_process'
+import type { ProviderEntry } from '../config.js'
 import type { OllamaMessage, OllamaTool, ChatChunk, ChatOptions } from './types.js'
-
-const ollama = new Ollama({
-  host: process.env.OLLAMA_HOST ?? 'http://localhost:11434',
-})
 
 export const PROVIDER_NAME = 'ollama'
 export const NOT_INSTALLED =
   'Ollama is not installed. Install it with: npm i -g ollama\nOr download from https://ollama.com/download'
 const NOT_RUNNING = 'Ollama is not running. Start it with: ollama serve'
 
-export function isAvailable(): boolean {
+function makeClient(entry: ProviderEntry, signal?: AbortSignal): Ollama {
+  const opts: ConstructorParameters<typeof Ollama>[0] = { host: entry.baseUrl }
+  if (entry.apiKey) opts.headers = { Authorization: `Bearer ${entry.apiKey}` }
+  if (signal) {
+    opts.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, { ...init, signal })) as typeof fetch
+  }
+  return new Ollama(opts)
+}
+
+const LOCAL_HOST_RE = /localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]/
+
+export function isAvailable(entry: ProviderEntry): boolean {
+  // Remote Ollama host — no local binary required; reachability is verified by
+  // the actual request (surfaced as NOT_RUNNING). Only the local default needs
+  // the CLI installed.
+  if (!LOCAL_HOST_RE.test(entry.baseUrl)) return true
   try {
     const cmd = process.platform === 'win32' ? 'where' : 'which'
     execFileSync(cmd, ['ollama'], { stdio: 'ignore' })
@@ -36,9 +49,9 @@ function isConnectionError(err: unknown): boolean {
   return msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('connect')
 }
 
-export async function listModels(): Promise<string[]> {
+export async function listModels(entry: ProviderEntry): Promise<string[]> {
   try {
-    const { models } = await ollama.list()
+    const { models } = await makeClient(entry).list()
     return models.map((m) => m.name)
   } catch (err) {
     if (isConnectionError(err)) {
@@ -48,9 +61,9 @@ export async function listModels(): Promise<string[]> {
   }
 }
 
-export async function modelContext(model: string): Promise<number> {
+export async function modelContext(entry: ProviderEntry, model: string): Promise<number> {
   try {
-    const info = await ollama.show({ model })
+    const info = await makeClient(entry).show({ model })
     const modelInfo = info.model_info as unknown as Record<string, unknown> | undefined
     if (modelInfo) {
       const ctxKey = Object.keys(modelInfo).find((k) => k.includes('context_length'))
@@ -73,6 +86,7 @@ export async function modelContext(model: string): Promise<number> {
 }
 
 export async function* chat(
+  entry: ProviderEntry,
   model: string,
   messages: OllamaMessage[],
   tools?: OllamaTool[],
@@ -80,13 +94,7 @@ export async function* chat(
 ): AsyncGenerator<ChatChunk> {
   if (opts?.signal?.aborted) return
   const signal = opts?.signal
-  const client = signal
-    ? new Ollama({
-        host: process.env.OLLAMA_HOST ?? 'http://localhost:11434',
-        fetch: ((input: RequestInfo | URL, init?: RequestInit) =>
-          fetch(input, { ...init, signal })) as typeof fetch,
-      })
-    : ollama
+  const client = makeClient(entry, signal)
   let stream: AsyncIterable<ChatResponse>
   const onAbort = () => { try { client.abort() } catch {} }
   if (signal) signal.addEventListener('abort', onAbort, { once: true })
@@ -105,7 +113,7 @@ export async function* chat(
       think: true,
       keep_alive: opts?.keep_alive ?? '10m',
       options,
-    } as unknown as Parameters<typeof ollama.chat>[0]) as unknown as AsyncIterable<ChatResponse>
+    } as unknown as Parameters<typeof client.chat>[0]) as unknown as AsyncIterable<ChatResponse>
   } catch (err) {
     if (signal?.aborted) return
     if (isConnectionError(err)) {

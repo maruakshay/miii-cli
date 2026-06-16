@@ -4,16 +4,16 @@
  * Owns top-level state (model list, selected model, app screen) and
  * delegates streaming logic to useAgentRunner and key handling to useKeyboard.
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Box, Text, useApp } from 'ink'
 import { homedir } from 'os'
 import { sep } from 'path'
-import { listModels, modelContext, isAvailable, NOT_AVAILABLE, providerName } from '../llm/client.js'
-import { loadConfig, setProvider, type Effort, type Provider } from '../config.js'
+import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
+import { loadConfig, setProvider, providerEntries, resolveProvider, type Effort, type Provider } from '../config.js'
 import { WelcomeBlock } from './WelcomeBlock.js'
-import { ModelList } from './ModelList.js'
 import { InputBar } from './InputBar.js'
 import { ModelsView } from './ModelsView.js'
+import { ProviderPicker } from './ProviderPicker.js'
 import { SessionsView } from './SessionsView.js'
 import { CommandPalette } from './CommandPalette.js'
 import { persistSession, newSessionId, type SessionMeta } from '../session/store.js'
@@ -23,7 +23,7 @@ import { useAgentRunner } from './hooks/useAgentRunner.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 import { checkForUpdate } from '../updateCheck.js'
 
-type AppState = 'loading' | 'select-model' | 'ready' | 'models' | 'sessions'
+type AppState = 'loading' | 'select-model' | 'ready' | 'models' | 'providers' | 'sessions'
 
 export function App() {
   const { exit } = useApp()
@@ -36,8 +36,9 @@ export function App() {
   const [activeCtx, setActiveCtx] = useState<number | null>(null)
   const [state, setState] = useState<AppState>('loading')
   const [cursor, setCursor] = useState(0)
+  const [pickerQuery, setPickerQuery] = useState('')
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
-  const [ollamaDown, setOllamaDown] = useState(false)
+  const [providerDown, setProviderDown] = useState(false)
 
   // --- sessions ---
   const [sessionId, setSessionId] = useState(() => newSessionId())
@@ -61,27 +62,48 @@ export function App() {
     if (agent.agentHistory.length) persistSession(sessionId, agent.agentHistory)
   }, [agent.agentHistory, sessionId])
 
-  const loadModels = () => {
-    setOllamaDown(false)
+  // afterProvider=true forces the model picker (provider just changed); otherwise
+  // a configured-and-available model goes straight to chat. Any load error bounces
+  // back to the provider picker so the user can choose a reachable backend.
+  // Bumped on every loadModels call so a stale in-flight request (e.g. from a
+  // provider the user already switched away from) can't clobber current state.
+  const loadGen = useRef(0)
+
+  const loadModels = (afterProvider = false) => {
+    const gen = ++loadGen.current
+    const stale = () => gen !== loadGen.current
+    setProviderDown(false)
     listModels()
       .then((m) => {
+        if (stale()) return
         setModels(m)
-        setState(cfg.model ? 'ready' : 'select-model')
+        const hasModel = !!cfg.model && m.includes(cfg.model)
+        if (afterProvider) {
+          setState(hasModel ? 'models' : 'select-model')
+        } else {
+          setState(hasModel ? 'ready' : 'select-model')
+        }
         Promise.all(m.map((name) => modelContext(name).then((ctx) => [name, ctx] as const)))
           .then((pairs) => {
+            if (stale()) return
             const map = Object.fromEntries(pairs)
             setContexts(map)
-            const active = cfg.model ?? m[0]
+            const active = (hasModel ? cfg.model : undefined) ?? m[0]
             if (active && map[active]) setActiveCtx(map[active])
           })
           .catch(() => {})
       })
       .catch((err: unknown) => {
+        if (stale()) return
         const msg = err instanceof Error ? err.message : String(err)
         agent.setError(isAvailable() ? msg : NOT_AVAILABLE())
-        setOllamaDown(true)
+        setProviderDown(true)
         setModels([])
-        setState(cfg.model ? 'ready' : 'select-model')
+        setPickerQuery('')
+        setCursor(() => 0)
+        // Error reaching the provider — drop to chat with the error shown and the
+        // input live, so the user can run /provider, /models, etc. to recover.
+        setState('ready')
       })
   }
 
@@ -91,14 +113,28 @@ export function App() {
   function switchProvider(p: Provider) {
     setProvider(p)
     setCfg((c) => ({ ...c, provider: p }))
+    setPickerQuery('')
+    setCursor(() => 0)
     agent.setError(null)
-    loadModels()
+    loadModels(true)
   }
+
+  // Active provider derived from cfg state (no disk reads per render).
+  const { name: provName, entry: provEntry } = resolveProvider(cfg)
+
+  // Filtered lists for the pickers (case-insensitive substring match).
+  const q = pickerQuery.toLowerCase()
+  const filteredModels = q ? models.filter((m) => m.toLowerCase().includes(q)) : models
+  const allProviders = providerEntries(cfg)
+  const filteredProviders = q
+    ? allProviders.filter((p) => p.name.toLowerCase().includes(q))
+    : allProviders
 
   // Wire keyboard — all key routing lives in useKeyboard.
   useKeyboard({
     exit, state, setState,
-    models, cursor, setCursor, contexts, cfg, setCfg, setActiveCtx,
+    models: filteredModels, cursor, setCursor, contexts, cfg, setCfg, setActiveCtx,
+    providers: filteredProviders, pickerQuery, setPickerQuery,
     agent,
     input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId, sessions, setSessions, setNotice,
@@ -128,7 +164,7 @@ export function App() {
 
       {state === 'loading' && !agent.error && (
         <Box marginLeft={2} marginBottom={1}>
-          <Text dimColor>{`connecting to ${providerName()}…`}</Text>
+          <Text dimColor>{`connecting to ${provName}…`}</Text>
         </Box>
       )}
 
@@ -142,28 +178,25 @@ export function App() {
         />
       )}
 
-      {state === 'select-model' && (
-        <Box flexDirection="column" marginLeft={2}>
-          <Text dimColor>{`no model configured — select one (provider: ${providerName()})`}</Text>
-          <Box marginTop={1}>
-            <ModelList models={models} cursor={cursor} provider={providerName()} />
-          </Box>
-          {models.length > 0 && (
-            <Box marginTop={1}>
-              <Text dimColor>↑↓ navigate   enter select   p toggle provider   ctrl+c quit</Text>
-            </Box>
-          )}
-        </Box>
-      )}
-
-      {state === 'models' && (
+      {(state === 'select-model' || state === 'models') && (
         <ModelsView
-          models={models}
+          models={filteredModels}
           cursor={cursor}
           model={cfg.model}
-          ollamaHost={cfg.ollamaHost}
-          provider={providerName()}
+          host={provEntry.baseUrl}
+          provider={provName}
           effort={effort}
+          query={pickerQuery}
+          requireSelection={state === 'select-model'}
+        />
+      )}
+
+      {state === 'providers' && (
+        <ProviderPicker
+          entries={filteredProviders}
+          cursor={cursor}
+          activeName={provName}
+          query={pickerQuery}
         />
       )}
 
@@ -209,15 +242,15 @@ export function App() {
             return <FilePicker matches={searchFiles(process.cwd(), m.query)} cursor={filePickerCursor} />
           })()}
 
-          {!ollamaDown && (
-            <>
-              <InputBar input={input} disabled={agent.busy} processingLabel={agent.processingLabel} />
-              {!agent.busy && (
-                <Box marginLeft={2} marginBottom={1}>
-                  <Text dimColor>type / to see commands</Text>
-                </Box>
-              )}
-            </>
+          <InputBar input={input} disabled={agent.busy} processingLabel={agent.processingLabel} />
+          {!agent.busy && (
+            <Box marginLeft={2} marginBottom={1}>
+              <Text dimColor>
+                {providerDown
+                  ? 'provider unavailable — /provider to switch · /models to pick a model'
+                  : 'type / to see commands'}
+              </Text>
+            </Box>
           )}
         </>
       )}
