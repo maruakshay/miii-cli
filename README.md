@@ -197,6 +197,35 @@ Settings live in `~/.miii/config.json` and are created on first run.
 | `ollamaHost` | Ollama API endpoint | URL string |
 | `effort` | Controls temperature & limits | `low` \| `medium` \| `high` |
 
+### Other Local Backends
+
+Ollama is the default, but miii talks to any **OpenAI-compatible** local server — so you can run [llama.cpp](https://github.com/ggml-org/llama.cpp) or [LM Studio](https://lmstudio.ai) instead. Your code still never leaves your machine.
+
+Start `llama-server` (ships with llama.cpp), then point a named provider at it:
+
+```bash
+llama-server -m ./qwen2.5-coder-14b.gguf --port 8080
+```
+
+```json
+{
+  "model": "qwen2.5-coder-14b",
+  "provider": "llamacpp",
+  "providers": {
+    "llamacpp": { "type": "openai", "baseUrl": "http://localhost:8080" }
+  }
+}
+```
+
+| Field | Description | Values |
+|-------|-------------|--------|
+| `provider` | Active provider name (keys into `providers`) | e.g. `ollama`, `llamacpp` |
+| `providers.<name>.type` | Wire protocol | `ollama` \| `openai` |
+| `providers.<name>.baseUrl` | Server endpoint | URL string |
+| `providers.<name>.apiKey` | Optional bearer token | string |
+
+Switch the active provider at launch with `miii --provider llamacpp`. Any `openai`-type provider on a `localhost` URL counts as local — no key, no cloud.
+
 ---
 
 ## System Architecture
