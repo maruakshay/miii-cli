@@ -16,7 +16,7 @@
   <a href="https://ollama.com"><img src="https://img.shields.io/badge/powered%20by-Ollama-black" alt="powered by Ollama"></a>
 </p>
 
-miii is a local-first AI coding agent that lives in your terminal. Powered by [Ollama](https://ollama.com), it reads your code, writes features, runs tests, and fixes bugs — entirely on your hardware, at native speed.
+miii is a local-first AI coding agent that lives in your terminal. Powered by [Ollama](https://ollama.com) — or any OpenAI-compatible local server like [llama.cpp](https://github.com/ggml-org/llama.cpp) and [LM Studio](https://lmstudio.ai) — it reads your code, writes features, runs tests, and fixes bugs entirely on your hardware, at native speed.
 
 ---
 
@@ -48,7 +48,7 @@ Most AI coding tools are wrappers around cloud APIs. They are slow, expensive, a
 
 miii flips the script:
 
-- **Absolute Privacy** — Powered by Ollama. Your code stays on your disk, period.
+- **Absolute Privacy** — Powered by Ollama, llama.cpp, or any local OpenAI-compatible server. Your code stays on your disk, period.
 - **Zero Friction** — No API keys, no billing, no accounts. Just `miii`.
 - **True Agency** — miii doesn't just chat; it decomposes problems, invokes tools, and verifies results like a senior engineer.
 - **Native Performance** — No network round-trips. Latency is limited by your GPU, not a CDN.
