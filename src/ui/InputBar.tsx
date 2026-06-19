@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Box, Text } from 'ink'
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 
 const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
-export function InputBar({ input, disabled, processingLabel }: Props) {
+export const InputBar = memo(function InputBar({ input, disabled, processingLabel }: Props) {
   const [frame, setFrame] = useState(0)
   useEffect(() => {
     if (!disabled) return
@@ -42,4 +42,4 @@ export function InputBar({ input, disabled, processingLabel }: Props) {
       )}
     </Box>
   )
-}
+})
