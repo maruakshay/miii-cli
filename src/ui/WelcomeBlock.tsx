@@ -7,9 +7,10 @@ interface Props {
   effort: Effort
   cwd: string
   error?: string | null
+  updateAvailable?: string | null
 }
 
-export function WelcomeBlock({ model, activeCtx, effort, cwd }: Props) {
+export function WelcomeBlock({ model, activeCtx, effort, cwd, updateAvailable }: Props) {
   const ctxLabel = activeCtx != null ? `${Math.round(activeCtx / 1024)}k ctx` : '— ctx'
   return (
     <Box
@@ -29,6 +30,9 @@ export function WelcomeBlock({ model, activeCtx, effort, cwd }: Props) {
         <Text>{effort} effort</Text>
       </Box>
       <Text dimColor>{cwd}</Text>
+      {updateAvailable && (
+        <Text color="yellow">{`↑ update available: v${updateAvailable} — run: miii --update`}</Text>
+      )}
     </Box>
   )
 }
