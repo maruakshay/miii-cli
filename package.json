@@ -36,6 +36,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "cli-highlight": "^2.1.11",
     "execa": "^9.0.0",
     "ink": "^5.0.0",
     "ollama": "^0.5.0",

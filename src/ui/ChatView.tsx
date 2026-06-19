@@ -1,5 +1,6 @@
 import { memo, useState, useEffect } from 'react'
 import { Box, Text } from 'ink'
+import { highlight } from 'cli-highlight'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import type { ChatMessage, ToolUseDisplay, ToolResultDisplay, PermissionRequest } from './types.js'
 import { EMPTY_STATE_HINTS, EMPTY_STATE_TITLE, } from './constants.js'
@@ -56,6 +57,31 @@ function countLines(s: string): number {
   return s.split('\n').length
 }
 
+// hljs language name keyed by file extension; undefined = render plain (no highlight).
+const EXT_LANG: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
+  js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  json: 'json', py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+  java: 'java', c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', hpp: 'cpp',
+  cs: 'csharp', php: 'php', swift: 'swift', kt: 'kotlin', scala: 'scala',
+  sh: 'bash', bash: 'bash', zsh: 'bash', yml: 'yaml', yaml: 'yaml',
+  html: 'xml', xml: 'xml', css: 'css', scss: 'scss', sql: 'sql', md: 'markdown',
+}
+
+function langFromPath(path: string): string | undefined {
+  const ext = path.split('.').pop()?.toLowerCase()
+  return ext ? EXT_LANG[ext] : undefined
+}
+
+function highlightLine(text: string, lang: string | undefined): string {
+  if (!lang) return text
+  try {
+    return highlight(text, { language: lang, ignoreIllegals: true })
+  } catch {
+    return text
+  }
+}
+
 function FileEditBlock({
   label,
   path,
@@ -72,6 +98,7 @@ function FileEditBlock({
   const expanded = useToolExpanded()
   const shown = expanded ? previewLines : previewLines.slice(0, COLLAPSED_LINES)
   const extra = previewLines.length - shown.length
+  const lang = langFromPath(path)
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Box>
@@ -90,8 +117,11 @@ function FileEditBlock({
       {shown.map((ln, i) => {
         // left indent is 6 (marginLeft 2 + 4); pad to leave a 20-col right margin
         const width = (process.stdout.columns ?? 80) - 6 - 20
-        const raw = `${ln.sign} ${ln.text}`
-        const content = raw.length > width ? raw.slice(0, width) : raw.padEnd(width)
+        // sign + space take 2 cols; truncate/pad the code text on plain length,
+        // then apply ANSI highlight so column math stays correct.
+        const textWidth = Math.max(0, width - 2)
+        const plain = ln.text.length > textWidth ? ln.text.slice(0, textWidth) : ln.text.padEnd(textWidth)
+        const code = ln.sign === ' ' ? plain : highlightLine(plain, lang)
         return (
           <Box key={i} marginLeft={4}>
             <Text
@@ -99,7 +129,7 @@ function FileEditBlock({
               backgroundColor={ln.sign === '+' ? '#13351f' : ln.sign === '-' ? '#3b1414' : undefined}
               dimColor={ln.sign === ' '}
             >
-              {content}
+              {`${ln.sign} `}{code}
             </Text>
           </Box>
         )
@@ -296,7 +326,9 @@ function summarizeInput(input: unknown): string {
   const priority = ['path', 'file_path', 'command', 'pattern', 'query']
   for (const k of priority) {
     const v = obj[k]
-    if (typeof v === 'string' && v.length > 0) return `${k}: ${v}`
+    if (typeof v === 'string' && v.length > 0) {
+      return `${k}: ${v.length > 120 ? v.slice(0, 120) + '…' : v}`
+    }
   }
   const first = Object.entries(obj).find(([, v]) => typeof v === 'string') as
     | [string, string]
@@ -327,7 +359,7 @@ function PermissionPrompt({ req, cursor }: { req: PermissionRequest; cursor: num
       </Box>
       {summary && (
         <Box marginLeft={2}>
-          <Text dimColor>{summary}</Text>
+          <Text wrap="truncate" dimColor>{summary}</Text>
         </Box>
       )}
       <Box flexDirection="column" marginTop={1}>

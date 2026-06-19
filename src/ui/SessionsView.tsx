@@ -6,6 +6,12 @@ interface Props {
   cursor: number
 }
 
+function truncate(s: string, max: number): string {
+  if (max <= 0) return ''
+  if (s.length <= max) return s
+  return s.slice(0, Math.max(0, max - 1)) + '…'
+}
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const min = Math.floor(diff / 60000)
@@ -27,13 +33,17 @@ export function SessionsView({ sessions, cursor }: Props) {
         ) : (
           sessions.map((s, i) => {
             const active = i === cursor
-            const label = s.title
+            const meta = `· ${s.messageCount} msgs · ${relativeTime(s.updatedAt)}`
+            // Keep each row on one line: left overhead ≈ margin(2)+border(2)+pad(2)+arrow(2)+gap(1).
+            const cols = process.stdout.columns ?? 80
+            const titleMax = cols - 9 - meta.length
+            const label = truncate(s.title, titleMax)
             return (
               <Box key={s.id} gap={1}>
-                <Text color={active ? 'blue' : undefined} dimColor={!active}>
+                <Text wrap="truncate" color={active ? 'blue' : undefined} dimColor={!active}>
                   {active ? '❯ ' : '  '}{label}
                 </Text>
-                <Text dimColor>{`· ${s.messageCount} msgs · ${relativeTime(s.updatedAt)}`}</Text>
+                <Text wrap="truncate" dimColor>{meta}</Text>
               </Box>
             )
           })

@@ -154,13 +154,7 @@ export function App() {
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} />
-
-      {updateAvailable && (
-        <Box marginLeft={2} marginBottom={1}>
-          <Text color="yellow">{`↑ update available: v${updateAvailable} — run: miii --update`}</Text>
-        </Box>
-      )}
+      <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} updateAvailable={updateAvailable} />
 
       {state === 'loading' && !agent.error && (
         <Box marginLeft={2} marginBottom={1}>

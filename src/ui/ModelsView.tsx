@@ -17,7 +17,7 @@ export function ModelsView({ models, cursor, model, host, provider, effort, quer
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Box flexDirection="column" marginBottom={1}>
-        <Text>
+        <Text wrap="truncate">
           <Text dimColor>provider </Text><Text color="cyan">{provider}</Text>
           <Text dimColor>{'   '}host </Text><Text>{host}</Text>
         </Text>
@@ -40,7 +40,7 @@ export function ModelsView({ models, cursor, model, host, provider, effort, quer
           models.map((m, i) => {
             const sel = i === cursor
             return (
-              <Text key={m} color={sel ? 'blue' : undefined} dimColor={!sel}>
+              <Text key={m} wrap="truncate" color={sel ? 'blue' : undefined} dimColor={!sel}>
                 {sel ? '❯ ' : '  '}{m}
                 {m === model ? <Text color="green">{'  ●'}</Text> : null}
               </Text>
