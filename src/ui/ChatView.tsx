@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { memo, useState, useEffect } from 'react'
 import { Box, Text } from 'ink'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import type { ChatMessage, ToolUseDisplay, ToolResultDisplay, PermissionRequest } from './types.js'
@@ -252,12 +252,23 @@ function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: ToolResult
   )
 }
 
-function AssistantMessage({ msg }: { msg: ChatMessage }) {
+const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage }) {
+  return (
+    <Box flexDirection="row" marginBottom={1}>
+      <Text color="blue">● </Text>
+      <Box flexGrow={1}>
+        <Text>{msg.content}</Text>
+      </Box>
+    </Box>
+  )
+})
+
+const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: ChatMessage }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       {msg.content && (
         <Box flexDirection="row">
-          <Text color="white">{'● '}</Text>
+          <Text color="white">● </Text>
           <Box flexGrow={1}>
             <Text>{msg.content}</Text>
           </Box>
@@ -277,7 +288,7 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
       )}
     </Box>
   )
-}
+})
 
 function summarizeInput(input: unknown): string {
   if (!input || typeof input !== 'object') return ''
@@ -357,12 +368,7 @@ export function ChatView({
       )}
       {messages.map((msg, i) =>
         msg.role === 'user' ? (
-          <Box key={i} flexDirection="row" marginBottom={1}>
-            <Text color="blue">{'● '}</Text>
-            <Box flexGrow={1}>
-              <Text>{msg.content}</Text>
-            </Box>
-          </Box>
+          <UserMessage key={i} msg={msg} />
         ) : (
           <AssistantMessage key={i} msg={msg} />
         ),
