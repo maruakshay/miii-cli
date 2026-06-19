@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.15](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.14...miii-agent-v0.1.15) (2026-06-19)
+
+
+### Features
+
+* **ui:** syntax-highlight diffs, fix modal overflow, firm update banner ([a06eb26](https://github.com/maruakshay/miii-cli/commit/a06eb26d2dbdc01fa549e86c1a5aa017cfea14cb))
+* **ui:** syntax-highlight diffs, fix modal overflow, firm update banner ([634b77d](https://github.com/maruakshay/miii-cli/commit/634b77d2ab64f8ce057576c870a0ecb22ad3dc25))
+
+
+### Bug Fixes
+
+* **ui:** stop ChatView and InputBar flicker during streaming ([d7833be](https://github.com/maruakshay/miii-cli/commit/d7833be3f609174b4ac27b4b501fa5ef1f500280))
+* **ui:** stop ChatView and InputBar flicker during streaming ([a69b98b](https://github.com/maruakshay/miii-cli/commit/a69b98b17cd3d847315e9484002b9ab5bcdd6ac7))
+
 ## [0.1.14](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.13...miii-agent-v0.1.14) (2026-06-16)
 
 
