@@ -11,7 +11,7 @@ interface Input {
 }
 
 /** Cheap line-similarity: fraction of matching chars by position, ignoring leading/trailing ws. */
-function similarity(a: string, b: string): number {
+export function similarity(a: string, b: string): number {
   const x = a.trim()
   const y = b.trim()
   if (!x && !y) return 1
@@ -28,7 +28,7 @@ function similarity(a: string, b: string): number {
  * Returns the [start, end] char range in src of a unique whitespace-tolerant
  * match, or null if there is no match or more than one.
  */
-function fuzzyRange(src: string, old_str: string): [number, number] | null {
+export function fuzzyRange(src: string, old_str: string): [number, number] | null {
   const srcLines = src.split('\n')
   const oldLines = old_str.split('\n')
   const norm = (l: string) => l.trim()

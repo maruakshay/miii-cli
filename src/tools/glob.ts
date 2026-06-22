@@ -1,5 +1,6 @@
 import { execa } from 'execa'
 import { statSync } from 'fs'
+import { confinePath } from './paths.js'
 import type { Tool } from './types.js'
 
 // Sort newest-first; "what did I just touch" is the common intent.
@@ -47,7 +48,12 @@ export const glob: Tool<Input> = {
     required: ['pattern'],
   },
   handler: async ({ pattern, path, max_results }) => {
-    const root = path ?? process.cwd()
+    let root: string
+    try {
+      root = confinePath(path ?? '.')
+    } catch (err) {
+      return { content: err instanceof Error ? err.message : String(err), is_error: true }
+    }
     const limit = max_results ?? 500
 
     const tryRg = () =>

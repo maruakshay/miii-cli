@@ -1,4 +1,5 @@
 import { execa } from 'execa'
+import { confinePath } from './paths.js'
 import type { Tool } from './types.js'
 
 interface Input {
@@ -24,7 +25,12 @@ export const grep: Tool<Input> = {
     required: ['pattern'],
   },
   handler: async ({ pattern, path, glob, case_insensitive, max_results }) => {
-    const root = path ?? process.cwd()
+    let root: string
+    try {
+      root = confinePath(path ?? '.')
+    } catch (err) {
+      return { content: err instanceof Error ? err.message : String(err), is_error: true }
+    }
     const limit = max_results ?? 200
     const ci = case_insensitive === true || String(case_insensitive) === 'true'
 
