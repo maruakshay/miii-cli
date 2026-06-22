@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.17](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.16...miii-agent-v0.1.17) (2026-06-22)
+
+
+### Features
+
+* **session:** summarize first exchange into title ([b8fe10c](https://github.com/maruakshay/miii-cli/commit/b8fe10c649bcc5409b52de576cd70b9d74eef8f1))
+* **session:** summarize first exchange into title ([768b66a](https://github.com/maruakshay/miii-cli/commit/768b66a0304f9c9dfbf8f7e6a6bf9529dd66136b))
+
 ## [0.1.16](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.15...miii-agent-v0.1.16) (2026-06-22)
 
 
