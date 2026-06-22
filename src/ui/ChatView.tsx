@@ -126,7 +126,13 @@ function FileEditBlock({
           <Box key={i} marginLeft={4}>
             <Text
               wrap="truncate"
-              backgroundColor={ln.sign === '+' ? '#13351f' : ln.sign === '-' ? '#3b1414' : undefined}
+              backgroundColor={
+                ln.sign === '-'
+                  ? '#3b1414'
+                  : ln.sign === '+' && label !== 'Write'
+                    ? '#13351f'
+                    : undefined
+              }
               dimColor={ln.sign === ' '}
             >
               {`${ln.sign} `}{code}

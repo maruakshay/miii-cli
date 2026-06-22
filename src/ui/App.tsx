@@ -16,7 +16,7 @@ import { ModelsView } from './ModelsView.js'
 import { ProviderPicker } from './ProviderPicker.js'
 import { SessionsView } from './SessionsView.js'
 import { CommandPalette } from './CommandPalette.js'
-import { persistSession, newSessionId, type SessionMeta } from '../session/store.js'
+import { persistSession, setSessionTitle, summarizeConversation, newSessionId, type SessionMeta } from '../session/store.js'
 import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
@@ -57,10 +57,34 @@ export function App() {
     checkForUpdate().then((v) => { if (v) setUpdateAvailable(v) })
   }, [])
 
+  // Tracks sessions whose LLM title has been generated, so we summarise once.
+  const titledSessions = useRef<Set<string>>(new Set())
+
   // Auto-save the active session to disk every time the agent history grows.
+  // Once the first assistant reply lands, summarise the exchange into a title
+  // (Claude Code-style) — background, best-effort, generated exactly once.
   useEffect(() => {
-    if (agent.agentHistory.length) persistSession(sessionId, agent.agentHistory)
-  }, [agent.agentHistory, sessionId])
+    const history = agent.agentHistory
+    if (!history.length) return
+    persistSession(sessionId, history)
+
+    if (
+      !titledSessions.current.has(sessionId) &&
+      cfg.model &&
+      history.some((m) => m.role === 'assistant')
+    ) {
+      titledSessions.current.add(sessionId)
+      const id = sessionId
+      const model = cfg.model
+      const snapshot = history
+      void (async () => {
+        try {
+          const title = await summarizeConversation(model, snapshot)
+          setSessionTitle(id, title)
+        } catch { /* best-effort */ }
+      })()
+    }
+  }, [agent.agentHistory, sessionId, cfg.model])
 
   // afterProvider=true forces the model picker (provider just changed); otherwise
   // a configured-and-available model goes straight to chat. Any load error bounces
@@ -137,7 +161,9 @@ export function App() {
     providers: filteredProviders, pickerQuery, setPickerQuery,
     agent,
     input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
-    sessionId, setSessionId, sessions, setSessions, setNotice,
+    sessionId, setSessionId,
+    onResumeSession: (id) => titledSessions.current.add(id),
+    sessions, setSessions, setNotice,
     switchProvider,
   })
 
