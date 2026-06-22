@@ -8,7 +8,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
@@ -28,13 +29,30 @@
     "type": "git",
     "url": "git+https://github.com/maruakshay/miii-cli.git"
   },
+  "homepage": "https://github.com/maruakshay/miii-cli#readme",
+  "bugs": {
+    "url": "https://github.com/maruakshay/miii-cli/issues"
+  },
   "keywords": [
     "cli",
     "ai",
+    "ai-agent",
+    "coding-agent",
+    "ai-coding-assistant",
     "ollama",
-    "agent",
+    "llm",
+    "local-llm",
+    "local-first",
+    "offline",
+    "privacy",
+    "terminal",
+    "tui",
     "ink",
-    "tui"
+    "agent",
+    "pair-programming",
+    "code-generation",
+    "llama-cpp",
+    "lm-studio"
   ],
   "license": "MIT",
   "dependencies": {

@@ -62,7 +62,7 @@ function messageText(m: MiiMessage): string {
 function firstUserText(messages: MiiMessage[]): string {
   const first = messages.find((m) => m.role === 'user')
   if (!first) return 'untitled'
-  return messageText(first).trim().slice(0, 80) || 'untitled'
+  return flattenForTitle(messageText(first)).slice(0, 80) || 'untitled'
 }
 
 /** Read just the meta line (first line) of a session file. */
@@ -103,6 +103,16 @@ export function persistSession(id: string, messages: MiiMessage[], title?: strin
     lines.push(JSON.stringify({ type: 'message', message } satisfies MessageLine))
   }
   writeFileSync(sessionPath(id), lines.join('\n') + '\n', 'utf-8')
+}
+
+/**
+ * Update only a session's title, preserving whatever messages are currently on
+ * disk. Used by the background summariser, which may finish after more turns
+ * have been saved — reloading avoids clobbering them with a stale snapshot.
+ */
+export function setSessionTitle(id: string, title: string): void {
+  if (!readMeta(id)) return
+  persistSession(id, loadSession(id), title)
 }
 
 /** All saved sessions, most-recently-updated first. */
@@ -192,16 +202,53 @@ export function toDisplayMessages(history: MiiMessage[]): ChatMessage[] {
 }
 
 /**
- * Ask the model for a short title summarising the user's message.
- * Falls back to the truncated message text on error.
+ * Strip markup/pasted-blob noise to a flat, human-readable string: drop HTML
+ * tags, collapse whitespace. Used to clean both the summarizer input and its
+ * fallback so a pasted `<a href…>` blob never becomes a session title.
  */
-export async function summarizeMessage(model: string, text: string): Promise<string> {
-  const fallback = text.trim().slice(0, 80) || 'untitled'
+function flattenForTitle(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, ' ') // strip HTML/XML tags
+    .replace(/[`*_#>|]/g, ' ') // strip markdown punctuation
+    .replace(/https?:\/\/\S+/g, ' ') // drop bare URLs
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** A model title is unusable if empty, still markup, or absurdly long. */
+function looksLikeJunkTitle(title: string): boolean {
+  return !title || /[<>]/.test(title) || title.length > 80
+}
+
+/**
+ * Ask the model for a short title summarising the conversation so far — the
+ * first user message plus the assistant's reply, Claude Code-style — rather
+ * than echoing the raw first message. Sanitises input before summarising and
+ * rejects markup-looking output, falling back to a flattened slice.
+ */
+export async function summarizeConversation(
+  model: string,
+  messages: MiiMessage[],
+): Promise<string> {
+  // Build "User: …\nAssistant: …" from the first user turn + first reply.
+  const parts: string[] = []
+  let sawUser = false
+  let sawAssistant = false
+  for (const m of messages) {
+    if (m.role === 'system') continue
+    const t = flattenForTitle(messageText(m))
+    if (!t) continue
+    if (m.role === 'user' && !sawUser) { parts.push(`User: ${t}`); sawUser = true }
+    else if (m.role === 'assistant' && !sawAssistant) { parts.push(`Assistant: ${t}`); sawAssistant = true }
+    if (sawUser && sawAssistant) break
+  }
+  const convo = parts.join('\n').slice(0, 2000)
+  const fallback = (parts[0]?.replace(/^User: /, '') ?? '').slice(0, 80) || 'untitled'
 
   const prompt =
-    'Summarize this user request as a short title, 3-6 words, no punctuation. ' +
+    'Summarize this conversation as a short title, 3-6 words, no punctuation. ' +
     'Reply with the title only.\n\n' +
-    `Request:\n${text.slice(0, 2000)}`
+    `Conversation:\n${convo}`
 
   try {
     let out = ''
@@ -213,7 +260,8 @@ export async function summarizeMessage(model: string, text: string): Promise<str
     )) {
       if (chunk.content) out += chunk.content
     }
-    return out.trim().split('\n').filter(Boolean)[0]?.trim() || fallback
+    const title = out.trim().split('\n').filter(Boolean)[0]?.trim() ?? ''
+    return looksLikeJunkTitle(title) ? fallback : title
   } catch {
     return fallback
   }

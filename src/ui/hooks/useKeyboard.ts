@@ -11,7 +11,6 @@ import { parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
 import { toggleToolExpanded } from '../ChatView.js'
 import {
-  summarizeMessage,
   persistSession,
   listSessions,
   loadSession,
@@ -114,6 +113,8 @@ interface KeyboardOptions {
   // sessions
   sessionId: string
   setSessionId: (id: string) => void
+  /** Called when an existing session is resumed; it already has a title. */
+  onResumeSession: (id: string) => void
   sessions: SessionMeta[]
   setSessions: (s: SessionMeta[]) => void
   setNotice: (s: string | null) => void
@@ -129,7 +130,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     providers, pickerQuery, setPickerQuery,
     agent,
     input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
-    sessionId, setSessionId, sessions, setSessions, setNotice,
+    sessionId, setSessionId, onResumeSession, sessions, setSessions, setNotice,
     switchProvider,
   } = opts
 
@@ -268,6 +269,7 @@ export function useKeyboard(opts: KeyboardOptions) {
         setActiveToolResults([])
         setError(null)
         setSessionId(meta.id)
+        onResumeSession(meta.id)
         setNotice(`resumed · ${meta.title}`)
         setState('ready')
       }
@@ -350,19 +352,9 @@ export function useKeyboard(opts: KeyboardOptions) {
         } else if (trimmed) {
           setNotice(null)
           // Expand any paste chips back into their real text before sending.
+          // The session title is generated after the first assistant reply
+          // (see the auto-save effect in App.tsx), not from this raw message.
           const message = expandPastes(trimmed)
-          // On the first message of a session, summarise it into a title and
-          // persist (background, best-effort).
-          if (!agentHistory.length && cfg.model) {
-            const id = sessionId
-            const model = cfg.model
-            void (async () => {
-              try {
-                const title = await summarizeMessage(model, message)
-                persistSession(id, [{ role: 'user', content: message }], title)
-              } catch { /* best-effort */ }
-            })()
-          }
           sendMessage(message)
         }
         clearPasteStore()
