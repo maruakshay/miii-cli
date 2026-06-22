@@ -102,8 +102,8 @@ function FileEditBlock({
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Box>
-        <Text color="yellow">● </Text>
-        <Text color="yellow">{label} </Text>
+        <Text color="green">● </Text>
+        <Text color="white">{label} </Text>
         <Text>(</Text>
         <Text bold>{path}</Text>
         <Text>)</Text>
@@ -271,8 +271,8 @@ function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: ToolResult
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Box>
-        <Text color="yellow">● </Text>
-        <Text color="yellow">{label} </Text>
+        <Text color="green">● </Text>
+        <Text color="white">{label} </Text>
         <Text>(</Text>
         <Text bold>{arg}</Text>
         <Text>)</Text>
@@ -285,7 +285,7 @@ function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: ToolResult
 const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage }) {
   return (
     <Box flexDirection="row" marginBottom={1}>
-      <Text color="blue">● </Text>
+      <Text color="gray">❯ </Text>
       <Box flexGrow={1}>
         <Text>{msg.content}</Text>
       </Box>
@@ -298,7 +298,7 @@ const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: ChatMess
     <Box flexDirection="column" marginBottom={1}>
       {msg.content && (
         <Box flexDirection="row">
-          <Text color="white">● </Text>
+          <Text color="blue">● </Text>
           <Box flexGrow={1}>
             <Text>{msg.content}</Text>
           </Box>
