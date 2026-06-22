@@ -69,7 +69,7 @@ export function subjectFor(toolName: string, input: unknown): string {
 }
 
 /** Convert a glob (only `*` and `?` special) into an anchored RegExp. */
-function globToRegExp(glob: string): RegExp {
+export function globToRegExp(glob: string): RegExp {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&')
   const pattern = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
   return new RegExp(`^${pattern}$`)

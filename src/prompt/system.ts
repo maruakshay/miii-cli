@@ -1,10 +1,24 @@
 import type { Tool } from '../tools/types.js'
+import type { ProjectContext } from './context.js'
+import { CONTEXT_FILENAME } from './context.js'
 
-export function buildSystemPrompt(tools: Tool[], cwd: string): string {
+export function buildSystemPrompt(tools: Tool[], cwd: string, project?: ProjectContext): string {
   const toolLines = tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
+  const projectSection =
+    project && project.content.trim()
+      ? `
+# ${CONTEXT_FILENAME} — project instructions (authoritative, read first)
+The user maintains ${CONTEXT_FILENAME} at ${project.source} to steer how you work in this project: conventions, commands, architecture, do's and don'ts. Treat it as direct instruction from the user, higher priority than your defaults. When it conflicts with a default rule below, ${CONTEXT_FILENAME} wins (except permissions and safety, which you never override).${project.truncated ? `\n(Note: file exceeded ${'32KB'} and was truncated.)` : ''}
+
+--- BEGIN ${CONTEXT_FILENAME} ---
+${project.content.trim()}
+--- END ${CONTEXT_FILENAME} ---
+`
+      : ''
   return `You are miii, a senior software engineer running in a terminal.
 
 Working directory: ${cwd}
+${projectSection}
 
 # Goal Understanding (read this first, every turn)
 Before acting on any request, extract and hold three things:

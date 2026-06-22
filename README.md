@@ -120,6 +120,19 @@ Inside the TUI, interact naturally:
 | `Ctrl+O` | Toggle full tool output view |
 | `Ctrl+C` | Quit |
 
+### Project Instructions (`MIII.md`)
+
+Drop a `MIII.md` file in your project and miii reads it first, every turn — the same idea as `CLAUDE.md`. Use it to teach the agent your conventions, build/test commands, architecture, and do's and don'ts.
+
+```markdown
+# MIII.md
+- Use tabs, not spaces.
+- Run `npm test` before declaring any task done.
+- The HTTP layer lives in src/server/ — never import it from src/core/.
+```
+
+miii searches upward from the working directory to the repo root (the directory containing `.git`); the nearest `MIII.md` wins. It is treated as authoritative — higher priority than the agent's defaults — except it can never override the permission system or safety boundaries. Files over 32KB are truncated.
+
 ---
 
 ## Technical Deep Dive
@@ -137,7 +150,7 @@ miii ships with a built-in tool suite that the agent invokes autonomously:
 | `grep` | Regex search across files |
 | `run_bash` | Execute shell commands |
 
-**Security & Safety:** Every sensitive operation is gated by a permission system. You approve what the agent can touch, and "always" approvals persist to `~/.miii/permissions.json`. File tools are strictly confined to your working directory; `../` traversal and absolute paths outside the workspace are rejected.
+**Security & Safety:** Every sensitive operation is gated by a permission system. You approve what the agent can touch, and "always" approvals persist to `~/.miii/permissions.json`. The file tools (`read_file`, `write_file`, `edit_file`) are strictly confined to your working directory; `../` traversal and absolute paths outside the workspace are rejected. `run_bash` runs arbitrary shell commands and is **not** path-confined — its only boundary is the permission prompt, so review commands before approving (especially "always").
 
 ### Lossless Output Spill
 

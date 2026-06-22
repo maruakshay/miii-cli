@@ -1,8 +1,12 @@
+import { existsSync } from 'fs'
 import { chat } from '../llm/client.js'
+import { confinePath } from '../tools/paths.js'
 import { TOOLS, getTool, toOllamaTools } from '../tools/registry.js'
 import { validateInput } from '../tools/validate.js'
 import { buildSystemPrompt } from '../prompt/system.js'
+import { loadProjectContext } from '../prompt/context.js'
 import { check, type PermissionContext } from '../permissions/policy.js'
+import { loadConfig, EFFORT_OPTIONS } from '../config.js'
 import { HookBus } from '../hooks/bus.js'
 import { toOllamaMessages, blocksFromOllama } from './adapter.js'
 import type {
@@ -14,9 +18,40 @@ import type {
 } from './types.js'
 
 const MAX_TURNS = 25
-const NUM_PREDICT = 8192
 const REPEAT_TAIL = 120
 const REPEAT_KILL = 4
+
+/**
+ * Harness-enforced read-before-write. The system prompt asks the model to read
+ * a file before editing it, but weak local models ignore prose invariants — so
+ * we enforce it mechanically. `seen` holds canonical paths the model has read
+ * (or already written) this run. Returns an actionable error string to block
+ * the call, or null to allow it.
+ *
+ * - edit_file always targets an existing file → requires a prior read.
+ * - write_file creating a NEW file is allowed (nothing to read); overwriting an
+ *   existing file requires a prior read.
+ * Path/confinement problems are left to the tool handler to report.
+ */
+function readGuard(name: string, input: unknown, seen: Set<string>): string | null {
+  if (name !== 'edit_file' && name !== 'write_file') return null
+  const p = (input as { path?: unknown }).path
+  if (typeof p !== 'string' || !p) return null
+  let abs: string
+  try { abs = confinePath(p) } catch { return null }
+  if (seen.has(abs)) return null
+  if (name === 'write_file' && !existsSync(abs)) return null
+  const verb = name === 'edit_file' ? 'edit' : 'overwrite'
+  return `Refusing to ${verb} ${p}: you have not read it this turn. Call read_file on ${p} first, then retry the ${name}.`
+}
+
+/** Record a path the model now knows the current state of (read or wrote). */
+function markSeen(name: string, input: unknown, seen: Set<string>): void {
+  if (name !== 'read_file' && name !== 'edit_file' && name !== 'write_file') return
+  const p = (input as { path?: unknown }).path
+  if (typeof p !== 'string' || !p) return
+  try { seen.add(confinePath(p)) } catch { /* confinement error surfaced by tool */ }
+}
 
 export interface RunAgentOpts {
   model: string
@@ -43,8 +78,11 @@ export interface RunAgentOpts {
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
   const startTime = Date.now()
-  const system = buildSystemPrompt(TOOLS, cwd)
+  const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd))
   const ollamaTools = toOllamaTools(TOOLS)
+  // Effort drives temperature + output cap. high → num_predict -1 (unlimited),
+  // which ollama.chat omits so the model runs to its own stop.
+  const effort = EFFORT_OPTIONS[loadConfig().effort ?? 'medium']
 
   const history: MiiMessage[] = [
     ...opts.history,
@@ -55,6 +93,8 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   let evalTokens = 0
   let lastAssistantSig = ''
   let repeatCount = 0
+  // Canonical paths the model has read (or written) this run — gates edit/write.
+  const seenPaths = new Set<string>()
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let text = ''
@@ -70,7 +110,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     if (signal) signal.addEventListener('abort', () => ac.abort(), { once: true })
 
     try {
-      for await (const chunk of chat(model, toOllamaMessages(history, system), ollamaTools, { signal: composedSignal, num_ctx, num_predict: NUM_PREDICT })) {
+      for await (const chunk of chat(model, toOllamaMessages(history, system), ollamaTools, { signal: composedSignal, num_ctx, num_predict: effort.num_predict, temperature: effort.temperature })) {
         if (signal?.aborted) break
         if (chunk.content) {
           text += chunk.content
@@ -199,6 +239,19 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         continue
       }
 
+      const guard = readGuard(use.name, use.input, seenPaths)
+      if (guard) {
+        const r: ToolResultBlock = {
+          type: 'tool_result',
+          tool_use_id: use.id,
+          content: guard,
+          is_error: true,
+        }
+        results.push(r)
+        yield { type: 'tool-result', block: r }
+        continue
+      }
+
       // Hooks are best-effort: a throwing hook must never break the
       // tool_use → tool_result block invariant the model relies on.
       try { await hooks?.firePre(use) } catch { /* hook error ignored */ }
@@ -219,6 +272,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           is_error: true,
         }
       }
+      if (!r.is_error) markSeen(use.name, use.input, seenPaths)
       try { await hooks?.firePost(use, r) } catch { /* hook error ignored */ }
       results.push(r)
       yield { type: 'tool-result', block: r }

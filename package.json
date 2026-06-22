@@ -17,6 +17,8 @@
     "start": "tsx src/cli.tsx",
     "eval": "tsx src/cli.tsx eval",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "tsx watch src/cli.tsx",
     "build": "tsup",
     "postbuild": "node -e \"if(process.platform!=='win32')require('fs').chmodSync('dist/cli.js',0o755)\"",
@@ -49,6 +51,7 @@
     "@types/react": "^18.3.0",
     "tsup": "^8.5.1",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.9"
   }
 }
