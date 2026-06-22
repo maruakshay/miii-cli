@@ -24,6 +24,63 @@ import type { useAgentRunner } from './useAgentRunner.js'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high']
 
+// A paste collapses to a chip when it spans more than this many lines, or (for a
+// single huge line) exceeds the char fallback. Words are a poor proxy — pasted
+// code is often <20 words but hundreds of lines — so gate on lines/bytes.
+const PASTE_CHIP_LINES = 4
+const PASTE_CHIP_CHARS = 200
+
+// Maps a chip placeholder (e.g. "[Pasted #1 · 34 lines]") to the real text it
+// stands in for. Module-level so it survives re-renders; expanded at submit and
+// wiped by clearPasteStore() on submit/clear/esc.
+const pasteStore = new Map<string, string>()
+let pasteCounter = 0
+
+function clearPasteStore() {
+  pasteStore.clear()
+  pasteCounter = 0
+}
+
+/** Replace every chip placeholder in `text` with its stored content. */
+function expandPastes(text: string): string {
+  let out = text
+  for (const [chip, full] of pasteStore) out = out.split(chip).join(full)
+  return out
+}
+
+/** Strip bracketed-paste markers and control bytes, preserving newlines. */
+function stripControls(chunk: string): string {
+  return chunk
+    // bracketed-paste start/end markers
+    .replace(/\x1b\[20[01]~/g, '')
+    // tabs -> space
+    .replace(/\t/g, ' ')
+    // C0/C1 control chars except \n (line count + chip storage need newlines)
+    .replace(/[\x00-\x09\x0b-\x1f\x7f]/g, '')
+}
+
+/**
+ * Turn a typed/pasted chunk into the text to insert into the input.
+ *
+ * Single chars (normal typing) pass straight through. A multi-char chunk is a
+ * paste: a big one (> PASTE_CHIP_LINES lines or > PASTE_CHIP_CHARS chars) is
+ * stashed in pasteStore — newlines intact, so the model gets the real block —
+ * and replaced by a compact chip; a small one collapses newlines to spaces and
+ * goes inline. expandPastes() restores chips at submit time.
+ */
+function sanitizePaste(chunk: string): string {
+  // Gate the paste machinery on length>1 — typing is the hot path.
+  if (chunk.length <= 1) return chunk
+  const cleaned = stripControls(chunk).replace(/\r/g, '')
+  const lines = cleaned.split('\n').length
+  if (lines > PASTE_CHIP_LINES || cleaned.length > PASTE_CHIP_CHARS) {
+    const chip = `[Pasted #${++pasteCounter} · ${lines} line${lines === 1 ? '' : 's'}]`
+    pasteStore.set(chip, cleaned)
+    return chip
+  }
+  return cleaned.replace(/\n/g, ' ')
+}
+
 interface KeyboardOptions {
   exit: () => void
   state: string
@@ -93,6 +150,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     setActiveToolResults([])
     setError(null)
     setNotice(null)
+    clearPasteStore()
   }
 
   const effort: Effort = cfg.effort ?? 'medium'
@@ -242,7 +300,7 @@ export function useKeyboard(opts: KeyboardOptions) {
         setPaletteCursor(() => 0)
         return
       }
-      if (paletteOpen && key.escape) { setInput(() => ''); setPaletteCursor(() => 0); return }
+      if (paletteOpen && key.escape) { clearPasteStore(); setInput(() => ''); setPaletteCursor(() => 0); return }
 
       // file picker navigation
       if (fileOpen && key.upArrow) { setFilePickerCursor((i) => Math.max(0, i - 1)); return }
@@ -291,6 +349,8 @@ export function useKeyboard(opts: KeyboardOptions) {
           }
         } else if (trimmed) {
           setNotice(null)
+          // Expand any paste chips back into their real text before sending.
+          const message = expandPastes(trimmed)
           // On the first message of a session, summarise it into a title and
           // persist (background, best-effort).
           if (!agentHistory.length && cfg.model) {
@@ -298,13 +358,14 @@ export function useKeyboard(opts: KeyboardOptions) {
             const model = cfg.model
             void (async () => {
               try {
-                const title = await summarizeMessage(model, trimmed)
-                persistSession(id, [{ role: 'user', content: trimmed }], title)
+                const title = await summarizeMessage(model, message)
+                persistSession(id, [{ role: 'user', content: message }], title)
               } catch { /* best-effort */ }
             })()
           }
-          sendMessage(trimmed)
+          sendMessage(message)
         }
+        clearPasteStore()
         setInput(() => '')
         setPaletteCursor(() => 0)
         return
@@ -312,9 +373,20 @@ export function useKeyboard(opts: KeyboardOptions) {
 
       // text editing
       if (key.backspace || key.delete) {
-        setInput((s) => { setPaletteCursor(() => 0); setFilePickerCursor(() => 0); return s.slice(0, -1) })
+        setInput((s) => {
+          setPaletteCursor(() => 0); setFilePickerCursor(() => 0)
+          // If the input ends with a paste chip, delete it whole (longest suffix
+          // match wins, so adjacent chips don't clip each other) and forget it.
+          let match = ''
+          for (const chip of pasteStore.keys()) {
+            if (s.endsWith(chip) && chip.length > match.length) match = chip
+          }
+          if (match) { pasteStore.delete(match); return s.slice(0, -match.length) }
+          return s.slice(0, -1)
+        })
       } else if (char && !key.ctrl && !key.meta && !key.tab) {
-        setInput((s) => { setPaletteCursor(() => 0); setFilePickerCursor(() => 0); return s + char })
+        const text = sanitizePaste(char)
+        if (text) setInput((s) => { setPaletteCursor(() => 0); setFilePickerCursor(() => 0); return s + text })
       }
     }
   })
