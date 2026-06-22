@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.16](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.15...miii-agent-v0.1.16) (2026-06-22)
+
+
+### Features
+
+* **prompt:** read project MIII.md into system prompt ([bc01133](https://github.com/maruakshay/miii-cli/commit/bc011336705de27737f33cf716f19f284b10f7a4))
+* **prompt:** read project MIII.md into system prompt ([88abb2f](https://github.com/maruakshay/miii-cli/commit/88abb2fe226593efb7c9d867d6c67816e0e8d828))
+
+
+### Bug Fixes
+
+* **input:** paste chips for large pastes, robust paste sanitizing ([1af7ee0](https://github.com/maruakshay/miii-cli/commit/1af7ee0ba0a1b50769e1890eacae412326c94e70))
+* **input:** paste chips for large pastes, robust paste sanitizing ([58d170b](https://github.com/maruakshay/miii-cli/commit/58d170bc232d54426a14ca46e3ba5550c25c0081))
+* **ui:** update colors for file edit and message indicators ([9d26e77](https://github.com/maruakshay/miii-cli/commit/9d26e770558cb82eb24167d94eadaaeadb313fd4))
+
 ## [0.1.15](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.14...miii-agent-v0.1.15) (2026-06-19)
 
 
