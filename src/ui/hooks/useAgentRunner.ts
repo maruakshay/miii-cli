@@ -55,7 +55,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     if (busyRef.current || !model) return
     busyRef.current = true
     setBusy(true)
-    setProcessingLabel('thinking…')
+    setProcessingLabel('crunching…')
     setError(null)
 
     setMessages((prev) => [...prev, { role: 'user', content: text }])
@@ -143,7 +143,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
           case 'thinking-delta': {
             thinkingAcc += ev.text
             setThinking(true)
-            setProcessingLabel('thinking…')
+            setProcessingLabel('crunching…')
             flushThink()
             break
           }
@@ -160,7 +160,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
               is_error: ev.block.is_error,
             })
             setActiveToolResults([...turnResults])
-            setProcessingLabel('thinking…')
+            setProcessingLabel('crunching…')
             break
           }
           case 'turn-end': {
