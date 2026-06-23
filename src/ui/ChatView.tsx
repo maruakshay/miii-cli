@@ -234,10 +234,16 @@ function ToolResultBlock({ result, toolName }: { result: ToolResultDisplay; tool
   const visible = expanded ? lines : lines.slice(0, COLLAPSED_LINES)
   const shown = visible.map((l) => truncate(l, MAX_LINE_WIDTH))
   const extra = lines.length - shown.length
+  // grep/glob summarize to a count; for bash/errors the summary echoes the first
+  // content line, which the body below also prints — so use a count header instead.
+  const header =
+    toolName === 'grep' || toolName === 'glob'
+      ? summarizeResult(result, toolName)
+      : `${lines.length} line${lines.length === 1 ? '' : 's'}`
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error}>
-        {'⎿  '}{summarizeResult(result, toolName)}
+        {'⎿  '}{header}
       </Text>
       {shown.map((ln, i) => (
         <Box key={i} marginLeft={4}>
