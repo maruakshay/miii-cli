@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.18](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.17...miii-agent-v0.1.18) (2026-06-23)
+
+
+### Features
+
+* **grep:** add context, files_only, type, multiline, count, fixed_strings ([9098f0b](https://github.com/maruakshay/miii-cli/commit/9098f0bd18e7099704215bee90240749771cec26))
+* refine agent personality and update processing labels ([1462bc7](https://github.com/maruakshay/miii-cli/commit/1462bc7f63033b5efda27827dedb60298f18ea4d))
+* refine agent personality and update processing labels ([8ffbc47](https://github.com/maruakshay/miii-cli/commit/8ffbc47ca7b7e3db42f16e55a6aab08195222319))
+
+
+### Bug Fixes
+
+* **ui:** show line count header for non-grep/glob tool results ([b232c5d](https://github.com/maruakshay/miii-cli/commit/b232c5dd94f51c6211edeb21714d7974a371a399))
+
 ## [0.1.17](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.16...miii-agent-v0.1.17) (2026-06-22)
 
 
