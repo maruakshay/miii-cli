@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>miii — local-first AI coding agent for your terminal</title>
+<meta name="description" content="miii is a local-first AI coding agent that lives in your terminal. Powered by Ollama. Your code never leaves your machine. No API keys. No cloud." />
+<meta property="og:title" content="miii — local-first AI coding agent" />
+<meta property="og:description" content="A terminal AI coding agent powered by Ollama. Your code never leaves your machine." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#0a0c10" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='80'>▍</text></svg>" />
+<style>
+  :root {
+    --bg: #0a0c10;
+    --bg-soft: #11151c;
+    --panel: #141922;
+    --line: #1f2733;
+    --fg: #e6edf3;
+    --muted: #8b97a7;
+    --dim: #5c6675;
+    --accent: #4d8dff;
+    --accent-2: #8fb6ff;
+    --warn: #f0a868;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(900px 500px at 80% -10%, rgba(77,141,255,.14), transparent 60%),
+      radial-gradient(800px 600px at -10% 10%, rgba(77,141,255,.08), transparent 55%),
+      var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  code, kbd, .mono { font-family: var(--mono); }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(10px);
+    background: rgba(10,12,16,.7);
+    border-bottom: 1px solid var(--line);
+  }
+  nav .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+  .brand { font-family: var(--mono); font-weight: 700; font-size: 18px; letter-spacing: -.5px; }
+  .brand .cursor { color: var(--accent); }
+  nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 14px; }
+  nav .links a { color: var(--muted); }
+  nav .links a:hover { color: var(--fg); text-decoration: none; }
+  @media (max-width: 680px) { nav .links a:not(.gh) { display: none; } }
+
+  /* hero */
+  header.hero { padding: 80px 0 56px; text-align: center; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    border: 1px solid var(--line); background: var(--bg-soft);
+    padding: 5px 12px; border-radius: 999px; margin-bottom: 24px;
+  }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  h1.title {
+    font-size: clamp(40px, 8vw, 76px); line-height: 1.02; margin: 0 0 18px;
+    letter-spacing: -2px; font-weight: 800;
+  }
+  .tagline { font-family: var(--mono); color: var(--accent); font-size: clamp(14px,2.4vw,18px); letter-spacing: 1px; margin-bottom: 18px; }
+  .sub { font-size: clamp(16px,2.4vw,20px); color: var(--muted); max-width: 640px; margin: 0 auto 32px; }
+  .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--mono); font-size: 15px; font-weight: 600;
+    padding: 12px 22px; border-radius: 10px; border: 1px solid var(--line);
+    display: inline-flex; align-items: center; gap: 9px; cursor: pointer;
+  }
+  .btn.primary { background: var(--accent); color: #05101f; border-color: var(--accent); }
+  .btn.primary:hover { background: #6ea0ff; text-decoration: none; }
+  .btn.ghost { background: var(--bg-soft); color: var(--fg); }
+  .btn.ghost:hover { border-color: var(--accent-2); text-decoration: none; }
+
+  /* sections */
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(26px,4vw,38px); letter-spacing: -1px; margin: 0 0 10px; }
+  .lead { color: var(--muted); max-width: 680px; margin: 0 0 36px; font-size: 17px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+
+  /* compare table */
+  .table { width: 100%; border-collapse: collapse; font-size: 15px; overflow: hidden; border-radius: 12px; border: 1px solid var(--line); }
+  .table th, .table td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--line); }
+  .table thead th { background: var(--bg-soft); font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .table th.me { color: var(--accent); }
+  .table td.cloud { color: var(--dim); }
+  .table tr:last-child td { border-bottom: none; }
+  .table td:first-child { color: var(--muted); font-weight: 600; }
+
+  /* feature grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap: 18px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px;
+    transition: border-color .15s, transform .15s;
+  }
+  .card:hover { border-color: var(--accent-2); transform: translateY(-2px); }
+  .card .ico { font-size: 22px; margin-bottom: 12px; }
+  .card h3 { margin: 0 0 8px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .card code { color: var(--accent); font-size: 13px; }
+
+  /* code block */
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 22px; overflow-x: auto; font-family: var(--mono); font-size: 14px; line-height: 1.7; margin: 0;
+  }
+  pre .c { color: var(--dim); }
+  pre .p { color: var(--accent); }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 18px; }
+  .step h3 { font-family: var(--mono); font-size: 15px; color: var(--muted); margin: 0 0 10px; }
+  .step h3 .n { color: var(--accent); }
+
+  /* updates */
+  .timeline { display: grid; gap: 16px; }
+  .release {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px;
+  }
+  .release-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .release-head .tag { font-family: var(--mono); font-weight: 700; color: var(--accent); background: rgba(77,141,255,.12); border: 1px solid rgba(77,141,255,.3); padding: 3px 10px; border-radius: 7px; font-size: 14px; }
+  .release-head time { font-family: var(--mono); font-size: 13px; color: var(--dim); }
+  .ch-group { margin-bottom: 12px; }
+  .ch-group:last-child { margin-bottom: 0; }
+  .ch-group h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+  .ch-group.feat h4 { color: var(--accent); }
+  .ch-group.fix h4 { color: var(--warn); }
+  .ch-group ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14.5px; }
+  .ch-group li { margin: 3px 0; }
+  .sha { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  .ch-more { text-align: center; margin-top: 22px; font-family: var(--mono); font-size: 14px; }
+  .ch-status { color: var(--dim); font-size: 14px; padding: 8px 2px; }
+  .ch-status.err { color: var(--warn); }
+  .release { opacity: 0; transform: translateY(8px); animation: rise .5s cubic-bezier(.22,1,.36,1) forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .release { animation: none; opacity: 1; transform: none; } }
+
+  /* footer */
+  footer { border-top: 1px solid var(--line); padding: 40px 0 60px; color: var(--dim); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; }
+  footer .mono { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">miii<span class="cursor">▍</span></span>
+    <div class="links">
+      <a href="#advantage">Why local</a>
+      <a href="#features">Features</a>
+      <a href="#start">Quick start</a>
+      <a href="#updates">Updates</a>
+      <a class="gh" href="https://github.com/maruakshay/miii-cli">GitHub →</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="pill"><span class="dot"></span> 100% local · no cloud · no API keys</span>
+    <h1 class="title">Your terminal,<br />now an AI engineer.</h1>
+    <p class="tagline">Small · Simple · Smart · Strategic · Semantic</p>
+    <p class="sub">
+      <strong>miii</strong> is a local-first AI coding agent that lives in your terminal.
+      Powered by Ollama — or any local OpenAI-compatible server. It reads your code,
+      writes features, runs tests, and fixes bugs entirely on your hardware, at native speed.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="#start">▍ npm i -g miii-agent</a>
+      <a class="btn ghost" href="https://github.com/maruakshay/miii-cli">★ Star on GitHub</a>
+    </div>
+  </div>
+</header>
+
+<section id="advantage">
+  <div class="wrap">
+    <p class="eyebrow">The local-first advantage</p>
+    <h2>Most AI tools rent you a cloud. miii owns the machine.</h2>
+    <p class="lead">
+      Cloud agents are slow, metered, and ask you to trust your private codebase to a third-party server.
+      miii flips the script — the model runs on your GPU and your code never touches the wire.
+    </p>
+    <table class="table">
+      <thead>
+        <tr><th></th><th>Cloud AI agents</th><th class="me">miii</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Your code</td><td class="cloud">Sent to a third party</td><td>Never leaves your machine</td></tr>
+        <tr><td>Cost</td><td class="cloud">Per-token billing</td><td>Free — runs on your hardware</td></tr>
+        <tr><td>Setup</td><td class="cloud">API keys, accounts</td><td><code>npm i -g miii-agent</code></td></tr>
+        <tr><td>Offline</td><td class="cloud">No</td><td>Yes</td></tr>
+        <tr><td>Latency</td><td class="cloud">Network + queue</td><td>Your GPU only</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <p class="eyebrow">Built-in tool suite</p>
+    <h2>A real agent, not a chat box.</h2>
+    <p class="lead">miii decomposes problems, invokes tools autonomously, and verifies its own work — gated by a permission system you control.</p>
+    <div class="grid">
+      <div class="card"><div class="ico">📖</div><h3>Reads &amp; writes code</h3><p><code>read_file</code>, <code>write_file</code>, <code>edit_file</code> — precise string-level edits with whitespace tolerance, no blind rewrites.</p></div>
+      <div class="card"><div class="ico">🔎</div><h3>Searches your repo</h3><p><code>glob</code> + <code>grep</code> with context, type filters, multiline and count modes across the whole project.</p></div>
+      <div class="card"><div class="ico">⚡</div><h3>Runs your shell</h3><p><code>run_bash</code> executes commands and tests, so the agent verifies outcomes instead of guessing.</p></div>
+      <div class="card"><div class="ico">🔒</div><h3>Permission-gated</h3><p>Every sensitive op is approved by you. "Always" rules persist to <code>~/.miii/permissions.json</code>. File tools are confined to your workspace.</p></div>
+      <div class="card"><div class="ico">🧾</div><h3>Lossless output spill</h3><p>Huge tool outputs aren't truncated — they spill to disk with a head+tail preview, and the model pages the middle on demand.</p></div>
+      <div class="card"><div class="ico">🩺</div><h3>Model doctor</h3><p><code>miii doctor</code> validates your local models against real engineering tasks and tells you which can actually drive the agent.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <p class="eyebrow">Quick start</p>
+    <h2>Three commands to a local agent.</h2>
+    <p class="lead">Requires Node.js ≥ 18 and <a href="https://ollama.com/download">Ollama</a> running locally.</p>
+    <div class="steps">
+      <div class="step">
+        <h3><span class="n">01.</span> Pull a model</h3>
+        <pre><span class="c"># any coding model works</span>
+ollama pull qwen2.5-coder:14b</pre>
+      </div>
+      <div class="step">
+        <h3><span class="n">02.</span> Install miii</h3>
+        <pre>npm install -g miii-agent</pre>
+      </div>
+      <div class="step">
+        <h3><span class="n">03.</span> Run it</h3>
+        <pre><span class="p">miii</span>
+
+<span class="c"># then just talk to it</span>
+<span class="p">&gt;</span> @src/server.ts add rate limiting
+<span class="p">&gt;</span> why are my tests failing?</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="updates">
+  <div class="wrap">
+    <p class="eyebrow">Changelog</p>
+    <h2>What's new in miii.</h2>
+    <p class="lead">Pulled live from <a href="https://github.com/maruakshay/miii-cli/blob/main/CHANGELOG.md">CHANGELOG.md</a> and parsed in your browser. Always current, no rebuild.</p>
+    <div class="timeline" id="timeline" aria-live="polite">
+      <p class="ch-status mono">Loading releases…</p>
+    </div>
+    <p class="ch-more"><a href="https://github.com/maruakshay/miii-cli/blob/main/CHANGELOG.md">Full changelog →</a></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="mono">miii — built for engineers who'd rather own their tools than rent them.</span>
+    <span>MIT © <a href="https://github.com/maruakshay">maruakshay</a> · <a href="https://www.npmjs.com/package/miii-agent">npm</a> · <a href="https://github.com/maruakshay/miii-cli">GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+// Changelog is generated at runtime: fetch CHANGELOG.md and parse it in the browser.
+// No build step, no baked HTML — the page reflects the repo's latest release automatically.
+(function () {
+  const REPO = "maruakshay/miii-cli";
+  const RAW = `https://raw.githubusercontent.com/${REPO}/main/CHANGELOG.md`;
+  const COMMIT = (sha) => `https://github.com/${REPO}/commit/${sha}`;
+  const MAX = 8;
+  const el = document.getElementById("timeline");
+
+  const esc = (s) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // Split `text ([sha](url))` (the form release-please appends) into its parts.
+  function split(line) {
+    const m = line.match(/^(.*?)\s*\(\[([0-9a-f]{7,})\]\((https?:\/\/[^)]+)\)\)\s*$/);
+    return m
+      ? { text: m[1].trim(), sha: m[2] }
+      : { text: line.trim(), sha: null };
+  }
+
+  // Minimal inline markdown for changelog entries: **bold** and `code`.
+  function li({ text, sha }) {
+    const html = esc(text)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+    if (!sha) return `<li>${html}</li>`;
+    return `<li>${html} <a class="sha" href="${COMMIT(sha)}">${sha.slice(0, 7)}</a></li>`;
+  }
+
+  function parse(md) {
+    const blocks = md.split(/^## /m).slice(1);
+    const out = [];
+    for (const block of blocks.slice(0, MAX)) {
+      const lines = block.split("\n");
+      const hm = lines[0].match(/^\[?([0-9.]+)\]?(?:\([^)]*\))?\s*(?:\(([^)]+)\))?/);
+      if (!hm) continue;
+      const version = hm[1];
+      const date = hm[2] || "";
+      const groups = {};
+      const seen = new Set();
+      let cur = null;
+      for (const raw of lines.slice(1)) {
+        const sec = raw.match(/^###\s+(.*)$/);
+        if (sec) { cur = sec[1].trim(); groups[cur] ||= []; continue; }
+        const it = raw.match(/^\*\s+(.*)$/);
+        if (it && cur) {
+          const parts = split(it[1].trim());
+          if (seen.has(parts.text)) continue; // release-please double-lists same text
+          seen.add(parts.text);
+          groups[cur].push(li(parts));
+        }
+      }
+      const sections = Object.entries(groups)
+        .filter(([, v]) => v.length)
+        .map(([name, items]) => {
+          const cls = /fix/i.test(name) ? "fix" : "feat";
+          return `<div class="ch-group ${cls}"><h4>${esc(name)}</h4><ul>${items.join("")}</ul></div>`;
+        })
+        .join("");
+      if (!sections) continue;
+      out.push(
+        `<article class="release">` +
+          `<header class="release-head"><span class="tag">v${esc(version)}</span>` +
+          (date ? `<time>${esc(date)}</time>` : "") +
+          `</header>${sections}</article>`
+      );
+    }
+    return out;
+  }
+
+  fetch(RAW, { cache: "no-cache" })
+    .then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then((md) => {
+      const cards = parse(md);
+      if (!cards.length) throw new Error("no releases parsed");
+      el.innerHTML = cards.join("");
+      el.querySelectorAll(".release").forEach((c, i) => {
+        c.style.animationDelay = `${Math.min(i, 6) * 60}ms`;
+      });
+    })
+    .catch(() => {
+      el.innerHTML =
+        '<p class="ch-status err mono">Could not load the changelog. ' +
+        `<a href="https://github.com/${REPO}/blob/main/CHANGELOG.md">Read it on GitHub →</a></p>`;
+    });
+})();
+</script>
+
+</body>
+</html>
