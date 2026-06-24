@@ -1,6 +1,6 @@
 {
   "name": "miii-agent",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Terminal AI coding agent powered by Ollama",
   "type": "module",
   "bin": {
