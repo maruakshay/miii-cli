@@ -1,4 +1,4 @@
-import { Ollama, type Message, type Tool, type ChatResponse } from 'ollama'
+import { Ollama, type Message, type ChatResponse } from 'ollama'
 import { execFileSync } from 'child_process'
 import type { ProviderEntry } from '../config.js'
 import type { OllamaMessage, OllamaTool, ChatChunk, ChatOptions } from './types.js'
@@ -85,6 +85,38 @@ export async function modelContext(entry: ProviderEntry, model: string): Promise
   }
 }
 
+/**
+ * Parameter count in billions, or null if unknown. Used to auto-gate constrained
+ * decoding: small models mangle tool JSON and benefit from a grammar; large ones
+ * already emit clean tool_calls and lose nothing by skipping it. Reads `show`
+ * metadata (parameter_size string, then general.parameter_count) — metadata only,
+ * no generation, so it is cheap.
+ */
+export async function paramCountB(entry: ProviderEntry, model: string): Promise<number | null> {
+  try {
+    const info = await makeClient(entry).show({ model })
+    const details = info.details as { parameter_size?: string } | undefined
+    if (details?.parameter_size) {
+      const m = details.parameter_size.match(/([\d.]+)\s*([BM])/i)
+      if (m) {
+        const n = parseFloat(m[1])
+        if (!isNaN(n)) return m[2].toUpperCase() === 'M' ? n / 1000 : n
+      }
+    }
+    const modelInfo = info.model_info as unknown as Record<string, unknown> | undefined
+    if (modelInfo) {
+      const key = Object.keys(modelInfo).find((k) => k.endsWith('parameter_count'))
+      if (key) {
+        const val = Number(modelInfo[key])
+        if (!isNaN(val) && val > 0) return val / 1e9
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 export async function* chat(
   entry: ProviderEntry,
   model: string,
@@ -105,15 +137,22 @@ export async function* chat(
       num_ctx: opts?.num_ctx ?? 8192,
     }
     if (numPredict !== undefined && numPredict > 0) options.num_predict = numPredict
-    stream = await client.chat({
+    // Constrained decoding and native tool-calling are mutually exclusive: when a
+    // grammar is supplied the action comes back as JSON in message.content, so we
+    // drop the tools array to avoid the model's tool-call template fighting it.
+    const req: Record<string, unknown> = {
       model,
       messages: messages as Message[],
-      tools: tools as Tool[] | undefined,
       stream: true,
       think: true,
       keep_alive: opts?.keep_alive ?? '10m',
       options,
-    } as unknown as Parameters<typeof client.chat>[0]) as unknown as AsyncIterable<ChatResponse>
+    }
+    if (opts?.format) req.format = opts.format
+    else if (tools) req.tools = tools
+    stream = (await client.chat(
+      req as unknown as Parameters<typeof client.chat>[0],
+    )) as unknown as AsyncIterable<ChatResponse>
   } catch (err) {
     if (signal?.aborted) return
     if (isConnectionError(err)) {

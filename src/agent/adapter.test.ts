@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { parseTextToolCalls, blocksFromOllama, toOllamaMessages } from './adapter.js'
+import {
+  parseTextToolCalls,
+  blocksFromOllama,
+  toOllamaMessages,
+  parseGrammarAction,
+  streamRespondMessage,
+} from './adapter.js'
 import type { MiiMessage, ToolUse } from './types.js'
 
 const KNOWN = ['read_file', 'edit_file', 'run_bash']
@@ -125,5 +131,101 @@ describe('toOllamaMessages', () => {
     expect(out.map((m) => m.role)).toEqual(['system', 'assistant', 'tool', 'tool'])
     expect(out[2]).toMatchObject({ content: 'A', tool_call_id: 'toolu_1' })
     expect(out[3]).toMatchObject({ content: 'B', tool_call_id: 'toolu_2' })
+  })
+})
+
+describe('parseGrammarAction', () => {
+  const KNOWN = ['read_file', 'edit_file', 'run_bash', 'glob']
+
+  it('parses a tool action', () => {
+    const a = parseGrammarAction('{"name":"read_file","arguments":{"path":"a.ts"}}', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'read_file', arguments: { path: 'a.ts' } })
+  })
+
+  it('parses a respond action', () => {
+    const a = parseGrammarAction('{"name":"respond","arguments":{"message":"done"}}', KNOWN)
+    expect(a).toEqual({ kind: 'respond', message: 'done' })
+  })
+
+  it('tolerates surrounding whitespace/slop and extracts the object', () => {
+    const a = parseGrammarAction('  {"name":"glob","arguments":{"pattern":"**/*.ts"}}\n', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'glob', arguments: { pattern: '**/*.ts' } })
+  })
+
+  it('extracts a JSON object embedded in leading prose', () => {
+    const a = parseGrammarAction('here:{"name":"run_bash","arguments":{"command":"ls"}}', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'run_bash', arguments: { command: 'ls' } })
+  })
+
+  it('rejects an unknown tool name', () => {
+    expect(parseGrammarAction('{"name":"nope","arguments":{}}', KNOWN)).toBeNull()
+  })
+
+  it('respond is always accepted even though it is not a tool name', () => {
+    const a = parseGrammarAction('{"name":"respond","arguments":{"message":"hi"}}', KNOWN)
+    expect(a).toEqual({ kind: 'respond', message: 'hi' })
+  })
+
+  it('defaults a missing respond message to empty string', () => {
+    const a = parseGrammarAction('{"name":"respond","arguments":{}}', KNOWN)
+    expect(a).toEqual({ kind: 'respond', message: '' })
+  })
+
+  it('defaults missing arguments to an empty object', () => {
+    const a = parseGrammarAction('{"name":"read_file"}', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'read_file', arguments: {} })
+  })
+
+  it('returns null for empty input', () => {
+    expect(parseGrammarAction('', KNOWN)).toBeNull()
+  })
+
+  it('returns null for non-JSON garbage', () => {
+    expect(parseGrammarAction('not json at all', KNOWN)).toBeNull()
+  })
+
+  it('returns null when name is missing', () => {
+    expect(parseGrammarAction('{"arguments":{"path":"a"}}', KNOWN)).toBeNull()
+  })
+})
+
+describe('streamRespondMessage', () => {
+  it('returns null before the action is known to be respond', () => {
+    expect(streamRespondMessage('{"name":"read')).toBeNull()
+    expect(streamRespondMessage('{"name":"read_file","arguments":{"path":"a"}}')).toBeNull()
+  })
+
+  it('returns null once respond is known but message string has not started', () => {
+    expect(streamRespondMessage('{"name":"respond","arguments":{')).toBeNull()
+  })
+
+  it('decodes a partial message as incomplete', () => {
+    const r = streamRespondMessage('{"name":"respond","arguments":{"message":"hello wor')
+    expect(r).toEqual({ message: 'hello wor', complete: false })
+  })
+
+  it('marks the message complete at the closing quote', () => {
+    const r = streamRespondMessage('{"name":"respond","arguments":{"message":"done"}}')
+    expect(r).toEqual({ message: 'done', complete: true })
+  })
+
+  it('decodes standard escapes', () => {
+    const r = streamRespondMessage('{"name":"respond","arguments":{"message":"a\\nb\\t\\"c\\""}}')
+    expect(r).toEqual({ message: 'a\nb\t"c"', complete: true })
+  })
+
+  it('waits on an incomplete trailing backslash (no wrong char)', () => {
+    const r = streamRespondMessage('{"name":"respond","arguments":{"message":"line\\')
+    expect(r).toEqual({ message: 'line', complete: false })
+  })
+
+  it('waits on an incomplete \\u escape', () => {
+    const r = streamRespondMessage('{"name":"respond","arguments":{"message":"x\\u00')
+    expect(r).toEqual({ message: 'x', complete: false })
+  })
+
+  it('decodes a complete \\u escape', () => {
+    const r = streamRespondMessage('{"name":"respond","arguments":{"message":"x\\u0041y"}}')
+    expect(r).toEqual({ message: 'xAy', complete: true })
   })
 })

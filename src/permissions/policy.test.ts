@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { globToRegExp, subjectFor } from './policy.js'
+import { globToRegExp, subjectFor, generalizeCommand, patternToPersist } from './policy.js'
 
 describe('globToRegExp', () => {
   it('matches an exact literal', () => {
@@ -33,6 +33,43 @@ describe('globToRegExp', () => {
     // because * compiles to .* with no separator awareness. Captured so a future
     // change to tighten this breaks the test deliberately.
     expect(globToRegExp('npm test *').test('npm test x; rm -rf /')).toBe(true)
+  })
+})
+
+describe('generalizeCommand', () => {
+  it('keeps only the program for non-wrapper commands', () => {
+    expect(generalizeCommand("git commit -m 'x'")).toBe('git *')
+    expect(generalizeCommand('node script.js')).toBe('node *')
+  })
+
+  it('keeps two tokens for wrapper programs', () => {
+    expect(generalizeCommand('npm run build')).toBe('npm run *')
+    expect(generalizeCommand('npm install left-pad')).toBe('npm install *')
+    expect(generalizeCommand('npx tsc --noEmit')).toBe('npx tsc *')
+    expect(generalizeCommand('brew list --versions')).toBe('brew list *')
+  })
+
+  it('falls back to one token when a wrapper has no subcommand', () => {
+    expect(generalizeCommand('npm')).toBe('npm *')
+  })
+
+  it('collapses repeated whitespace', () => {
+    expect(generalizeCommand('git   status')).toBe('git *')
+  })
+
+  it('generalizes the resulting glob to match later variants', () => {
+    expect(globToRegExp(generalizeCommand('git commit -m "a"')).test('git push origin')).toBe(true)
+    expect(globToRegExp(generalizeCommand('npm run build')).test('npm install x')).toBe(false)
+  })
+})
+
+describe('patternToPersist', () => {
+  it('generalizes run_bash commands', () => {
+    expect(patternToPersist('run_bash', "git commit -m 'x'")).toBe('git *')
+  })
+
+  it('leaves path subjects untouched', () => {
+    expect(patternToPersist('write_file', 'src/a.ts')).toBe('src/a.ts')
   })
 })
 

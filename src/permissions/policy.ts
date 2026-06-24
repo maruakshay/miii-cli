@@ -68,6 +68,45 @@ export function subjectFor(toolName: string, input: unknown): string {
   return ''
 }
 
+/**
+ * Wrapper programs that dispatch to a subcommand. For these we keep the first
+ * two tokens (e.g. "npm run", "npx tsc") so the persisted rule scopes to that
+ * subcommand rather than the whole program.
+ */
+const WRAPPER_PROGRAMS = new Set([
+  'npm',
+  'npx',
+  'pnpm',
+  'yarn',
+  'brew',
+  'pip',
+  'pip3',
+  'cargo',
+  'docker',
+  'kubectl',
+  'go',
+])
+
+/**
+ * Turn a concrete command into a generalized glob to persist on "always".
+ * "git commit -m '...'" → "git *", "npm run build" → "npm run *",
+ * "npx tsc --noEmit" → "npx tsc *". Without this we would store the exact
+ * literal command and re-prompt on the next slightly different invocation.
+ */
+export function generalizeCommand(command: string): string {
+  const tokens = command.trim().split(/\s+/)
+  if (tokens.length === 0 || tokens[0] === '') return command
+  const prog = tokens[0]
+  const prefixLen = WRAPPER_PROGRAMS.has(prog) && tokens.length > 1 ? 2 : 1
+  const prefix = tokens.slice(0, prefixLen).join(' ')
+  return `${prefix} *`
+}
+
+/** The pattern to persist when the user answers "always" for a tool call. */
+export function patternToPersist(toolName: string, subject: string): string {
+  return toolName === 'run_bash' ? generalizeCommand(subject) : subject
+}
+
 /** Convert a glob (only `*` and `?` special) into an anchored RegExp. */
 export function globToRegExp(glob: string): RegExp {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -100,6 +139,6 @@ export async function check(
 
   const answer = await ctx.ask(toolName, input)
   if (answer === 'no') return 'deny'
-  if (answer === 'always') addRule(toolName, subject)
+  if (answer === 'always') addRule(toolName, patternToPersist(toolName, subject))
   return 'allow'
 }

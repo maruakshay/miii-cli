@@ -42,4 +42,10 @@ export interface ChatOptions {
   num_ctx?: number
   keep_alive?: string
   signal?: AbortSignal
+  /**
+   * Ollama structured-output schema. When set, decoding is constrained to this
+   * JSON Schema (compiled to a llama.cpp grammar) and native tool-calling is not
+   * used — the action is returned as JSON in message.content.
+   */
+  format?: Record<string, unknown>
 }
