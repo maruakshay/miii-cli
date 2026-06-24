@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.19](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.18...miii-agent-v0.1.19) (2026-06-24)
+
+
+### Features
+
+* implement grammar-constrained actions and generalized permissions ([41742f4](https://github.com/maruakshay/miii-cli/commit/41742f49683837158bf4d88baffcfd346383f88f))
+* implement grammar-constrained actions and generalized permissions ([2d5ec6b](https://github.com/maruakshay/miii-cli/commit/2d5ec6bf8a694513bc3ccaf3df3ddfc9666e53bc))
+
 ## [0.1.18](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.17...miii-agent-v0.1.18) (2026-06-23)
 
 
