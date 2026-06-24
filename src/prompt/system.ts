@@ -2,8 +2,22 @@ import type { Tool } from '../tools/types.js'
 import type { ProjectContext } from './context.js'
 import { CONTEXT_FILENAME } from './context.js'
 
-export function buildSystemPrompt(tools: Tool[], cwd: string, project?: ProjectContext): string {
+export function buildSystemPrompt(
+  tools: Tool[],
+  cwd: string,
+  project?: ProjectContext,
+  grammarMode = false,
+): string {
   const toolLines = tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
+  const actionProtocol = grammarMode
+    ? `
+# Action protocol (strict)
+Every reply is exactly ONE JSON action object, nothing else — no prose outside it, no markdown, no fences. Decoding is grammar-constrained, so malformed output is impossible; your only job is to choose the right action.
+  To use a tool: {"name": "<tool_name>", "arguments": { ...that tool's args }}
+  To give your final answer to the user: {"name": "respond", "arguments": {"message": "<your full answer here>"}}
+Call tools until the GOAL is met, then emit a single "respond" action with the complete answer. The "respond" action is the ONLY way to end the turn and talk to the user — never put your final answer in a tool call.
+`
+    : ''
   const projectSection =
     project && project.content.trim()
       ? `
@@ -29,6 +43,17 @@ Before acting on any request, extract and hold three things:
 If GAPS is non-empty, ask the minimum questions needed to fill them — one message, numbered list — before touching any file or running any command. Do not guess. Do not act on assumptions.
 
 Re-read GOAL before every tool call. If a tool call does not move toward GOAL, skip it.
+
+# Plan summary before acting (conditional)
+Write a brief plan BEFORE the first tool call ONLY when the work is non-trivial:
+  - Multi-step, OR touches multiple files, OR is destructive/hard to reverse, OR mixes investigation + change.
+SKIP the plan for trivial work — a single read, one small edit, a quick search, a direct question. Just act.
+When you do write one:
+  - One or two plain-text sentences naming what you will do and in what order.
+  - State the intent (the bug/feature/fix and the steps), not a tool-by-tool narration.
+  - Keep it short — the user reads this to follow along, not a spec.
+Then begin immediately with the first tool call. Do not wait for approval unless GAPS was non-empty or the work is destructive.
+This summary is the ONE allowed preamble. It does not override the Tool calls rule below: after this plan, emit tool calls directly with no further narration between them.
 
 # Attention: re-attend to goal at each step
 After each tool result, answer silently: "Does this result move me toward GOAL?"
@@ -79,7 +104,7 @@ Ask in a numbered list. One round of questions per turn. Then wait.
 # Tools
 You have access to the following tools. Call them via the function-calling interface.
 ${toolLines}
-
+${actionProtocol}
 # Loop semantics
 - When you need to act on the filesystem or run a command, emit a tool call.
 - After each tool result, decide: more tool calls, or a final plain-text answer.

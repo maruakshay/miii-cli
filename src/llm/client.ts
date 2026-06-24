@@ -37,6 +37,27 @@ export async function modelContext(model: string): Promise<number> {
     : openai.modelContext(entry, model)
 }
 
+// Per-session memo of model parameter counts. Keyed by host+model so switching
+// provider or model never returns a stale value. Cached null is intentional: an
+// unknown size should not re-probe `show` every turn.
+const paramCountCache = new Map<string, number | null>()
+
+/**
+ * Parameter count in billions, or null if unknown / not an Ollama provider.
+ * Drives the constrained-decoding auto-gate in the agent loop. Memoized per
+ * session — `show` metadata does not change while the process runs.
+ */
+export async function modelParamCountB(model: string): Promise<number | null> {
+  const { entry } = active()
+  if (entry.type !== 'ollama') return null
+  const key = `${entry.baseUrl}:${model}`
+  const cached = paramCountCache.get(key)
+  if (cached !== undefined) return cached
+  const params = await ollama.paramCountB(entry, model)
+  paramCountCache.set(key, params)
+  return params
+}
+
 export async function* chat(
   model: string,
   messages: OllamaMessage[],
