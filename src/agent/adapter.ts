@@ -170,8 +170,30 @@ export function parseGrammarAction(
     }
   }
   const name = typeof obj.name === 'string' ? obj.name : undefined
-  const args = (obj.arguments ?? {}) as Record<string, unknown>
   if (!name) return null
+  // Weak models vary how they attach args: a wrapper key (arguments /
+  // parameters / input / args), a JSON-encoded string in that key, or the
+  // fields placed bare at the top level alongside `name`. Accept all of them —
+  // requiring exactly `arguments` made the model loop, since a model that put
+  // fields at the top level could never satisfy the parser.
+  let args: Record<string, unknown>
+  const wrapped = obj.arguments ?? obj.parameters ?? obj.input ?? obj.args
+  if (typeof wrapped === 'string') {
+    try {
+      const parsed = JSON.parse(wrapped)
+      args = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {}
+    } catch {
+      args = {}
+    }
+  } else if (wrapped && typeof wrapped === 'object' && !Array.isArray(wrapped)) {
+    args = wrapped as Record<string, unknown>
+  } else {
+    // No wrapper key — treat the remaining top-level fields as the args.
+    const { name: _n, ...rest } = obj
+    args = rest
+  }
   if (name === 'respond') {
     const message = typeof args.message === 'string' ? args.message : ''
     return { kind: 'respond', message }

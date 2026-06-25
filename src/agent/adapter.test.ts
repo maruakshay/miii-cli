@@ -187,6 +187,31 @@ describe('parseGrammarAction', () => {
   it('returns null when name is missing', () => {
     expect(parseGrammarAction('{"arguments":{"path":"a"}}', KNOWN)).toBeNull()
   })
+
+  it('reads args from the parameters key', () => {
+    const a = parseGrammarAction('{"name":"read_file","parameters":{"path":"a.ts"}}', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'read_file', arguments: { path: 'a.ts' } })
+  })
+
+  it('reads args from the input key', () => {
+    const a = parseGrammarAction('{"name":"glob","input":{"pattern":"*.ts"}}', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'glob', arguments: { pattern: '*.ts' } })
+  })
+
+  it('reads bare top-level fields when no wrapper key is present', () => {
+    const a = parseGrammarAction('{"name":"read_file","path":"a.ts"}', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'read_file', arguments: { path: 'a.ts' } })
+  })
+
+  it('parses a JSON-encoded string of args', () => {
+    const a = parseGrammarAction('{"name":"run_bash","arguments":"{\\"command\\":\\"ls\\"}"}', KNOWN)
+    expect(a).toEqual({ kind: 'tool', name: 'run_bash', arguments: { command: 'ls' } })
+  })
+
+  it('reads a bare top-level respond message', () => {
+    const a = parseGrammarAction('{"name":"respond","message":"done"}', KNOWN)
+    expect(a).toEqual({ kind: 'respond', message: 'done' })
+  })
 })
 
 describe('streamRespondMessage', () => {

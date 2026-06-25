@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { highlight } from 'cli-highlight'
+import { highlight, supportsLanguage } from 'cli-highlight'
 import type { ToolUseDisplay, ToolResultDisplay } from './types.js'
 import { useToolExpanded } from './toolExpand.js'
 import { countLines, truncate } from './layout.js'
@@ -33,7 +33,9 @@ function langFromPath(path: string): string | undefined {
 }
 
 function highlightLine(text: string, lang: string | undefined): string {
-  if (!lang) return text
+  // Guard unknown langs: cli-highlight logs a console warning before throwing,
+  // which the catch can't suppress and would spam once per diff line.
+  if (!lang || !supportsLanguage(lang)) return text
   try {
     return highlight(text, { language: lang, ignoreIllegals: true })
   } catch {

@@ -126,6 +126,7 @@ export async function* chat(
     name?: string
     args: string
   }> = new Map()
+  let lastFinishReason: string | null | undefined
 
   const TIMEOUT_MS = 180000
   const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
@@ -177,6 +178,7 @@ export async function* chat(
 
           const delta = choices[0].delta ?? {}
           const finishReason = choices[0].finish_reason
+          if (finishReason) lastFinishReason = finishReason
 
           if (delta.content) {
             yield { content: delta.content as string, done: false }
@@ -251,6 +253,9 @@ export async function* chat(
   yield {
     content: '',
     done: true,
+    // OpenAI signals a hit token cap as finish_reason 'length'; normalize to the
+    // Ollama spelling so the agent loop can detect truncation uniformly.
+    done_reason: lastFinishReason === 'length' ? 'length' : lastFinishReason ?? undefined,
     tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
   }
 }
