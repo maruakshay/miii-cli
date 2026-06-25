@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.20](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.19...miii-agent-v0.1.20) (2026-06-25)
+
+
+### Features
+
+* add GitHub Pages landing site with live changelog ([023363f](https://github.com/maruakshay/miii-cli/commit/023363f5313fae2c6bcca4ef8c9a69f82f6c1374))
+* enhance landing page with updated descriptions, improved styles, and new features section ([85b905c](https://github.com/maruakshay/miii-cli/commit/85b905c45f84763b0ff421116c5bcfe42ab525b3))
+* enhance UI/UX with markdown rendering, input history, and improved layout ([f5aa1ae](https://github.com/maruakshay/miii-cli/commit/f5aa1aec58b50df8e631666c9c789ead7f9da242))
+* update README and package description for clarity and emphasis on local-first AI capabilities ([793b257](https://github.com/maruakshay/miii-cli/commit/793b257f02a279bbb42498a19ea2658e52dadc83))
+
 ## [0.1.19](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.18...miii-agent-v0.1.19) (2026-06-24)
 
 
