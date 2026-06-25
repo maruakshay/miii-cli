@@ -263,7 +263,7 @@ export function App() {
             permissionCursor={agent.permissionCursor}
             activeToolUses={agent.activeToolUses}
             activeToolResults={agent.activeToolResults}
-            header={<WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} />}
+            header={<WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} updateAvailable={updateAvailable} />}
           />
 
           {input.startsWith('/') && (
