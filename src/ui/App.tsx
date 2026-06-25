@@ -9,7 +9,7 @@ import { Box, Text, useApp } from 'ink'
 import { homedir } from 'os'
 import { sep } from 'path'
 import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
-import { loadConfig, setProvider, providerEntries, resolveProvider, type Effort, type Provider } from '../config.js'
+import { loadConfig, setProvider, setModelContexts, providerEntries, resolveProvider, type Effort, type Provider } from '../config.js'
 import { WelcomeBlock } from './WelcomeBlock.js'
 import { InputBar } from './InputBar.js'
 import { ModelsView } from './ModelsView.js'
@@ -32,8 +32,12 @@ export function App() {
   // --- config & model list ---
   const [cfg, setCfg] = useState(loadConfig())
   const [models, setModels] = useState<string[]>([])
-  const [contexts, setContexts] = useState<Record<string, number>>({})
-  const [activeCtx, setActiveCtx] = useState<number | null>(null)
+  // Seed from the cached context windows so the header shows a real value on the
+  // first render, before the live `show` request resolves.
+  const [contexts, setContexts] = useState<Record<string, number | null>>(() => cfg.modelContexts ?? {})
+  const [activeCtx, setActiveCtx] = useState<number | null>(
+    () => (cfg.model ? cfg.modelContexts?.[cfg.model] ?? null : null),
+  )
   const [state, setState] = useState<AppState>('loading')
   const [cursor, setCursor] = useState(0)
   const [pickerQuery, setPickerQuery] = useState('')
@@ -47,6 +51,8 @@ export function App() {
 
   // --- input bar ---
   const [input, setInput] = useState('')
+  // Caret column into `input` (0..input.length); enables mid-string editing.
+  const [caret, setCaret] = useState(0)
   const [paletteCursor, setPaletteCursor] = useState(0)
   const [filePickerCursor, setFilePickerCursor] = useState(0)
 
@@ -107,13 +113,23 @@ export function App() {
         } else {
           setState(hasModel ? 'ready' : 'select-model')
         }
-        Promise.all(m.map((name) => modelContext(name).then((ctx) => [name, ctx] as const)))
+        Promise.all(
+          m.map((name) =>
+            modelContext(name)
+              .then((ctx) => [name, ctx] as const)
+              .catch(() => [name, null] as const),
+          ),
+        )
           .then((pairs) => {
             if (stale()) return
             const map = Object.fromEntries(pairs)
             setContexts(map)
+            const resolved = Object.fromEntries(
+              pairs.filter((p): p is readonly [string, number] => p[1] != null),
+            )
+            if (Object.keys(resolved).length) setModelContexts(resolved)
             const active = (hasModel ? cfg.model : undefined) ?? m[0]
-            if (active && map[active]) setActiveCtx(map[active])
+            if (active && map[active] != null) setActiveCtx(map[active])
           })
           .catch(() => {})
       })
@@ -160,7 +176,7 @@ export function App() {
     models: filteredModels, cursor, setCursor, contexts, cfg, setCfg, setActiveCtx,
     providers: filteredProviders, pickerQuery, setPickerQuery,
     agent,
-    input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
+    input, setInput, caret, setCaret, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId,
     onResumeSession: (id) => titledSessions.current.add(id),
     sessions, setSessions, setNotice,
@@ -180,7 +196,12 @@ export function App() {
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} updateAvailable={updateAvailable} />
+      {/* Pre-ready screens render the banner dynamically. In ready/chat mode the
+          banner moves into ChatView's <Static> log (Ink prints Static above the
+          live frame, so a dynamic banner here would sink below the scrollback). */}
+      {state !== 'ready' && (
+        <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} updateAvailable={updateAvailable} />
+      )}
 
       {state === 'loading' && !agent.error && (
         <Box marginLeft={2} marginBottom={1}>
@@ -242,7 +263,16 @@ export function App() {
             permissionCursor={agent.permissionCursor}
             activeToolUses={agent.activeToolUses}
             activeToolResults={agent.activeToolResults}
+            header={<WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} />}
           />
+
+          {/* Async update check can resolve after the static banner is printed
+              (which then can't repaint), so surface it as a live-frame line. */}
+          {updateAvailable && (
+            <Box marginLeft={2} marginBottom={1}>
+              <Text color="yellow">{`↑ update available: v${updateAvailable} — run: miii --update`}</Text>
+            </Box>
+          )}
 
           {input.startsWith('/') && (
             <CommandPalette filter={input} cursor={paletteCursor} />
@@ -262,7 +292,7 @@ export function App() {
             return <FilePicker matches={searchFiles(process.cwd(), m.query)} cursor={filePickerCursor} />
           })()}
 
-          <InputBar input={input} disabled={agent.busy} processingLabel={agent.processingLabel} />
+          <InputBar input={input} caret={caret} disabled={agent.busy} processingLabel={agent.processingLabel} />
           {!agent.busy && (
             <Box marginLeft={2} marginBottom={1}>
               <Text dimColor>

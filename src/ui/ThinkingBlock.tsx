@@ -39,11 +39,18 @@ export function ThinkingBlock({ content }: { content?: string }) {
         <Text dimColor italic>thinking…</Text>
         <Text dimColor> · ctrl+t to {visible ? 'hide' : 'show'} thoughts</Text>
       </Box>
-      {visible && content ? (
-        <Box marginLeft={2}>
-          <Text dimColor italic>{content}</Text>
-        </Box>
-      ) : null}
+      {visible && content ? (() => {
+        // Clip to the last lines that fit — thoughts can run long, and an
+        // oversized live frame is what corrupts Ink's in-place redraw.
+        const max = Math.max(4, (process.stdout.rows ?? 24) - 10)
+        const lines = content.split('\n')
+        const shown = lines.length > max ? lines.slice(-max) : lines
+        return (
+          <Box marginLeft={2}>
+            <Text dimColor italic>{shown.join('\n')}</Text>
+          </Box>
+        )
+      })() : null}
     </Box>
   )
 }
