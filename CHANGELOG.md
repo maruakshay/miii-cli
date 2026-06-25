@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.21](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.20...miii-agent-v0.1.21) (2026-06-25)
+
+
+### Features
+
+* native tool-calling + truncation guards for local models ([cc7a17d](https://github.com/maruakshay/miii-cli/commit/cc7a17dea10aa9700997e36eb4b264d43ea03b5b))
+* native tool-calling + truncation guards for local models ([d0ad200](https://github.com/maruakshay/miii-cli/commit/d0ad200667289735141d326393e84075e2c04f86))
+
 ## [0.1.20](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.19...miii-agent-v0.1.20) (2026-06-25)
 
 
