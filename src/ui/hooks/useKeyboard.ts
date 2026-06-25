@@ -9,7 +9,7 @@ import { setModel, setEffort, type NamedProvider, type Provider, type Effort } f
 import { filteredCommands } from '../CommandPalette.js'
 import { parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
-import { toggleToolExpanded } from '../ChatView.js'
+import { toggleToolExpanded } from '../toolExpand.js'
 import {
   persistSession,
   listSessions,
@@ -38,6 +38,20 @@ let pasteCounter = 0
 function clearPasteStore() {
   pasteStore.clear()
   pasteCounter = 0
+}
+
+// Submitted-input history for up/down recall (Claude Code-style). Module-level
+// so it survives re-renders. `historyIndex` walks backwards from the end;
+// -1 means "not browsing" (showing the live draft, stashed in `historyDraft`).
+const inputHistory: string[] = []
+let historyIndex = -1
+let historyDraft = ''
+
+/** Record a submitted line for recall, skipping empty/duplicate-of-last. */
+function pushHistory(line: string) {
+  if (!line) return
+  if (inputHistory[inputHistory.length - 1] === line) return
+  inputHistory.push(line)
 }
 
 /** Replace every chip placeholder in `text` with its stored content. */
@@ -89,7 +103,7 @@ interface KeyboardOptions {
   models: string[]
   cursor: number
   setCursor: (fn: (i: number) => number) => void
-  contexts: Record<string, number>
+  contexts: Record<string, number | null>
   cfg: { model?: string; provider?: Provider; effort?: Effort }
   setCfg: (fn: (c: any) => any) => void
   setActiveCtx: (n: number) => void
@@ -105,6 +119,9 @@ interface KeyboardOptions {
   // input bar
   input: string
   setInput: (fn: (s: string) => string) => void
+  /** Caret column into `input`. */
+  caret: number
+  setCaret: (fn: (i: number) => number) => void
   paletteCursor: number
   setPaletteCursor: (fn: (i: number) => number) => void
   filePickerCursor: number
@@ -129,7 +146,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     models, cursor, setCursor, contexts, cfg, setCfg, setActiveCtx,
     providers, pickerQuery, setPickerQuery,
     agent,
-    input, setInput, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
+    input, setInput, caret, setCaret, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId, onResumeSession, sessions, setSessions, setNotice,
     switchProvider,
   } = opts
@@ -294,30 +311,65 @@ export function useKeyboard(opts: KeyboardOptions) {
       const fileMatches = mention ? searchFiles(process.cwd(), mention.query) : []
       const fileOpen = mention !== null && fileMatches.length > 0
 
-      // command palette navigation
-      if (paletteOpen && key.upArrow) { setPaletteCursor((i) => Math.max(0, i - 1)); return }
-      if (paletteOpen && key.downArrow) { setPaletteCursor((i) => Math.min(matches.length - 1, i + 1)); return }
+      // command palette navigation (yields to history browsing once started, so a
+      // recalled "/command" line still navigates history with up/down).
+      if (paletteOpen && historyIndex === -1 && key.upArrow) { setPaletteCursor((i) => Math.max(0, i - 1)); return }
+      if (paletteOpen && historyIndex === -1 && key.downArrow) { setPaletteCursor((i) => Math.min(matches.length - 1, i + 1)); return }
       if (paletteOpen && (key.tab || key.return) && matches[paletteCursor] && input !== matches[paletteCursor].name) {
-        setInput(() => matches[paletteCursor].name)
+        const name = matches[paletteCursor].name
+        setInput(() => name)
+        setCaret(() => name.length)
         setPaletteCursor(() => 0)
         return
       }
-      if (paletteOpen && key.escape) { clearPasteStore(); setInput(() => ''); setPaletteCursor(() => 0); return }
+      if (paletteOpen && key.escape) { clearPasteStore(); setInput(() => ''); setCaret(() => 0); setPaletteCursor(() => 0); return }
 
       // file picker navigation
-      if (fileOpen && key.upArrow) { setFilePickerCursor((i) => Math.max(0, i - 1)); return }
-      if (fileOpen && key.downArrow) { setFilePickerCursor((i) => Math.min(fileMatches.length - 1, i + 1)); return }
+      if (fileOpen && historyIndex === -1 && key.upArrow) { setFilePickerCursor((i) => Math.max(0, i - 1)); return }
+      if (fileOpen && historyIndex === -1 && key.downArrow) { setFilePickerCursor((i) => Math.min(fileMatches.length - 1, i + 1)); return }
       if (fileOpen && key.tab && fileMatches[filePickerCursor]) {
         const picked = fileMatches[filePickerCursor]
-        setInput((s) => s.slice(0, mention!.start) + '@' + picked + ' ')
+        setInput((s) => {
+          const next = s.slice(0, mention!.start) + '@' + picked + ' '
+          setCaret(() => next.length)
+          return next
+        })
         setFilePickerCursor(() => 0)
         return
       }
       if (fileOpen && key.escape) { setFilePickerCursor(() => 0); return }
 
+      // --- input history recall (up = older, down = newer) ---
+      // Only when no overlay is open; pickers consume arrows above.
+      // Up enters/continues history; allowed when browsing (historyIndex !== -1)
+      // even if the recalled line opens a palette/picker.
+      if ((historyIndex !== -1 || (!paletteOpen && !fileOpen)) && key.upArrow) {
+        if (inputHistory.length === 0) return
+        if (historyIndex === -1) { historyDraft = input; historyIndex = inputHistory.length - 1 }
+        else if (historyIndex > 0) historyIndex--
+        const val = inputHistory[historyIndex]
+        setInput(() => val); setCaret(() => val.length)
+        return
+      }
+      if ((historyIndex !== -1 || (!paletteOpen && !fileOpen)) && key.downArrow) {
+        if (historyIndex === -1) return
+        if (historyIndex < inputHistory.length - 1) {
+          historyIndex++
+          const val = inputHistory[historyIndex]
+          setInput(() => val); setCaret(() => val.length)
+        } else {
+          historyIndex = -1
+          setInput(() => historyDraft); setCaret(() => historyDraft.length)
+        }
+        return
+      }
+
       // submit / built-in commands
       if (key.return) {
         const trimmed = input.trim()
+        pushHistory(trimmed)
+        historyIndex = -1
+        historyDraft = ''
         if (trimmed === '/models') {
           setPickerQuery('')
           setCursor(() => Math.max(0, models.findIndex((m) => m === cfg.model)))
@@ -359,26 +411,41 @@ export function useKeyboard(opts: KeyboardOptions) {
         }
         clearPasteStore()
         setInput(() => '')
+        setCaret(() => 0)
         setPaletteCursor(() => 0)
         return
       }
 
-      // text editing
+      // --- caret movement (left/right, home/end, ctrl+a/ctrl+e) ---
+      if (key.leftArrow) { setCaret((i) => Math.max(0, i - 1)); return }
+      if (key.rightArrow) { setCaret((i) => Math.min(input.length, i + 1)); return }
+      if (key.ctrl && char === 'a') { setCaret(() => 0); return }
+      if (key.ctrl && char === 'e') { setCaret(() => input.length); return }
+
+      // text editing — any edit drops out of history browsing
       if (key.backspace || key.delete) {
-        setInput((s) => {
-          setPaletteCursor(() => 0); setFilePickerCursor(() => 0)
-          // If the input ends with a paste chip, delete it whole (longest suffix
-          // match wins, so adjacent chips don't clip each other) and forget it.
-          let match = ''
-          for (const chip of pasteStore.keys()) {
-            if (s.endsWith(chip) && chip.length > match.length) match = chip
-          }
-          if (match) { pasteStore.delete(match); return s.slice(0, -match.length) }
-          return s.slice(0, -1)
-        })
+        historyIndex = -1
+        setPaletteCursor(() => 0); setFilePickerCursor(() => 0)
+        if (caret <= 0) return
+        const before = input.slice(0, caret)
+        // If the text just left of the caret ends with a paste chip, delete it
+        // whole (longest match wins so adjacent chips don't clip) and forget it.
+        let match = ''
+        for (const chip of pasteStore.keys()) {
+          if (before.endsWith(chip) && chip.length > match.length) match = chip
+        }
+        const cut = match ? match.length : 1
+        if (match) pasteStore.delete(match)
+        setInput((s) => s.slice(0, caret - cut) + s.slice(caret))
+        setCaret((i) => Math.max(0, i - cut))
       } else if (char && !key.ctrl && !key.meta && !key.tab) {
         const text = sanitizePaste(char)
-        if (text) setInput((s) => { setPaletteCursor(() => 0); setFilePickerCursor(() => 0); return s + text })
+        if (text) {
+          historyIndex = -1
+          setPaletteCursor(() => 0); setFilePickerCursor(() => 0)
+          setInput((s) => s.slice(0, caret) + text + s.slice(caret))
+          setCaret((i) => i + text.length)
+        }
       }
     }
   })

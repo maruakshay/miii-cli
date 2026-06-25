@@ -150,9 +150,23 @@ export async function* chat(
     }
     if (opts?.format) req.format = opts.format
     else if (tools) req.tools = tools
-    stream = (await client.chat(
-      req as unknown as Parameters<typeof client.chat>[0],
-    )) as unknown as AsyncIterable<ChatResponse>
+    try {
+      stream = (await client.chat(
+        req as unknown as Parameters<typeof client.chat>[0],
+      )) as unknown as AsyncIterable<ChatResponse>
+    } catch (err) {
+      // Not every model supports the `think` flag; Ollama rejects it with
+      // "does not support thinking". Retry once without it so the turn still runs.
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!signal?.aborted && msg.toLowerCase().includes('does not support thinking')) {
+        delete req.think
+        stream = (await client.chat(
+          req as unknown as Parameters<typeof client.chat>[0],
+        )) as unknown as AsyncIterable<ChatResponse>
+      } else {
+        throw err
+      }
+    }
   } catch (err) {
     if (signal?.aborted) return
     if (isConnectionError(err)) {
@@ -181,6 +195,16 @@ export async function* chat(
     if (opts?.signal?.aborted) return
     if (isConnectionError(err)) {
       throw new Error(NOT_RUNNING)
+    }
+    // Cloud Ollama endpoints sometimes close the stream after emitting all
+    // content but without a final `done:true` chunk. The ollama SDK treats that
+    // as fatal (AbortableAsyncIterator throws this exact message). We already
+    // have the content, so treat it as a clean end-of-turn: synthesize a done
+    // chunk (token counts unknown → 0) instead of surfacing a red error.
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes('Did not receive done or success response in stream')) {
+      yield { content: '', done: true, prompt_eval_count: 0, eval_count: 0 }
+      return
     }
     throw err
   } finally {

@@ -3,13 +3,14 @@ import { Box, Text } from 'ink'
 
 interface Props {
   input: string
+  caret?: number
   disabled?: boolean
   processingLabel?: string
 }
 
 const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
-export const InputBar = memo(function InputBar({ input, disabled, processingLabel }: Props) {
+export const InputBar = memo(function InputBar({ input, caret, disabled, processingLabel }: Props) {
   const [frame, setFrame] = useState(0)
   useEffect(() => {
     if (!disabled) return
@@ -36,8 +37,19 @@ export const InputBar = memo(function InputBar({ input, disabled, processingLabe
       ) : (
         <>
           <Text dimColor>{'> '}</Text>
-          <Text>{input}</Text>
-          <Text dimColor>▌</Text>
+          {(() => {
+            const pos = Math.max(0, Math.min(caret ?? input.length, input.length))
+            const before = input.slice(0, pos)
+            const at = input.slice(pos, pos + 1) || ' '
+            const after = input.slice(pos + 1)
+            return (
+              <>
+                <Text>{before}</Text>
+                <Text inverse>{at}</Text>
+                <Text>{after}</Text>
+              </>
+            )
+          })()}
         </>
       )}
     </Box>

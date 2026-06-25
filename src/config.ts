@@ -22,6 +22,9 @@ export interface Config {
   provider?: Provider
   effort?: Effort
   providers?: Record<string, ProviderEntry>
+  // Last-known context window per model. Seeds the header on first render so it
+  // shows a real value instead of "— ctx" while the live `show` request loads.
+  modelContexts?: Record<string, number>
   // legacy fields — migrated into `providers` on load
   ollamaHost?: string
   lmstudioHost?: string
@@ -62,6 +65,7 @@ function migrate(raw: Config): Config {
     provider: raw.provider,
     effort: raw.effort,
     providers,
+    modelContexts: raw.modelContexts,
   }
 }
 
@@ -133,4 +137,10 @@ export function setEffort(effort: Effort): void {
 
 export function setProvider(provider: Provider): void {
   saveConfig({ ...readRawConfig(), provider })
+}
+
+// Cache resolved context windows so the next launch can render them immediately.
+export function setModelContexts(contexts: Record<string, number>): void {
+  const raw = readRawConfig()
+  saveConfig({ ...raw, modelContexts: { ...raw.modelContexts, ...contexts } })
 }
