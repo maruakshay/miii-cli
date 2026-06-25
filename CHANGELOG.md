@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.22](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.21...miii-agent-v0.1.22) (2026-06-25)
+
+
+### Features
+
+* enhance grammar usage for Ollama tool-calling based on model pa… ([a7a4559](https://github.com/maruakshay/miii-cli/commit/a7a455929ab27189e142235077cbfeb6385ed47e))
+* enhance grammar usage for Ollama tool-calling based on model parameters ([b0955ca](https://github.com/maruakshay/miii-cli/commit/b0955caa066b4333c578c20db6d60257b42a9706))
+
 ## [0.1.21](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.20...miii-agent-v0.1.21) (2026-06-25)
 
 
