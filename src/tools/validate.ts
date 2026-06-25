@@ -30,6 +30,34 @@ function toZod(schema: JsonSchema): ZodTypeAny {
   return z.object(shape).passthrough()
 }
 
+/** Placeholder value for a property, by declared type — used in example shapes. */
+function exampleValue(spec: { type: string; enum?: string[] }): unknown {
+  if (spec.enum && spec.enum.length) return spec.enum[0]
+  switch (spec.type) {
+    case 'number':
+    case 'integer': return 0
+    case 'boolean': return false
+    case 'array': return []
+    case 'object': return {}
+    default: return '...'
+  }
+}
+
+/**
+ * A minimal valid-shape example for a schema, built from its required fields.
+ * Weak local models repeat the same malformed call when handed a bare error;
+ * showing the exact shape they must emit lets them self-correct next turn.
+ */
+export function exampleInput(schema: JsonSchema): string {
+  const required = schema.required ?? []
+  const obj: Record<string, unknown> = {}
+  for (const key of required) {
+    const spec = schema.properties[key]
+    if (spec) obj[key] = exampleValue(spec)
+  }
+  return JSON.stringify(obj)
+}
+
 /**
  * Validate a tool call's input against its declared input_schema.
  * Returns null on success, or a human-readable error string on failure.

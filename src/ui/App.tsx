@@ -266,14 +266,6 @@ export function App() {
             header={<WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} />}
           />
 
-          {/* Async update check can resolve after the static banner is printed
-              (which then can't repaint), so surface it as a live-frame line. */}
-          {updateAvailable && (
-            <Box marginLeft={2} marginBottom={1}>
-              <Text color="yellow">{`↑ update available: v${updateAvailable} — run: miii --update`}</Text>
-            </Box>
-          )}
-
           {input.startsWith('/') && (
             <CommandPalette filter={input} cursor={paletteCursor} />
           )}

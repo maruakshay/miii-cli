@@ -1,9 +1,9 @@
 import { existsSync } from 'fs'
-import { chat, providerName, modelParamCountB } from '../llm/client.js'
+import { chat } from '../llm/client.js'
 import { buildToolGrammar } from '../llm/grammar.js'
 import { confinePath } from '../tools/paths.js'
 import { TOOLS, getTool, toOllamaTools } from '../tools/registry.js'
-import { validateInput } from '../tools/validate.js'
+import { validateInput, exampleInput } from '../tools/validate.js'
 import { buildSystemPrompt } from '../prompt/system.js'
 import { loadProjectContext } from '../prompt/context.js'
 import { check, type PermissionContext } from '../permissions/policy.js'
@@ -27,11 +27,6 @@ import type {
 const MAX_TURNS = 25
 const REPEAT_TAIL = 120
 const REPEAT_KILL = 4
-// Constrained decoding helps small models (mangled tool JSON) but adds nothing —
-// and can slightly hurt reasoning — for large ones that already tool-call cleanly.
-// At/below this parameter count (billions) we enable the grammar. Unknown size
-// (null) errs toward enabling, since the local default is usually a small model.
-const GRAMMAR_MAX_PARAMS_B = 14
 
 /**
  * Harness-enforced read-before-write. The system prompt asks the model to read
@@ -55,6 +50,59 @@ function readGuard(name: string, input: unknown, seen: Set<string>): string | nu
   if (name === 'write_file' && !existsSync(abs)) return null
   const verb = name === 'edit_file' ? 'edit' : 'overwrite'
   return `Refusing to ${verb} ${p}: you have not read it this turn. Call read_file on ${p} first, then retry the ${name}.`
+}
+
+/**
+ * Some local models echo the full call envelope as the tool input, e.g.
+ *   { name: "write_file", arguments: { path, content } }
+ * instead of the bare { path, content }. Unwrap to the inner arguments so
+ * validation/handlers see the real fields — otherwise the model loops,
+ * re-emitting the same malformed call until the repeat-kill fires.
+ */
+function unwrapEnvelope(name: string, input: Record<string, unknown>): Record<string, unknown> {
+  if (!('arguments' in input)) return input
+  if ('name' in input && input.name !== name) return input
+  let args = input.arguments
+  if (typeof args === 'string') {
+    try { args = JSON.parse(args) } catch { return input }
+  }
+  if (args && typeof args === 'object' && !Array.isArray(args)) return args as Record<string, unknown>
+  return input
+}
+
+// Tools whose payload carries a large free-text field (file body / edit text).
+// These are the ones a weak local model mangles or gets cut off mid-write.
+const BIG_WRITE_TOOLS = new Set(['write_file', 'edit_file'])
+
+/**
+ * Guidance handed back when a big-write call can't run because its response was
+ * cut off (token cap) or mangled mid-write. Steers the model to split the work
+ * instead of re-emitting the same oversized call — which it otherwise loops on.
+ */
+function splitWriteHint(name: string, cause: 'truncated' | 'garbled'): string {
+  const lead =
+    cause === 'truncated'
+      ? `Your response was cut off at the output token limit, so this ${name} call is incomplete and was NOT run.`
+      : `Your ${name} call arrived with missing or garbled arguments — usually the response was cut off or mangled while writing a large value. It was NOT run.`
+  return (
+    `${lead} Do not resend the whole file in one call. Instead create the file ` +
+    `with write_file containing only the first portion, then append the rest ` +
+    `with successive edit_file calls. Keep each call small.`
+  )
+}
+
+/**
+ * After envelope-unwrapping, a big-write call that is still missing its key
+ * fields (no `path`, or write_file with no string `content`) is almost never a
+ * genuine shape mistake — it's a truncated/mangled write. Detect it so we can
+ * steer the model to split the work rather than emit a bare "path Required",
+ * which just makes it retry the same oversized call.
+ */
+function looksTruncatedWrite(name: string, input: Record<string, unknown>): boolean {
+  if (!BIG_WRITE_TOOLS.has(name)) return false
+  if (typeof input.path !== 'string' || !input.path) return true
+  if (name === 'write_file' && typeof input.content !== 'string') return true
+  return false
 }
 
 /** Record a path the model now knows the current state of (read or wrote). */
@@ -90,15 +138,11 @@ export interface RunAgentOpts {
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
   const startTime = Date.now()
-  // Constrained decoding: force every assistant turn into a valid action object
-  // via a grammar (see llm/grammar.ts), replacing native tool-calling and
-  // surfacing the action as JSON in content (parsed below). Auto-gated — only for
-  // Ollama, and only for small models that actually need it (param-count probe).
-  let useGrammar = false
-  if (providerName() === 'ollama') {
-    const params = await modelParamCountB(model)
-    useGrammar = params == null || params <= GRAMMAR_MAX_PARAMS_B
-  }
+  // Constrained decoding via grammar (see llm/grammar.ts) is disabled — tool
+  // calls use native Ollama tool-calling, matching the simpler v0.1.15 behavior.
+  // The grammar path and its auto-gate (providerName/modelParamCountB probe)
+  // remain in the code; flip this back to the probe to re-enable for small models.
+  const useGrammar = false
   const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd), useGrammar)
   const grammar = useGrammar ? buildToolGrammar(TOOLS) : undefined
   const ollamaTools = toOllamaTools(TOOLS)
@@ -127,10 +171,17 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     // how much we have already yielded so each chunk emits only the new tail.
     let respondEmitted = 0
     let streamedRespond = false
+    // Reasoning models think THEN answer. Some providers still trickle a few
+    // thinking tokens after visible text has begun; surfacing them flips the UI
+    // back into "thinking" and wedges the spinner above the streaming answer
+    // (between the prior tool result and this turn's text). Once we emit visible
+    // text, drop the rest of this turn's thinking.
+    let emittedText = false
 
     let lastTail = ''
     let tailRepeats = 0
     let streamLooped = false
+    let truncated = false
     const ac = new AbortController()
     const composedSignal = signal
       ? (AbortSignal.any ? AbortSignal.any([signal, ac.signal]) : ac.signal)
@@ -146,12 +197,14 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           // action — stay silent for tool calls, but stream a `respond` message
           // live as its string value arrives.
           if (!useGrammar) {
+            emittedText = true
             yield { type: 'text-delta', text: chunk.content }
           } else {
             const r = streamRespondMessage(text)
             if (r) {
               streamedRespond = true
               if (r.message.length > respondEmitted) {
+                emittedText = true
                 yield { type: 'text-delta', text: r.message.slice(respondEmitted) }
                 respondEmitted = r.message.length
               }
@@ -172,7 +225,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
             }
           }
         }
-        if (chunk.thinking) {
+        if (chunk.thinking && !emittedText) {
           yield { type: 'thinking-delta', text: chunk.thinking }
         }
         if (chunk.tool_calls && chunk.tool_calls.length > 0) {
@@ -181,6 +234,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         if (chunk.done) {
           promptTokens += chunk.prompt_eval_count ?? 0
           evalTokens += chunk.eval_count ?? 0
+          if (chunk.done_reason === 'length') truncated = true
         }
       }
     } catch (err) {
@@ -226,6 +280,25 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
 
     history.push({ role: 'assistant', content: blocks })
 
+    // Output hit the token cap mid-stream. Any tool call here has truncated
+    // arguments (e.g. a half-written file `content`); executing it would write a
+    // corrupt file, and the partial args usually fail validation so the model
+    // just re-emits the same oversized call forever. Refuse to run it and tell
+    // the model to split the work into smaller writes instead of looping.
+    if (truncated && tool_uses.length > 0) {
+      const results: ToolResultBlock[] = tool_uses.map((use) => ({
+        type: 'tool_result' as const,
+        tool_use_id: use.id,
+        content: splitWriteHint(use.name, 'truncated'),
+        is_error: true,
+      }))
+      for (const u of tool_uses) yield { type: 'tool-use', block: u }
+      for (const r of results) yield { type: 'tool-result', block: r }
+      history.push({ role: 'user', content: results as ContentBlock[] })
+      yield { type: 'turn-end', stop_reason: 'tool_use' }
+      continue
+    }
+
     if (tool_uses.length === 0) {
       yield { type: 'turn-end', stop_reason: 'end_turn' }
       break
@@ -268,12 +341,19 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         continue
       }
 
+      use.input = unwrapEnvelope(use.name, use.input)
       const invalid = validateInput(tool.input_schema, use.input)
       if (invalid) {
+        // Empty/garbled args on a big-write tool almost always means a
+        // truncated or mangled write, not a shape mistake — steer to splitting
+        // the work rather than retrying the same oversized call.
+        const content = looksTruncatedWrite(use.name, use.input)
+          ? splitWriteHint(use.name, 'garbled')
+          : `${invalid} for ${use.name}. Pass the arguments directly as the tool input — do NOT wrap them in {"name":...,"arguments":...}. Correct shape: ${exampleInput(tool.input_schema)}. Retry with all required fields.`
         const r: ToolResultBlock = {
           type: 'tool_result',
           tool_use_id: use.id,
-          content: `${invalid} for ${use.name}.`,
+          content,
           is_error: true,
         }
         results.push(r)

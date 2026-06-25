@@ -185,6 +185,7 @@ export async function* chat(
         content: stripHarmony(chunk.message.content),
         thinking: stripHarmony((chunk.message as { thinking?: string }).thinking),
         done: chunk.done,
+        done_reason: (chunk as { done_reason?: string }).done_reason,
         tool_calls: chunk.message.tool_calls as ChatChunk['tool_calls'],
         prompt_eval_count: chunk.prompt_eval_count,
         eval_count: chunk.eval_count,

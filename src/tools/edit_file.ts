@@ -107,7 +107,10 @@ export const edit_file: Tool<Input> = {
   handler: ({ path, old_str, new_str, replace_all }) => {
     try {
       if (old_str === new_str) {
-        return { content: `old_str and new_str are identical — nothing to change in ${path}.`, is_error: true }
+        return {
+          content: `old_str and new_str are identical — nothing to change in ${path}. If the file is already correct, do NOT edit again: finish with the respond action and tell the user it is done.`,
+          is_error: true,
+        }
       }
       const abs = confinePath(path)
       const src = readFileSync(abs, 'utf-8')

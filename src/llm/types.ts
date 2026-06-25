@@ -31,6 +31,9 @@ export interface ChatChunk {
   content: string
   thinking?: string
   done: boolean
+  // Why generation stopped, on the final (done) chunk. 'length' means the output
+  // hit the num_predict cap and was cut off — any inline tool args are partial.
+  done_reason?: string
   tool_calls?: OllamaToolCall[]
   prompt_eval_count?: number
   eval_count?: number

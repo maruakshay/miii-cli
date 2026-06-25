@@ -30,9 +30,13 @@ export interface Config {
   lmstudioHost?: string
 }
 
+// num_predict caps the output tokens per turn. It must be large enough to hold a
+// full file written inline in a tool call — at 1k/2k whole-file writes (an HTML
+// page, a component) get truncated mid-`content`, leaving the tool args
+// incomplete so the call never validates and the model retries forever.
 export const EFFORT_OPTIONS: Record<Effort, { temperature: number; num_predict: number }> = {
-  low:    { temperature: 0.2, num_predict: 1024 },
-  medium: { temperature: 0.7, num_predict: 2048 },
+  low:    { temperature: 0.2, num_predict: 8192 },
+  medium: { temperature: 0.7, num_predict: 16384 },
   high:   { temperature: 1.0, num_predict: -1 },
 }
 

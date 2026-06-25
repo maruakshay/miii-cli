@@ -1,6 +1,6 @@
 import { Marked } from 'marked'
 import { markedTerminal } from 'marked-terminal'
-import { highlight } from 'cli-highlight'
+import { highlight, supportsLanguage } from 'cli-highlight'
 import chalk from 'chalk'
 
 // Muted, low-glare palette — soft pastels over saturated brights so long
@@ -28,7 +28,10 @@ const theme = {
 // Fenced code blocks are syntax-highlighted via cli-highlight (already a dep,
 // same engine ChatView uses for diffs).
 function highlightCode(code: string, lang?: string): string {
-  if (!lang) return code
+  // Skip unknown languages: cli-highlight logs a noisy "Could not find the
+  // language" warning to the console *before* throwing, and the catch can't
+  // suppress that. Models fence plans/pseudo-langs (```plan), so guard first.
+  if (!lang || !supportsLanguage(lang)) return code
   try {
     return highlight(code, { language: lang, ignoreIllegals: true })
   } catch {
