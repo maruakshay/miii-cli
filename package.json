@@ -1,7 +1,7 @@
 {
   "name": "miii-agent",
   "version": "0.1.19",
-  "description": "Terminal AI coding agent powered by Ollama",
+  "description": "Cursor / Claude Code, but local. An offline AI pair-programmer in your terminal, powered by Ollama. Private by default, free forever.",
   "type": "module",
   "bin": {
     "miii": "dist/cli.js"
