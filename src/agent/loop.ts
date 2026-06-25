@@ -1,5 +1,5 @@
 import { existsSync } from 'fs'
-import { chat } from '../llm/client.js'
+import { chat, providerName, modelParamCountB } from '../llm/client.js'
 import { buildToolGrammar } from '../llm/grammar.js'
 import { confinePath } from '../tools/paths.js'
 import { TOOLS, getTool, toOllamaTools } from '../tools/registry.js'
@@ -27,6 +27,11 @@ import type {
 const MAX_TURNS = 25
 const REPEAT_TAIL = 120
 const REPEAT_KILL = 4
+// Constrained decoding helps small models (mangled tool JSON) but adds nothing —
+// and can slightly hurt reasoning — for large ones that already tool-call cleanly.
+// At/below this parameter count (billions) we enable the grammar. Unknown size
+// (null) errs toward enabling, since the local default is usually a small model.
+const GRAMMAR_MAX_PARAMS_B = 14
 
 /**
  * Harness-enforced read-before-write. The system prompt asks the model to read
@@ -138,11 +143,16 @@ export interface RunAgentOpts {
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
   const startTime = Date.now()
-  // Constrained decoding via grammar (see llm/grammar.ts) is disabled — tool
-  // calls use native Ollama tool-calling, matching the simpler v0.1.15 behavior.
-  // The grammar path and its auto-gate (providerName/modelParamCountB probe)
-  // remain in the code; flip this back to the probe to re-enable for small models.
-  const useGrammar = false
+  // Constrained decoding via grammar (see llm/grammar.ts) forces a valid tool-call
+  // shape, which native Ollama tool-calling does not — small/quantized models mangle
+  // the JSON escaping on large `content` strings (file bodies), dropping the field
+  // and tripping the garbled-write guard. Gate it to Ollama + small models only:
+  // large ones tool-call cleanly and lose nothing by skipping it.
+  let useGrammar = false
+  if (providerName() === 'ollama') {
+    const params = await modelParamCountB(model)
+    useGrammar = params == null || params <= GRAMMAR_MAX_PARAMS_B
+  }
   const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd), useGrammar)
   const grammar = useGrammar ? buildToolGrammar(TOOLS) : undefined
   const ollamaTools = toOllamaTools(TOOLS)
