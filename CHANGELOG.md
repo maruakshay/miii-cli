@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.23...miii-agent-v0.1.24) (2026-06-26)
+
+
+### Bug Fixes
+
+* use native tool-calling for all Ollama models ([f67fee5](https://github.com/maruakshay/miii-cli/commit/f67fee5c5ac56e88e1eb2a84a0416d218218390e))
+
 ## [0.1.23](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.22...miii-agent-v0.1.23) (2026-06-26)
 
 
