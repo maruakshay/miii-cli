@@ -36,6 +36,31 @@ export function clipTail(rendered: string, max: number): { text: string; clipped
   return { text: lines.slice(-max).join('\n'), clipped: lines.length - max }
 }
 
+// Clip text to the last lines that fit `maxRows` of VISUAL rows at the given
+// wrap `width` — long lines occupy multiple rows, so a plain line count
+// under-estimates height. Used by the thinking block: clipping by logical lines
+// alone lets a wrapped block grow past the terminal, which breaks Ink's in-place
+// redraw and orphans stale frames in scrollback.
+export function clipTailVisual(
+  content: string,
+  maxRows: number,
+  width: number,
+): { text: string; clipped: number } {
+  const w = Math.max(1, width)
+  const lines = content.split('\n')
+  const visualRows = (line: string) => Math.max(1, Math.ceil(line.length / w))
+  let rows = 0
+  let start = lines.length
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const h = visualRows(lines[i])
+    if (rows + h > maxRows && start < lines.length) break
+    rows += h
+    start = i
+  }
+  if (start === 0) return { text: content, clipped: 0 }
+  return { text: lines.slice(start).join('\n'), clipped: start }
+}
+
 // Rows available to the live frame, leaving room for the input bar, hints and
 // margins. Floor keeps it usable on tiny terminals.
 export function liveFrameRows(): number {

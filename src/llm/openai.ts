@@ -180,6 +180,18 @@ export async function* chat(
           const finishReason = choices[0].finish_reason
           if (finishReason) lastFinishReason = finishReason
 
+          // Reasoning models stream their thinking in a separate delta field.
+          // Different OpenAI-compatible servers spell it differently:
+          // `reasoning_content` (DeepSeek, vLLM), `reasoning` (OpenRouter), or
+          // the nested `reasoning.content`. Surface any of them as thinking.
+          const reasoning =
+            (delta.reasoning_content as string | undefined) ??
+            (typeof delta.reasoning === 'string' ? delta.reasoning : undefined) ??
+            (delta.reasoning as { content?: string } | undefined)?.content
+          if (reasoning) {
+            yield { content: '', thinking: reasoning, done: false }
+          }
+
           if (delta.content) {
             yield { content: delta.content as string, done: false }
           }

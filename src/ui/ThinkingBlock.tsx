@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Box, Text } from 'ink'
+import { clipTailVisual, liveFrameRows, contentWidth } from './layout.js'
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
@@ -41,13 +42,21 @@ export function ThinkingBlock({ content }: { content?: string }) {
       </Box>
       {visible && content ? (() => {
         // Clip to the last lines that fit — thoughts can run long, and an
-        // oversized live frame is what corrupts Ink's in-place redraw.
-        const max = Math.max(4, (process.stdout.rows ?? 24) - 10)
-        const lines = content.split('\n')
-        const shown = lines.length > max ? lines.slice(-max) : lines
+        // oversized live frame is what corrupts Ink's in-place redraw. Measure in
+        // VISUAL rows at the wrap width (the content is indented 4 cols), not raw
+        // line count, or wrapped long lines blow past the budget and orphan stale
+        // frames in scrollback. Leave a row for the header line.
+        const width = Math.max(20, contentWidth() - 2)
+        const budget = Math.max(4, liveFrameRows() - 1)
+        const { text, clipped } = clipTailVisual(content, budget, width)
         return (
-          <Box marginLeft={2}>
-            <Text dimColor italic>{shown.join('\n')}</Text>
+          <Box flexDirection="column" marginLeft={2}>
+            {clipped > 0 && (
+              <Text dimColor>{`↑ ${clipped} earlier line${clipped === 1 ? '' : 's'} above`}</Text>
+            )}
+            <Box width={width}>
+              <Text dimColor italic wrap="wrap">{text}</Text>
+            </Box>
           </Box>
         )
       })() : null}
