@@ -4,7 +4,7 @@
  * Centralises key routing so App.tsx stays declarative.
  * Depends on refs/setters passed in from App state.
  */
-import { useInput } from 'ink'
+import { useInput, useStdout } from 'ink'
 import { setModel, setEffort, type NamedProvider, type Provider, type Effort } from '../../config.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { parseMention, searchFiles } from '../FilePicker.js'
@@ -157,6 +157,19 @@ export function useKeyboard(opts: KeyboardOptions) {
     sendMessage, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingContent,
     setActiveToolUses, setActiveToolResults, setError,
   } = agent
+
+  const { write } = useStdout()
+
+  /**
+   * Hard-clear the terminal: erase the screen AND the scrollback buffer, then
+   * home the cursor (\x1b[2J = screen, \x1b[3J = scrollback, \x1b[H = home).
+   * Ink's <Static> log only writes each item once, so wiping the real terminal
+   * leaves the old transcript gone — the new command renders on a clean screen,
+   * like Claude Code.
+   */
+  function hardClear() {
+    write('\x1b[2J\x1b[3J\x1b[H')
+  }
 
   /** Wipe all chat/streaming state back to an empty session. */
   function clearSession() {
@@ -379,12 +392,14 @@ export function useKeyboard(opts: KeyboardOptions) {
           setCursor(() => Math.max(0, providers.findIndex((p) => p.name === cfg.provider)))
           setState('providers')
         } else if (trimmed === '/clear') {
+          hardClear()
           clearSession()
         } else if (trimmed === '/new') {
           // Current session is already auto-saved with an LLM title; just start
           // a fresh session id and wipe the chat.
           if (agentHistory.length) setNotice('session saved')
           setSessionId(newSessionId())
+          hardClear()
           clearSession()
         } else if (trimmed === '/sessions') {
           setSessions(listSessions())
