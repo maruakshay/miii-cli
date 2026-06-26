@@ -6,18 +6,8 @@ export function buildSystemPrompt(
   tools: Tool[],
   cwd: string,
   project?: ProjectContext,
-  grammarMode = false,
 ): string {
   const toolLines = tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
-  const actionProtocol = grammarMode
-    ? `
-# Action protocol (strict)
-Every reply is exactly ONE JSON action object, nothing else — no prose outside it, no markdown, no fences. Decoding is grammar-constrained, so malformed output is impossible; your only job is to choose the right action.
-  To use a tool: {"name": "<tool_name>", "arguments": { ...that tool's args }}
-  To give your final answer to the user: {"name": "respond", "arguments": {"message": "<your full answer here>"}}
-Call tools until the GOAL is met, then emit a single "respond" action with the complete answer. The "respond" action is the ONLY way to end the turn and talk to the user — never put your final answer in a tool call.
-`
-    : ''
   const projectSection =
     project && project.content.trim()
       ? `
@@ -104,7 +94,7 @@ Ask in a numbered list. One round of questions per turn. Then wait.
 # Tools
 You have access to the following tools. Call them via the function-calling interface.
 ${toolLines}
-${actionProtocol}
+
 # Loop semantics
 - When you need to act on the filesystem or run a command, emit a tool call.
 - After each tool result, decide: more tool calls, or a final plain-text answer.

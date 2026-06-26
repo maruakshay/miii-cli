@@ -1,6 +1,5 @@
 import { existsSync } from 'fs'
-import { chat, providerName, modelParamCountB } from '../llm/client.js'
-import { buildToolGrammar } from '../llm/grammar.js'
+import { chat } from '../llm/client.js'
 import { confinePath } from '../tools/paths.js'
 import { TOOLS, getTool, toOllamaTools } from '../tools/registry.js'
 import { validateInput, exampleInput } from '../tools/validate.js'
@@ -12,9 +11,6 @@ import { HookBus } from '../hooks/bus.js'
 import {
   toOllamaMessages,
   blocksFromOllama,
-  parseGrammarAction,
-  streamRespondMessage,
-  mintToolUseId,
 } from './adapter.js'
 import type {
   MiiMessage,
@@ -27,11 +23,6 @@ import type {
 const MAX_TURNS = 25
 const REPEAT_TAIL = 120
 const REPEAT_KILL = 4
-// Constrained decoding helps small models (mangled tool JSON) but adds nothing —
-// and can slightly hurt reasoning — for large ones that already tool-call cleanly.
-// At/below this parameter count (billions) we enable the grammar. Unknown size
-// (null) errs toward enabling, since the local default is usually a small model.
-const GRAMMAR_MAX_PARAMS_B = 14
 
 /**
  * Harness-enforced read-before-write. The system prompt asks the model to read
@@ -143,18 +134,7 @@ export interface RunAgentOpts {
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
   const startTime = Date.now()
-  // Constrained decoding via grammar (see llm/grammar.ts) forces a valid tool-call
-  // shape, which native Ollama tool-calling does not — small/quantized models mangle
-  // the JSON escaping on large `content` strings (file bodies), dropping the field
-  // and tripping the garbled-write guard. Gate it to Ollama + small models only:
-  // large ones tool-call cleanly and lose nothing by skipping it.
-  let useGrammar = false
-  if (providerName() === 'ollama') {
-    const params = await modelParamCountB(model)
-    useGrammar = params == null || params <= GRAMMAR_MAX_PARAMS_B
-  }
-  const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd), useGrammar)
-  const grammar = useGrammar ? buildToolGrammar(TOOLS) : undefined
+  const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd))
   const ollamaTools = toOllamaTools(TOOLS)
   const toolNames = TOOLS.map((t) => t.name)
   // Effort drives temperature + output cap. high → num_predict -1 (unlimited),
@@ -176,11 +156,6 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let text = ''
     let tool_calls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> | undefined
-    // Grammar mode: the JSON action streams as content. For a `respond` action we
-    // decode its message incrementally and surface it live; respondEmitted tracks
-    // how much we have already yielded so each chunk emits only the new tail.
-    let respondEmitted = 0
-    let streamedRespond = false
     // Reasoning models think THEN answer. Some providers still trickle a few
     // thinking tokens after visible text has begun; surfacing them flips the UI
     // back into "thinking" and wedges the spinner above the streaming answer
@@ -199,27 +174,12 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     if (signal) signal.addEventListener('abort', () => ac.abort(), { once: true })
 
     try {
-      for await (const chunk of chat(model, toOllamaMessages(history, system), useGrammar ? undefined : ollamaTools, { signal: composedSignal, num_ctx, num_predict: effort.num_predict, temperature: effort.temperature, format: grammar })) {
+      for await (const chunk of chat(model, toOllamaMessages(history, system), ollamaTools, { signal: composedSignal, num_ctx, num_predict: effort.num_predict, temperature: effort.temperature })) {
         if (signal?.aborted) break
         if (chunk.content) {
           text += chunk.content
-          // Native mode: stream prose directly. Grammar mode: content is a JSON
-          // action — stay silent for tool calls, but stream a `respond` message
-          // live as its string value arrives.
-          if (!useGrammar) {
-            emittedText = true
-            yield { type: 'text-delta', text: chunk.content }
-          } else {
-            const r = streamRespondMessage(text)
-            if (r) {
-              streamedRespond = true
-              if (r.message.length > respondEmitted) {
-                emittedText = true
-                yield { type: 'text-delta', text: r.message.slice(respondEmitted) }
-                respondEmitted = r.message.length
-              }
-            }
-          }
+          emittedText = true
+          yield { type: 'text-delta', text: chunk.content }
           if (text.length >= REPEAT_TAIL) {
             const tail = text.slice(-REPEAT_TAIL)
             if (tail === lastTail) {
@@ -271,21 +231,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       return history
     }
 
-    let blocks: ContentBlock[]
-    if (useGrammar) {
-      const action = parseGrammarAction(text, toolNames)
-      if (action?.kind === 'tool') {
-        blocks = [{ type: 'tool_use', id: mintToolUseId(), name: action.name, input: action.arguments }]
-      } else {
-        // respond action (or unparseable fallback) ends the turn with prose.
-        const message = action?.kind === 'respond' ? action.message : text.trim()
-        // Already streamed live above? Don't double-emit — just record the block.
-        if (message && !streamedRespond) yield { type: 'text-delta', text: message }
-        blocks = message ? [{ type: 'text', text: message }] : []
-      }
-    } else {
-      blocks = blocksFromOllama(text, tool_calls, toolNames)
-    }
+    const blocks: ContentBlock[] = blocksFromOllama(text, tool_calls, toolNames)
     const tool_uses = blocks.filter((b): b is ToolUse => b.type === 'tool_use')
 
     history.push({ role: 'assistant', content: blocks })
