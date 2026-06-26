@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.25](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.24...miii-agent-v0.1.25) (2026-06-26)
+
+
+### Features
+
+* add terminal hard-clear functionality and enhance command handling in useKeyboard ([e47136e](https://github.com/maruakshay/miii-cli/commit/e47136ea765e54b1aac32498dd6783e63e8a7d36))
+* enhance chat function to support reasoning models and improve ThinkingBlock layout handling ([d1b18a9](https://github.com/maruakshay/miii-cli/commit/d1b18a997170c068f6151d6f7a30bce5065b9d0a))
+
 ## [0.1.24](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.23...miii-agent-v0.1.24) (2026-06-26)
 
 
