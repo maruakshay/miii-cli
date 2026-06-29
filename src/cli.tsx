@@ -36,5 +36,8 @@ if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
   const { runEval } = await import('../eval/run.js')
   process.exit(await runEval(rest))
 } else {
+  // Restore the terminal tab title on any exit path (Ink's unmount cleanup
+  // can be skipped on a hard signal).
+  process.on('exit', () => { if (process.stdout.isTTY) process.stdout.write('\x1b]2;\x07') })
   render(createElement(App))
 }

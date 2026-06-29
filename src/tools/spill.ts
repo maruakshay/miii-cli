@@ -44,10 +44,9 @@ export function spillIfLarge(full: string, label = 'output', budget = INLINE_BUD
 
   const head = Math.floor(budget * HEAD_FRACTION)
   const tail = budget - head
-  const totalLines = full.split('\n').length
   const preview = full.slice(0, head) + '\n…\n' + full.slice(-tail)
   const notice = path
-    ? `[${label} truncated: ${totalLines} lines / ${full.length} bytes. Full output at ${path} — read it with read_file offset/limit to see the elided middle.]`
+    ? `[${label} truncated: ${full.length} bytes. Full output at ${path} — read it with read_file offset/limit to see the elided middle.]`
     : `[${label} truncated to ${budget} bytes; spill to disk failed, middle is lost.]`
   return `${preview}\n${notice}`
 }
