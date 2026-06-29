@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.29](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.28...miii-agent-v0.1.29) (2026-06-29)
+
+
+### Features
+
+* add demo GIF to showcase functionality ([64188ff](https://github.com/maruakshay/miii-cli/commit/64188ffc8f24fdf5ac830cf4262b34b847babecf))
+* add demo GIF to showcase functionality ([b44eb65](https://github.com/maruakshay/miii-cli/commit/b44eb651cf5e718b05ff8ac0514a9a1f6a66941b))
+
 ## [0.1.28](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.27...miii-agent-v0.1.28) (2026-06-29)
 
 
