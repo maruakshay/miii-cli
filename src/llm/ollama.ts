@@ -124,7 +124,7 @@ export async function* chat(
       model,
       messages: messages as Message[],
       stream: true,
-      think: true,
+      think: opts?.think ?? true,
       keep_alive: opts?.keep_alive ?? '10m',
       options,
     }

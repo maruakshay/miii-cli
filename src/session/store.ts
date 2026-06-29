@@ -259,7 +259,9 @@ export async function summarizeConversation(
       model,
       [{ role: 'user', content: prompt }],
       undefined,
-      { temperature: 0.2, num_predict: 32 },
+      // Disable thinking + give content room: reasoning models otherwise burn
+      // the whole budget on hidden thinking and emit no title text.
+      { temperature: 0.2, num_predict: 64, think: false },
     )) {
       if (chunk.content) out += chunk.content
     }
