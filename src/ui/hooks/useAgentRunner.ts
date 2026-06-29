@@ -51,7 +51,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     req.resolve(answers[cursor])
   }
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, images?: string[]) {
     if (busyRef.current || !model) return
     busyRef.current = true
     setBusy(true)
@@ -118,6 +118,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
         cwd: process.cwd(),
         history: agentHistory,
         userText: text,
+        images,
         permissions: { ask: askPermission },
         signal: controller.signal,
         num_ctx: activeCtx ?? undefined,

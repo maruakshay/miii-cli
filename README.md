@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/miii-agent"><img src="https://img.shields.io/npm/v/miii-agent" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/miii-agent"><img src="https://img.shields.io/npm/dt/miii-agent" alt="npm total downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="node version"></a>
   <a href="https://ollama.com"><img src="https://img.shields.io/badge/powered%20by-Ollama-black" alt="powered by Ollama"></a>
@@ -68,6 +69,10 @@ It doesn't just chat, either — it decomposes the problem, calls tools, and che
   miii doctor                  # grade every installed model
   miii doctor qwen2.5-coder:7b # grade one
   ```
+- **🖼️ Paste images** — copy a screenshot and hit `Ctrl+V` to attach it to your message, or paste an image file path. Great for "why does this UI look broken?" or reading an error screenshot. **Needs a vision-capable model** (`llava`, `llama3.2-vision`, `qwen2-vl`, …) — text-only models silently ignore the image.
+  ```bash
+  ollama pull llava            # or llama3.2-vision
+  ```
 - **💧 Lossless output spill** — that 50K-line test log won't get truncated and leave the model guessing. miii spills the full output to disk and lets the model page through it. Nothing is ever lost.
 - **🔒 Permission-gated tools** — you approve what the agent can touch; "always" approvals persist. File tools are confined to your working directory.
 - **📄 `MIII.md`** — drop one in your repo to teach miii your conventions, build/test commands, and do's & don'ts. Same idea as `CLAUDE.md`, read every turn.
@@ -96,6 +101,7 @@ File tools (`read_file`, `write_file`, `edit_file`) reject `../` traversal and a
 |-----|--------|
 | `Enter` | Send prompt |
 | `@filename` | Attach file to context |
+| `Ctrl+V` | Paste clipboard image (needs a vision model) |
 | `/models` | Switch active model |
 | `/clear` | Reset conversation |
 | `Esc` | Stop generation or tool run |

@@ -4,7 +4,11 @@
  * Centralises key routing so App.tsx stays declarative.
  * Depends on refs/setters passed in from App state.
  */
+import { existsSync, readFileSync } from 'fs'
+import { basename, join } from 'path'
+import { homedir } from 'os'
 import { useInput, useStdout } from 'ink'
+import { readClipboardImage } from '../clipboard.js'
 import { setModel, setEffort, type NamedProvider, type Provider, type Effort } from '../../config.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { parseMention, searchFiles } from '../FilePicker.js'
@@ -35,9 +39,47 @@ const PASTE_CHIP_CHARS = 200
 const pasteStore = new Map<string, string>()
 let pasteCounter = 0
 
+// Maps an image chip placeholder (e.g. "[Image #1 · shot.png]") to the base64
+// bytes of a pasted image file path. Collected at submit and sent as the user
+// message's `images[]` for vision models. Wiped alongside pasteStore.
+const imageStore = new Map<string, string>()
+let imageCounter = 0
+
+// File-path paste → image: a pasted absolute path ending in one of these is read
+// off disk, base64-encoded, and turned into an image chip.
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp)$/i
+
 function clearPasteStore() {
   pasteStore.clear()
   pasteCounter = 0
+  imageStore.clear()
+  imageCounter = 0
+}
+
+/**
+ * If `cleaned` is a single existing image file path, read it, base64-encode it,
+ * stash it in imageStore under a fresh chip, and return that chip. Otherwise
+ * return null so the caller falls back to normal paste handling.
+ *
+ * Handles surrounding quotes, macOS drag-drop backslash-escaped spaces, and ~.
+ */
+function tryImagePaste(cleaned: string): string | null {
+  let p = cleaned.trim()
+  if ((p.startsWith('"') && p.endsWith('"')) || (p.startsWith("'") && p.endsWith("'"))) {
+    p = p.slice(1, -1)
+  }
+  p = p.replace(/\\ /g, ' ')
+  if (p.includes('\n') || !IMAGE_EXT_RE.test(p)) return null
+  if (p.startsWith('~/')) p = join(homedir(), p.slice(2))
+  if (!existsSync(p)) return null
+  try {
+    const b64 = readFileSync(p).toString('base64')
+    const chip = `[Image #${++imageCounter} · ${basename(p)}]`
+    imageStore.set(chip, b64)
+    return chip
+  } catch {
+    return null
+  }
 }
 
 // Submitted-input history for up/down recall (Claude Code-style). Module-level
@@ -85,6 +127,9 @@ function sanitizePaste(chunk: string): string {
   // Gate the paste machinery on length>1 — typing is the hot path.
   if (chunk.length <= 1) return chunk
   const cleaned = stripControls(chunk).replace(/\r/g, '')
+  // A pasted image file path becomes an image chip (sent as images[] at submit).
+  const imageChip = tryImagePaste(cleaned)
+  if (imageChip) return imageChip
   const lines = cleaned.split('\n').length
   if (lines > PASTE_CHIP_LINES || cleaned.length > PASTE_CHIP_CHARS) {
     const chip = `[Pasted #${++pasteCounter} · ${lines} line${lines === 1 ? '' : 's'}]`
@@ -318,6 +363,19 @@ export function useKeyboard(opts: KeyboardOptions) {
     if (state === 'ready') {
       if (busyRef.current) return
 
+      // Ctrl+V — paste an image off the OS clipboard (Cmd+V only pastes text, so
+      // a copied screenshot needs an explicit reader). Inserts an image chip.
+      if (key.ctrl && char === 'v') {
+        const b64 = readClipboardImage()
+        if (!b64) { setNotice('no image in clipboard'); return }
+        const chip = `[Image #${++imageCounter} · clipboard]`
+        imageStore.set(chip, b64)
+        historyIndex = -1
+        setInput((s) => s.slice(0, caret) + chip + s.slice(caret))
+        setCaret((i) => i + chip.length)
+        return
+      }
+
       const paletteOpen = input.startsWith('/')
       const matches = paletteOpen ? filteredCommands(input) : []
       const mention = !paletteOpen ? parseMention(input) : null
@@ -418,11 +476,21 @@ export function useKeyboard(opts: KeyboardOptions) {
           }
         } else if (trimmed) {
           setNotice(null)
+          // Pull any image chips out of the text, gathering their base64 bytes
+          // to send as the message's images[]. The chip text itself is removed.
+          const images: string[] = []
+          let textPart = trimmed
+          for (const [chip, b64] of imageStore) {
+            if (textPart.includes(chip)) {
+              images.push(b64)
+              textPart = textPart.split(chip).join('').trim()
+            }
+          }
           // Expand any paste chips back into their real text before sending.
           // The session title is generated after the first assistant reply
           // (see the auto-save effect in App.tsx), not from this raw message.
-          const message = expandPastes(trimmed)
-          sendMessage(message)
+          const message = expandPastes(textPart) || 'Describe the attached image.'
+          sendMessage(message, images.length ? images : undefined)
         }
         clearPasteStore()
         setInput(() => '')
@@ -449,8 +517,11 @@ export function useKeyboard(opts: KeyboardOptions) {
         for (const chip of pasteStore.keys()) {
           if (before.endsWith(chip) && chip.length > match.length) match = chip
         }
+        for (const chip of imageStore.keys()) {
+          if (before.endsWith(chip) && chip.length > match.length) match = chip
+        }
         const cut = match ? match.length : 1
-        if (match) pasteStore.delete(match)
+        if (match) { pasteStore.delete(match); imageStore.delete(match) }
         setInput((s) => s.slice(0, caret - cut) + s.slice(caret))
         setCaret((i) => Math.max(0, i - cut))
       } else if (char && !key.ctrl && !key.meta && !key.tab) {

@@ -114,6 +114,8 @@ export interface RunAgentOpts {
   cwd: string
   history: MiiMessage[]
   userText: string
+  /** Base64-encoded images attached to this turn's user message. */
+  images?: string[]
   permissions: PermissionContext
   hooks?: HookBus
   signal?: AbortSignal
@@ -143,7 +145,11 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
 
   const history: MiiMessage[] = [
     ...opts.history,
-    { role: 'user', content: opts.userText },
+    {
+      role: 'user',
+      content: opts.userText,
+      ...(opts.images && opts.images.length > 0 ? { images: opts.images } : {}),
+    },
   ]
 
   let promptTokens = 0

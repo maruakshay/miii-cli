@@ -6,6 +6,7 @@ export const EMPTY_STATE_HINTS: string[] = [
   '• /models — switch model or effort',
   '• /new — start a new chat',
   '• /sessions — view saved chats',
+  '• ctrl+v — paste an image (needs a vision model)',
   '• ctrl+t — toggle thinking',
 ]
 
