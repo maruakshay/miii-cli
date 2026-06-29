@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.26](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.25...miii-agent-v0.1.26) (2026-06-29)
+
+
+### Features
+
+* image paste for vision models ([c8627ae](https://github.com/maruakshay/miii-cli/commit/c8627aef640edbedc9e0a1bdda17f9ca6a43ed4d))
+* image paste for vision models ([8a35a57](https://github.com/maruakshay/miii-cli/commit/8a35a5757cd781fc70dde45548283380a4b46902))
+
 ## [0.1.25](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.24...miii-agent-v0.1.25) (2026-06-26)
 
 
