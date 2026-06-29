@@ -11,6 +11,7 @@ import { HookBus } from '../hooks/bus.js'
 import {
   toOllamaMessages,
   blocksFromOllama,
+  looksLikeLeakedToolCall,
 } from './adapter.js'
 import type {
   MiiMessage,
@@ -23,6 +24,9 @@ import type {
 const MAX_TURNS = 25
 const REPEAT_TAIL = 120
 const REPEAT_KILL = 4
+// Max times to ask the model to re-emit a leaked text tool call via the native
+// interface before giving up and ending the turn.
+const MAX_LEAK_NUDGES = 2
 
 /**
  * Harness-enforced read-before-write. The system prompt asks the model to read
@@ -156,6 +160,10 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   let evalTokens = 0
   let lastAssistantSig = ''
   let repeatCount = 0
+  // How many times we've asked the model to re-emit a leaked text tool call via
+  // the native interface this run. Bounded so a model that can't comply ends the
+  // turn instead of looping forever.
+  let leakNudges = 0
   // Canonical paths the model has read (or written) this run — gates edit/write.
   const seenPaths = new Set<string>()
 
@@ -262,6 +270,27 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     }
 
     if (tool_uses.length === 0) {
+      // The model produced no structured tool call, but its text looks like it
+      // tried to call a tool in some prose syntax we couldn't parse (so it leaked
+      // verbatim to the user and no file was actually written). Nudge it to
+      // re-emit via the native function-calling interface rather than ending the
+      // turn on a silent no-op. Bounded so a model that can't comply still exits.
+      const assistantText = blocks
+        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+      if (leakNudges < MAX_LEAK_NUDGES && looksLikeLeakedToolCall(assistantText, toolNames)) {
+        leakNudges++
+        history.push({
+          role: 'user',
+          content:
+            'That tool call was written as plain text, so it did not run and nothing happened. ' +
+            'Re-issue it using the function-calling interface only — do not print the call as ' +
+            'text, JSON, or any custom syntax. If you did not mean to call a tool, answer in prose.',
+        })
+        yield { type: 'turn-end', stop_reason: 'tool_use' }
+        continue
+      }
       yield { type: 'turn-end', stop_reason: 'end_turn' }
       break
     }

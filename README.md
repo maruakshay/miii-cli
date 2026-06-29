@@ -30,9 +30,11 @@ Your code never leaves your disk. There's nothing to log in to. Pull a model, ty
 
 ```bash
 ollama pull qwen2.5-coder:14b   # any coding model works
-npm install -g miii-agent
+curl -fsSL https://raw.githubusercontent.com/maruakshay/miii-cli/main/install.sh | sh
 miii
 ```
+
+Prefer npm? `npm install -g miii-agent`.
 
 Then just talk to it:
 
@@ -43,6 +45,19 @@ Then just talk to it:
 ```
 
 > **Needs:** Node ≥ 18 and [Ollama](https://ollama.com/download) running locally.
+
+## Staying up to date
+
+miii checks npm on launch and, when a newer release exists, pulls it in the
+background — it applies the next time you start. Manual options:
+
+```bash
+miii update     # update now
+miii --version  # what you're running
+```
+
+Opt out of background updates by adding `"autoUpdate": false` to `~/.miii/config.json`,
+or re-run the install script (`curl … | sh`) any time to update by hand.
 
 ## Why local-first?
 

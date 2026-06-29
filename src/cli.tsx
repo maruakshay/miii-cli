@@ -21,7 +21,12 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-if (cmd === 'update' || cmd === '--update' || cmd === '-u') {
+if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
+  const { createRequire } = await import('module')
+  const pkg = createRequire(import.meta.url)('../package.json') as { version: string }
+  console.log(pkg.version)
+  process.exit(0)
+} else if (cmd === 'update' || cmd === '--update' || cmd === '-u') {
   const { spawnSync } = await import('child_process')
   console.log('Updating miii-agent…')
   const r = spawnSync('npm', ['i', '-g', 'miii-agent@latest'], { stdio: 'inherit', shell: process.platform === 'win32' })
