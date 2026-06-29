@@ -3,6 +3,7 @@ import {
   parseTextToolCalls,
   blocksFromOllama,
   toOllamaMessages,
+  looksLikeLeakedToolCall,
 } from './adapter.js'
 import type { MiiMessage, ToolUse } from './types.js'
 
@@ -48,6 +49,67 @@ describe('parseTextToolCalls', () => {
 
   it('returns nothing for empty input', () => {
     expect(parseTextToolCalls('', KNOWN).calls).toHaveLength(0)
+  })
+
+  it('parses the call:NAME{...} delimiter-wrapped syntax', () => {
+    const src = 'call:run_bash{command:<|"|>ls -la<|"|>}'
+    const { calls, cleanedText } = parseTextToolCalls(src, KNOWN)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].function).toEqual({ name: 'run_bash', arguments: { command: 'ls -la' } })
+    expect(cleanedText).toBe('')
+  })
+
+  it('keeps delimited values that span newlines and braces intact', () => {
+    const body = 'function f() {\n  return { a: 1 };\n}'
+    const src = `call:edit_file{path:<|"|>a.js<|"|>,content:<|"|>${body}<|"|>}`
+    const { calls } = parseTextToolCalls(src, KNOWN)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].function.name).toBe('edit_file')
+    expect(calls[0].function.arguments).toEqual({ path: 'a.js', content: body })
+  })
+
+  it('ignores call:NAME for an unknown tool', () => {
+    const { calls, cleanedText } = parseTextToolCalls('call:frobnicate{x:<|"|>1<|"|>}', KNOWN)
+    expect(calls).toHaveLength(0)
+    expect(cleanedText).toContain('frobnicate')
+  })
+
+  it('parses bare (undelimited) values in call syntax', () => {
+    const { calls } = parseTextToolCalls('call:read_file{path:"a.ts"}', KNOWN)
+    expect(calls[0].function.arguments).toEqual({ path: 'a.ts' })
+  })
+
+  it('does not extract a call embedded in an unknown call\'s value', () => {
+    const src = 'call:frobnicate{x:<|"|>call:read_file{path:secret.ts}<|"|>}'
+    const { calls } = parseTextToolCalls(src, KNOWN)
+    expect(calls).toHaveLength(0)
+  })
+})
+
+describe('looksLikeLeakedToolCall', () => {
+  it('flags the <|"|> delimiter sentinel', () => {
+    expect(looksLikeLeakedToolCall('content:<|"|>x<|"|>', KNOWN)).toBe(true)
+  })
+  it('flags call:NAME{ syntax', () => {
+    expect(looksLikeLeakedToolCall('call:run_bash{cmd:1}', KNOWN)).toBe(true)
+  })
+  it('flags a <tool_call tag', () => {
+    expect(looksLikeLeakedToolCall('<tool_call>{}', KNOWN)).toBe(true)
+  })
+  it('flags a JSON object naming a known tool with arguments', () => {
+    expect(looksLikeLeakedToolCall('{"name":"read_file","arguments":{}}', KNOWN)).toBe(true)
+  })
+  it('does NOT flag prose that mentions a tool', () => {
+    expect(looksLikeLeakedToolCall('I read the file with read_file earlier.', KNOWN)).toBe(false)
+  })
+  it('does NOT flag a JSON object naming an unknown tool', () => {
+    expect(looksLikeLeakedToolCall('{"name":"frobnicate","arguments":{}}', KNOWN)).toBe(false)
+  })
+  it('does NOT flag prose "call:" for an unknown name', () => {
+    expect(looksLikeLeakedToolCall("I'll call: someone {later} about it.", KNOWN)).toBe(false)
+  })
+  it('does NOT flag empty text', () => {
+    expect(looksLikeLeakedToolCall('', KNOWN)).toBe(false)
   })
 })
 

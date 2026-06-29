@@ -25,6 +25,9 @@ export interface Config {
   // Last-known context window per model. Seeds the header on first render so it
   // shows a real value instead of "— ctx" while the live `show` request loads.
   modelContexts?: Record<string, number>
+  // When true (default), a detected newer release is installed in the background
+  // on launch. Set false to keep the manual `miii update` flow only.
+  autoUpdate?: boolean
   // legacy fields — migrated into `providers` on load
   ollamaHost?: string
   lmstudioHost?: string
@@ -70,7 +73,17 @@ function migrate(raw: Config): Config {
     effort: raw.effort,
     providers,
     modelContexts: raw.modelContexts,
+    autoUpdate: raw.autoUpdate,
   }
+}
+
+// Background auto-update is on unless the user explicitly disabled it.
+export function autoUpdateEnabled(cfg: Config = loadConfig()): boolean {
+  return cfg.autoUpdate !== false
+}
+
+export function setAutoUpdate(enabled: boolean): void {
+  saveConfig({ ...readRawConfig(), autoUpdate: enabled })
 }
 
 // Exactly what's on disk — no defaults, no env, no migration. Used by setters so

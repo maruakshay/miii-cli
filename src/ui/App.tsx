@@ -9,8 +9,8 @@ import { Box, Text, useApp } from 'ink'
 import { homedir } from 'os'
 import { sep } from 'path'
 import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
-import { loadConfig, setProvider, setModelContexts, providerEntries, resolveProvider, type Effort, type Provider } from '../config.js'
-import { WelcomeBlock } from './WelcomeBlock.js'
+import { loadConfig, setProvider, setModelContexts, providerEntries, resolveProvider, autoUpdateEnabled, type Effort, type Provider } from '../config.js'
+import { WelcomeBlock, updateBannerText, type UpdateStatus } from './WelcomeBlock.js'
 import { InputBar } from './InputBar.js'
 import { ModelsView } from './ModelsView.js'
 import { ProviderPicker } from './ProviderPicker.js'
@@ -21,7 +21,7 @@ import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
-import { checkForUpdate } from '../updateCheck.js'
+import { checkForUpdate, autoUpdate } from '../updateCheck.js'
 
 type AppState = 'loading' | 'select-model' | 'ready' | 'models' | 'providers' | 'sessions'
 
@@ -42,6 +42,7 @@ export function App() {
   const [cursor, setCursor] = useState(0)
   const [pickerQuery, setPickerQuery] = useState('')
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
   const [providerDown, setProviderDown] = useState(false)
 
   // --- sessions ---
@@ -60,7 +61,17 @@ export function App() {
   const agent = useAgentRunner(cfg.model, activeCtx)
 
   useEffect(() => {
-    checkForUpdate().then((v) => { if (v) setUpdateAvailable(v) })
+    checkForUpdate().then((v) => {
+      if (!v) return
+      setUpdateAvailable(v)
+      // Pull the new release in the background; it applies on next launch. Track
+      // the real outcome: downloading while it runs, then installed or failed.
+      // Stays 'idle' (manual banner) on the rate-limit cooldown or a failed spawn.
+      if (autoUpdateEnabled()) {
+        const started = autoUpdate((ok) => setUpdateStatus(ok ? 'installed' : 'failed'))
+        if (started) setUpdateStatus('downloading')
+      }
+    })
   }, [])
 
   // Tracks sessions whose LLM title has been generated, so we summarise once.
@@ -200,7 +211,7 @@ export function App() {
           banner moves into ChatView's <Static> log (Ink prints Static above the
           live frame, so a dynamic banner here would sink below the scrollback). */}
       {state !== 'ready' && (
-        <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} updateAvailable={updateAvailable} />
+        <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} updateAvailable={updateAvailable} updateStatus={updateStatus} />
       )}
 
       {state === 'loading' && !agent.error && (
@@ -291,6 +302,13 @@ export function App() {
                 {providerDown
                   ? 'provider unavailable — /provider to switch · /models to pick a model'
                   : 'type / to see commands'}
+              </Text>
+            </Box>
+          )}
+          {updateAvailable && (
+            <Box marginLeft={2} marginBottom={1}>
+              <Text color={updateStatus === 'failed' ? 'red' : updateStatus === 'installed' ? 'green' : 'yellow'}>
+                {updateBannerText(updateAvailable, updateStatus)}
               </Text>
             </Box>
           )}

@@ -63,6 +63,7 @@ type RawToolCall = { function: { name: string; arguments: Record<string, unknown
  *   {"name": "X", "parameters": {...}}
  *   <tool_call>{...}</tool_call>      (qwen)
  *   ```json {...} ```                  (fenced)
+ *   call:X{key:<|"|>value<|"|>, ...}  (delimiter-wrapped, non-JSON)
  */
 export function parseTextToolCalls(
   text: string,
@@ -71,6 +72,15 @@ export function parseTextToolCalls(
   if (!text) return { calls: [], cleanedText: text }
   const calls: RawToolCall[] = []
   let cleaned = text
+
+  // Custom `call:NAME{...}` syntax that some local models emit instead of JSON.
+  // Handled first because its body is not valid JSON and would otherwise leak
+  // into the rendered text verbatim.
+  const callSyntax = parseCallSyntax(cleaned, knownToolNames)
+  if (callSyntax.calls.length > 0) {
+    calls.push(...callSyntax.calls)
+    cleaned = callSyntax.cleanedText
+  }
 
   const tagRe = /<\|?tool_call\|?>\s*([\s\S]*?)\s*<\|?\/?tool_call\|?>/g
   cleaned = cleaned.replace(tagRe, (_m, body: string) => {
@@ -114,6 +124,100 @@ function tryParse(raw: string, knownToolNames: string[]): RawToolCall | null {
   }
 }
 
+const VAL_DELIM = '<|"|>'
+
+/**
+ * Parse the `call:NAME{ key:<|"|>value<|"|>, ... }` syntax. Values are wrapped
+ * in the VAL_DELIM sentinel so they may freely contain newlines, braces, quotes
+ * and commas — the delimiter, not brace/comma balancing, marks the boundaries.
+ * Bare (undelimited) values are tolerated as a fallback: they are read up to the
+ * next top-level comma or closing brace and JSON-parsed when possible.
+ */
+function parseCallSyntax(
+  text: string,
+  knownToolNames: string[],
+): { calls: RawToolCall[]; cleanedText: string } {
+  const calls: RawToolCall[] = []
+  const headRe = /call:\s*([a-zA-Z_]\w*)\s*\{/g
+  let m: RegExpExecArray | null
+  let cleaned = ''
+  let lastEnd = 0
+
+  while ((m = headRe.exec(text)) !== null) {
+    const name = m[1]
+    const body = parseCallBody(text, m.index + m[0].length)
+    if (!body) continue
+    // Skip past the whole body before the next exec, even for unknown tools, so
+    // a `call:...{...}` embedded in an unknown call's value isn't rescanned and
+    // mistaken for a real call.
+    headRe.lastIndex = body.end
+    if (!knownToolNames.includes(name)) continue
+    calls.push({ function: { name, arguments: body.args } })
+    cleaned += text.slice(lastEnd, m.index)
+    lastEnd = body.end
+  }
+  cleaned += text.slice(lastEnd)
+  return { calls, cleanedText: cleaned.trim() }
+}
+
+function parseCallBody(
+  text: string,
+  start: number,
+): { args: Record<string, unknown>; end: number } | null {
+  const args: Record<string, unknown> = {}
+  let i = start
+  const isWs = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r'
+
+  while (i < text.length) {
+    while (i < text.length && (isWs(text[i]) || text[i] === ',')) i++
+    if (i >= text.length) return null
+    if (text[i] === '}') return { args, end: i + 1 }
+
+    // key
+    const keyStart = i
+    while (i < text.length && text[i] !== ':' && text[i] !== '}') i++
+    if (i >= text.length || text[i] !== ':') return null
+    const key = text.slice(keyStart, i).trim().replace(/^["']|["']$/g, '')
+    i++ // skip ':'
+    while (i < text.length && isWs(text[i])) i++
+
+    // value
+    if (text.startsWith(VAL_DELIM, i)) {
+      const vStart = i + VAL_DELIM.length
+      const vEnd = text.indexOf(VAL_DELIM, vStart)
+      if (vEnd === -1) return null
+      args[key] = text.slice(vStart, vEnd)
+      i = vEnd + VAL_DELIM.length
+    } else {
+      const vStart = i
+      let depth = 0
+      let inStr: string | null = null
+      let esc = false
+      while (i < text.length) {
+        const ch = text[i]
+        if (inStr) {
+          if (esc) esc = false
+          else if (ch === '\\') esc = true
+          else if (ch === inStr) inStr = null
+        } else if (ch === '"' || ch === "'") inStr = ch
+        else if (ch === '{' || ch === '[') depth++
+        else if (ch === '}' || ch === ']') {
+          if (depth === 0) break
+          depth--
+        } else if (ch === ',' && depth === 0) break
+        i++
+      }
+      const rawVal = text.slice(vStart, i).trim()
+      try {
+        args[key] = JSON.parse(rawVal)
+      } catch {
+        args[key] = rawVal.replace(/^["']|["']$/g, '')
+      }
+    }
+  }
+  return null // never hit closing brace
+}
+
 function extractFirstJsonObject(s: string): { json: string; start: number; end: number } | null {
   const start = s.indexOf('{')
   if (start === -1) return null
@@ -136,6 +240,31 @@ function extractFirstJsonObject(s: string): { json: string; start: number; end: 
     }
   }
   return null
+}
+
+/**
+ * Heuristic: does this leftover text look like a tool call the model tried to
+ * emit as prose but that we failed to parse into a structured call? Used by the
+ * agent loop to nudge the model to re-emit via the native interface instead of
+ * silently ending the turn with the raw syntax leaked to the user.
+ *
+ * Conservative on purpose — only fires on strong markers, never on a tool name
+ * merely mentioned in prose, so it cannot block a legitimate final answer.
+ */
+export function looksLikeLeakedToolCall(text: string, knownToolNames: string[]): boolean {
+  if (!text) return false
+  if (text.includes(VAL_DELIM)) return true
+  if (/<\|?tool_call/i.test(text)) return true
+  // `call:NAME{` — but only when NAME is an actual tool, so prose like
+  // "I'll call: someone {" can't trip the nudge.
+  const callMatch = text.match(/\bcall:\s*(\w+)\s*\{/)
+  if (callMatch && knownToolNames.includes(callMatch[1])) return true
+  // JSON object literal that names a known tool with an args/params field.
+  if (/"name"\s*:\s*"([^"]+)"/.test(text) && /"(arguments|parameters|input)"\s*:/.test(text)) {
+    const name = text.match(/"name"\s*:\s*"([^"]+)"/)?.[1]
+    if (name && knownToolNames.includes(name)) return true
+  }
+  return false
 }
 
 export function blocksFromOllama(
