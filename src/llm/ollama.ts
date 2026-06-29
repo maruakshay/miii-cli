@@ -49,6 +49,21 @@ function isConnectionError(err: unknown): boolean {
   return msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('connect')
 }
 
+// Ollama rejects images sent to a text-only model with "this model does not
+// support image input". Rewrite it into an actionable, non-cryptic message.
+function isNoVisionError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+  return msg.includes('does not support image') || msg.includes('image input')
+}
+
+function noVisionError(model: string): Error {
+  return new Error(
+    `"${model}" can't read images — it has no vision support. Switch to a ` +
+    `vision-capable model (e.g. llava, llama3.2-vision, qwen2-vl) with /models, ` +
+    `then resend. Pull one with: ollama pull llava`,
+  )
+}
+
 export async function listModels(entry: ProviderEntry): Promise<string[]> {
   try {
     const { models } = await makeClient(entry).list()
@@ -133,6 +148,7 @@ export async function* chat(
     }
   } catch (err) {
     if (signal?.aborted) return
+    if (isNoVisionError(err)) throw noVisionError(model)
     if (isConnectionError(err)) {
       throw new Error(NOT_RUNNING)
     }
@@ -158,6 +174,7 @@ export async function* chat(
     }
   } catch (err) {
     if (opts?.signal?.aborted) return
+    if (isNoVisionError(err)) throw noVisionError(model)
     if (isConnectionError(err)) {
       throw new Error(NOT_RUNNING)
     }

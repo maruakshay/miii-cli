@@ -22,6 +22,8 @@ export type ContentBlock = TextBlock | ToolUse | ToolResultBlock
 export interface MiiMessage {
   role: 'user' | 'assistant' | 'system'
   content: string | ContentBlock[]
+  /** Base64-encoded images attached to a user message (vision models). */
+  images?: string[]
 }
 
 export type StopReason = 'end_turn' | 'tool_use'

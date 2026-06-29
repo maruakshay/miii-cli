@@ -100,7 +100,10 @@ export function persistSession(id: string, messages: MiiMessage[], title?: strin
 
   const lines: string[] = [JSON.stringify({ type: 'meta', ...meta } satisfies MetaLine)]
   for (const message of messages) {
-    lines.push(JSON.stringify({ type: 'message', message } satisfies MessageLine))
+    // Drop attached image base64 before writing — it can be megabytes per turn
+    // and bloats the JSONL. Vision is a per-turn input, not durable context.
+    const { images: _img, ...rest } = message
+    lines.push(JSON.stringify({ type: 'message', message: rest } satisfies MessageLine))
   }
   writeFileSync(sessionPath(id), lines.join('\n') + '\n', 'utf-8')
 }

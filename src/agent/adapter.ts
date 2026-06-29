@@ -17,7 +17,9 @@ export function toOllamaMessages(history: MiiMessage[], system: string): OllamaM
 
   for (const msg of history) {
     if (typeof msg.content === 'string') {
-      out.push({ role: msg.role === 'system' ? 'system' : msg.role, content: msg.content })
+      const om: OllamaMessage = { role: msg.role === 'system' ? 'system' : msg.role, content: msg.content }
+      if (msg.role === 'user' && msg.images && msg.images.length > 0) om.images = msg.images
+      out.push(om)
       continue
     }
 
