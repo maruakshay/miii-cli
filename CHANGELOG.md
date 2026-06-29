@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.27](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.26...miii-agent-v0.1.27) (2026-06-29)
+
+
+### Features
+
+* background auto-update and leaked tool-call recovery ([71a1094](https://github.com/maruakshay/miii-cli/commit/71a109422ddff9ad5836e53333fd5a0a534f493b))
+* background auto-update and leaked tool-call recovery ([111dfab](https://github.com/maruakshay/miii-cli/commit/111dfabe183c89b2303cb781a85265709a23e09e))
+
 ## [0.1.26](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.25...miii-agent-v0.1.26) (2026-06-29)
 
 
