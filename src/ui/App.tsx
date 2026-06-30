@@ -17,6 +17,7 @@ import { ProviderPicker } from './ProviderPicker.js'
 import { SessionsView } from './SessionsView.js'
 import { CommandPalette } from './CommandPalette.js'
 import { persistSession, setSessionTitle, summarizeConversation, newSessionId, type SessionMeta } from '../session/store.js'
+import { setTerminalTitle, resetTerminalTitle } from './terminalTitle.js'
 import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
@@ -47,6 +48,10 @@ export function App() {
 
   // --- sessions ---
   const [sessionId, setSessionId] = useState(() => newSessionId())
+  // Live mirror of sessionId so async callbacks can check the *current* active
+  // session, not the one captured when they started.
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -74,6 +79,9 @@ export function App() {
     })
   }, [])
 
+  // Restore the terminal tab title when miii exits (component unmounts).
+  useEffect(() => resetTerminalTitle, [])
+
   // Tracks sessions whose LLM title has been generated, so we summarise once.
   const titledSessions = useRef<Set<string>>(new Set())
 
@@ -98,6 +106,8 @@ export function App() {
         try {
           const title = await summarizeConversation(model, snapshot)
           setSessionTitle(id, title)
+          // Reflect the summary in the terminal tab title, if still the active session.
+          if (id === sessionIdRef.current) setTerminalTitle(title)
         } catch { /* best-effort */ }
       })()
     }

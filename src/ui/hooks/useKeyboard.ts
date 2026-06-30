@@ -14,6 +14,7 @@ import { filteredCommands } from '../CommandPalette.js'
 import { parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
 import { toggleToolExpanded } from '../toolExpand.js'
+import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
 import {
   persistSession,
   listSessions,
@@ -344,6 +345,7 @@ export function useKeyboard(opts: KeyboardOptions) {
         setActiveToolResults([])
         setError(null)
         setSessionId(meta.id)
+        setTerminalTitle(meta.title)
         onResumeSession(meta.id)
         setNotice(`resumed · ${meta.title}`)
         setState('ready')
@@ -457,6 +459,7 @@ export function useKeyboard(opts: KeyboardOptions) {
           // a fresh session id and wipe the chat.
           if (agentHistory.length) setNotice('session saved')
           setSessionId(newSessionId())
+          resetTerminalTitle()
           hardClear()
           clearSession()
         } else if (trimmed === '/sessions') {

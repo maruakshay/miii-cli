@@ -45,4 +45,6 @@ export interface ChatOptions {
   num_ctx?: number
   keep_alive?: string
   signal?: AbortSignal
+  /** Enable model thinking/reasoning. Defaults to true for ollama. */
+  think?: boolean
 }
