@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.30](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.29...miii-agent-v0.1.30) (2026-07-02)
+
+
+### Bug Fixes
+
+* harden config/context/permissions and smooth first-run UX ([9a20ee5](https://github.com/maruakshay/miii-cli/commit/9a20ee5a033ef751f775f2d45e9895c424993c4b))
+* harden config/context/permissions and smooth first-run UX ([67f95e3](https://github.com/maruakshay/miii-cli/commit/67f95e3f7bd9de1a72d04eacfd207d1cc5604611))
+* **loop:** detect repeats before committing assistant turn ([c3c8251](https://github.com/maruakshay/miii-cli/commit/c3c8251d31c0b01f5b2345582e40b7de785f98c2))
+* **loop:** detect repeats before committing assistant turn ([dc9d8fc](https://github.com/maruakshay/miii-cli/commit/dc9d8fcf29edd1e6ad95243da7c3ad593086960b))
+
 ## [0.1.29](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.28...miii-agent-v0.1.29) (2026-06-29)
 
 
