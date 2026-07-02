@@ -1,6 +1,6 @@
 {
   "name": "miii-agent",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "description": "Cursor / Claude Code, but local. An offline AI pair-programmer in your terminal, powered by Ollama. Private by default, free forever.",
   "type": "module",
   "bin": {
