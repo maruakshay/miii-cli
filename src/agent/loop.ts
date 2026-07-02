@@ -260,6 +260,34 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     const blocks: ContentBlock[] = blocksFromOllama(text, tool_calls, toolNames)
     const tool_uses = blocks.filter((b): b is ToolUse => b.type === 'tool_use')
 
+    // Loop detection runs BEFORE the assistant message is committed to history.
+    // If we push first and then bail on a detected repeat, the persisted history
+    // ends on an assistant tool_use with no matching tool_result — which breaks
+    // the next request when the session resumes. Only genuine tool-use turns can
+    // loop here: a truncated call is handled below, and a no-tool turn produces no
+    // tool_use to leave dangling.
+    if (tool_uses.length > 0 && !truncated) {
+      const sig = JSON.stringify(
+        blocks.map((b) =>
+          b.type === 'tool_use'
+            ? { t: 'u', n: b.name, i: b.input }
+            : b.type === 'text'
+              ? { t: 't', x: b.text.trim() }
+              : b,
+        ),
+      )
+      if (sig === lastAssistantSig) {
+        repeatCount++
+        if (repeatCount >= 2) {
+          yield { type: 'error', message: 'Agent loop detected: assistant produced identical output 3 turns in a row' }
+          return history
+        }
+      } else {
+        repeatCount = 0
+        lastAssistantSig = sig
+      }
+    }
+
     history.push({ role: 'assistant', content: blocks })
 
     // Output hit the token cap mid-stream. Any tool call here has truncated
@@ -306,26 +334,6 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       endedCleanly = true
       yield { type: 'turn-end', stop_reason: 'end_turn' }
       break
-    }
-
-    const sig = JSON.stringify(
-      blocks.map((b) =>
-        b.type === 'tool_use'
-          ? { t: 'u', n: b.name, i: b.input }
-          : b.type === 'text'
-            ? { t: 't', x: b.text.trim() }
-            : b,
-      ),
-    )
-    if (sig === lastAssistantSig) {
-      repeatCount++
-      if (repeatCount >= 2) {
-        yield { type: 'error', message: 'Agent loop detected: assistant produced identical output 3 turns in a row' }
-        return history
-      }
-    } else {
-      repeatCount = 0
-      lastAssistantSig = sig
     }
 
     for (const u of tool_uses) yield { type: 'tool-use', block: u }
