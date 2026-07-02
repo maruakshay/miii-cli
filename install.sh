@@ -35,7 +35,11 @@ elif command -v sudo >/dev/null 2>&1; then
   warn "Global install needs elevated permissions — retrying with sudo."
   sudo npm i -g "${PKG}@latest"
 else
-  die "Install failed and sudo is unavailable. Fix your npm prefix or run as a user that can write to it."
+  warn "Global install failed and sudo is unavailable — likely your npm prefix isn't writable."
+  printf '%s\n' "${DIM}   Point npm at a user-owned prefix, then re-run this installer:${RESET}" >&2
+  printf '%s\n' "${DIM}     npm config set prefix \"\$HOME/.npm-global\"${RESET}" >&2
+  printf '%s\n' "${DIM}     export PATH=\"\$HOME/.npm-global/bin:\$PATH\"   # add to ~/.bashrc or ~/.zshrc${RESET}" >&2
+  die "Install failed."
 fi
 
 VERSION="$(miii --version 2>/dev/null || npm view "$PKG" version 2>/dev/null || echo '')"

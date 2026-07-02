@@ -3,7 +3,7 @@ import { render } from 'ink'
 import { createElement } from 'react'
 import { App } from './ui/App.js'
 import { cleanupSpill } from './tools/spill.js'
-import { setProvider, listProviders, type Provider } from './config.js'
+import { setProvider, listProviders, configError, type Provider } from './config.js'
 
 // Drop yesterday's spilled tool output before starting. Best-effort.
 cleanupSpill()
@@ -36,6 +36,11 @@ if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
   const { runEval } = await import('../eval/run.js')
   process.exit(await runEval(rest))
 } else {
+  // Warn about a malformed config BEFORE Ink mounts — once the TUI owns the
+  // terminal, a raw stderr write gets scrambled or painted over.
+  const cfgErr = configError()
+  if (cfgErr) console.error(cfgErr)
+
   // Restore the terminal tab title on any exit path (Ink's unmount cleanup
   // can be skipped on a hard signal).
   process.on('exit', () => { if (process.stdout.isTTY) process.stdout.write('\x1b]2;\x07') })

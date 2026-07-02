@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import type { Effort } from '../config.js'
+import type { Effort, ProviderType } from '../config.js'
 
 interface Props {
   models: string[]
@@ -7,13 +7,14 @@ interface Props {
   model: string | undefined
   host: string
   provider: string
+  providerType?: ProviderType
   effort: Effort
   query: string
   /** true on the initial forced pick (no model yet) — hides "esc back". */
   requireSelection?: boolean
 }
 
-export function ModelsView({ models, cursor, model, host, provider, effort, query, requireSelection }: Props) {
+export function ModelsView({ models, cursor, model, host, provider, providerType, effort, query, requireSelection }: Props) {
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Box flexDirection="column" marginBottom={1}>
@@ -29,13 +30,18 @@ export function ModelsView({ models, cursor, model, host, provider, effort, quer
       <Text dimColor>select model</Text>
       <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
         {models.length === 0 ? (
-          <Text dimColor>
-            {query
-              ? `no models match "${query}"`
-              : provider === 'lmstudio'
-                ? 'no models. load a model in LM Studio and start the server.'
-                : 'no models found.'}
-          </Text>
+          query ? (
+            <Text dimColor>{`no models match "${query}"`}</Text>
+          ) : provider === 'lmstudio' ? (
+            <Text dimColor>no models. load a model in LM Studio and start the server.</Text>
+          ) : providerType === 'ollama' ? (
+            <Box flexDirection="column">
+              <Text dimColor>no models installed. pull one, then relaunch:</Text>
+              <Text color="cyan">  ollama pull qwen2.5-coder:14b</Text>
+            </Box>
+          ) : (
+            <Text dimColor>{`no models found at ${host}. make sure the server is running with a model loaded.`}</Text>
+          )
         ) : (
           models.map((m, i) => {
             const sel = i === cursor

@@ -4,6 +4,9 @@ import { clipTailVisual, liveFrameRows, contentWidth } from './layout.js'
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
+// Muted chalk tone — soft off-white, quiet against the dim hint next to it.
+const CHALK = '#c9c7c0'
+
 let globalThinkingVisible = false
 const listeners = new Set<() => void>()
 
@@ -33,11 +36,13 @@ export function ThinkingBlock({ content }: { content?: string }) {
     return () => clearInterval(t)
   }, [])
 
+  const label = 'thinking'
+
   return (
     <Box flexDirection="column" marginLeft={2} marginBottom={1}>
       <Box>
-        <Text color="blue">{FRAMES[frame]} </Text>
-        <Text dimColor italic>thinking…</Text>
+        <Text color={CHALK}>{FRAMES[frame]} </Text>
+        <Text color={CHALK} italic>{label}</Text>
         <Text dimColor> · ctrl+t to {visible ? 'hide' : 'show'} thoughts</Text>
       </Box>
       {visible && content ? (() => {

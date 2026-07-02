@@ -28,13 +28,31 @@ Your code never leaves your disk. There's nothing to log in to. Pull a model, ty
 
 ## Try it in 30 seconds
 
+**macOS / Linux:**
+
 ```bash
 ollama pull qwen2.5-coder:14b   # any coding model works
 curl -fsSL https://raw.githubusercontent.com/maruakshay/miii-cli/main/install.sh | sh
 miii
 ```
 
-Prefer npm? `npm install -g miii-agent`.
+**Windows (PowerShell):**
+
+```powershell
+ollama pull qwen2.5-coder:14b
+irm https://raw.githubusercontent.com/maruakshay/miii-cli/main/install.ps1 | iex
+miii
+```
+
+Prefer npm? `npm install -g miii-agent` works on every platform.
+
+> **Install failing on permissions?** Your global npm prefix isn't writable. The
+> installer retries with `sudo` where available; otherwise point npm at a
+> user-owned prefix and re-run:
+> ```bash
+> npm config set prefix "$HOME/.npm-global"
+> export PATH="$HOME/.npm-global/bin:$PATH"   # add to ~/.bashrc or ~/.zshrc
+> ```
 
 Then just talk to it:
 

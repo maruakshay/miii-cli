@@ -71,7 +71,9 @@ export function subjectFor(toolName: string, input: unknown): string {
 /**
  * Wrapper programs that dispatch to a subcommand. For these we keep the first
  * two tokens (e.g. "npm run", "npx tsc") so the persisted rule scopes to that
- * subcommand rather than the whole program.
+ * subcommand rather than the whole program. `git` is included so an approval of
+ * "git commit" does not widen into "git *" — which would silently auto-allow
+ * "git reset --hard" / "git clean -fd" on later turns.
  */
 const WRAPPER_PROGRAMS = new Set([
   'npm',
@@ -85,18 +87,66 @@ const WRAPPER_PROGRAMS = new Set([
   'docker',
   'kubectl',
   'go',
+  'git',
+])
+
+/**
+ * Programs destructive enough that one "always" must never become a wildcard —
+ * we persist the exact command instead, so only that literal invocation is
+ * auto-allowed and anything else re-prompts.
+ */
+const NEVER_GENERALIZE = new Set([
+  'rm',
+  'rmdir',
+  'dd',
+  'mkfs',
+  'shred',
+  'truncate',
+  'shutdown',
+  'reboot',
+  'halt',
+  'poweroff',
+  'kill',
+  'killall',
+  'pkill',
+  'chmod',
+  'chown',
+  'mv',
+  'sudo',
+  'doas',
+])
+
+/**
+ * git subcommands that irreversibly discard work or rewrite history. Approving
+ * one of these must not widen to "git <sub> *" (e.g. "git push" → "git push
+ * --force"): persist the exact command so only that invocation is auto-allowed.
+ * Deliberately narrow — checkout/restore/branch are everyday operations and stay
+ * on the normal "git <sub> *" scoping so they don't nag on every variant.
+ */
+const DESTRUCTIVE_GIT_SUBCOMMANDS = new Set([
+  'reset',
+  'clean',
+  'push',
+  'rebase',
+  'filter-branch',
 ])
 
 /**
  * Turn a concrete command into a generalized glob to persist on "always".
- * "git commit -m '...'" → "git *", "npm run build" → "npm run *",
- * "npx tsc --noEmit" → "npx tsc *". Without this we would store the exact
- * literal command and re-prompt on the next slightly different invocation.
+ * "npm run build" → "npm run *", "npx tsc --noEmit" → "npx tsc *",
+ * "git commit -m '...'" → "git commit *". Destructive commands (rm, dd, sudo,
+ * "git reset", …) are NOT generalized — the exact command is persisted so a
+ * single approval can't blanket-authorize a whole dangerous program.
  */
 export function generalizeCommand(command: string): string {
-  const tokens = command.trim().split(/\s+/)
+  const trimmed = command.trim()
+  const tokens = trimmed.split(/\s+/)
   if (tokens.length === 0 || tokens[0] === '') return command
   const prog = tokens[0]
+  if (NEVER_GENERALIZE.has(prog)) return trimmed
+  if (prog === 'git' && tokens.length > 1 && DESTRUCTIVE_GIT_SUBCOMMANDS.has(tokens[1])) {
+    return trimmed
+  }
   const prefixLen = WRAPPER_PROGRAMS.has(prog) && tokens.length > 1 ? 2 : 1
   const prefix = tokens.slice(0, prefixLen).join(' ')
   return `${prefix} *`
