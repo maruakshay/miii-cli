@@ -14,7 +14,7 @@ export const run_bash: Tool<Input> = {
     type: 'object',
     properties: {
       command:    { type: 'string', description: 'Shell command to run' },
-      timeout_ms: { type: 'number', description: 'Timeout in ms (default 30000)' },
+      timeout_ms: { type: 'number', description: 'Timeout in ms (default 120000). Raise it for long builds/test suites.' },
     },
     required: ['command'],
   },
@@ -24,7 +24,7 @@ export const run_bash: Tool<Input> = {
       const shell = isWin ? 'cmd' : 'bash'
       const shellArgs = isWin ? ['/c', command] : ['-c', command]
       const { stdout, stderr, exitCode } = await execa(shell, shellArgs, {
-        timeout: timeout_ms ?? 30000,
+        timeout: timeout_ms ?? 120000,
         reject: false,
         all: false,
       })

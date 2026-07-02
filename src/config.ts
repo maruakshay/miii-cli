@@ -28,10 +28,22 @@ export interface Config {
   // When true (default), a detected newer release is installed in the background
   // on launch. Set false to keep the manual `miii update` flow only.
   autoUpdate?: boolean
+  // Upper bound on num_ctx sent to Ollama. Models advertise huge training
+  // windows (e.g. 131072); allocating that as KV cache OOMs / slows small
+  // machines. We cap the requested window at this value. Raise it if you have
+  // the VRAM/RAM. See DEFAULT_NUM_CTX_CAP.
+  numCtxCap?: number
   // legacy fields — migrated into `providers` on load
   ollamaHost?: string
   lmstudioHost?: string
 }
+
+// Default ceiling on the context window we ask Ollama to allocate. A model's
+// advertised max context (context_length) is a training limit, not a
+// suggestion — passing it verbatim as num_ctx makes Ollama size its KV cache to
+// the full window, which OOMs or falls back to slow CPU offload on laptops. Cap
+// the request here; override per-machine with `numCtxCap` in config.json.
+export const DEFAULT_NUM_CTX_CAP = 16384
 
 // num_predict caps the output tokens per turn. It must be large enough to hold a
 // full file written inline in a tool call — at 1k/2k whole-file writes (an HTML
@@ -74,6 +86,7 @@ function migrate(raw: Config): Config {
     providers,
     modelContexts: raw.modelContexts,
     autoUpdate: raw.autoUpdate,
+    numCtxCap: raw.numCtxCap,
   }
 }
 
@@ -94,6 +107,25 @@ function readRawConfig(): Config {
     return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Config
   } catch {
     return {}
+  }
+}
+
+// Detect a malformed config so the CLI can warn the user before it silently
+// falls back to defaults (which would wipe their model/provider/effort). Returns
+// a human-readable message, or null when the file is absent or valid. Must be
+// called BEFORE the Ink UI mounts — stderr written under a live TUI frame gets
+// scrambled or painted over. See cli.tsx.
+export function configError(): string | null {
+  if (!existsSync(CONFIG_PATH)) return null
+  try {
+    JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'))
+    return null
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return (
+      `miii: ignoring unreadable ${CONFIG_PATH} (${msg}).\n` +
+      `      Running with defaults. Fix the JSON or delete the file to reset.`
+    )
   }
 }
 

@@ -38,7 +38,6 @@ describe('globToRegExp', () => {
 
 describe('generalizeCommand', () => {
   it('keeps only the program for non-wrapper commands', () => {
-    expect(generalizeCommand("git commit -m 'x'")).toBe('git *')
     expect(generalizeCommand('node script.js')).toBe('node *')
   })
 
@@ -49,23 +48,65 @@ describe('generalizeCommand', () => {
     expect(generalizeCommand('brew list --versions')).toBe('brew list *')
   })
 
+  it('scopes git to its subcommand instead of the whole program', () => {
+    expect(generalizeCommand("git commit -m 'x'")).toBe('git commit *')
+    expect(generalizeCommand('git status -s')).toBe('git status *')
+  })
+
+  // Pins git into the two-token (wrapper) path. If a refactor drops git from
+  // WRAPPER_PROGRAMS, git would collapse to "git *" and this breaks loudly.
+  it('git is a wrapper program — never collapses to "git *"', () => {
+    expect(generalizeCommand('git commit -m x')).not.toBe('git *')
+    expect(generalizeCommand('git log --oneline')).toBe('git log *')
+  })
+
+  // Everyday git ops stay on normal subcommand scoping (not exact-match).
+  it('scopes non-destructive git subcommands rather than forcing exact', () => {
+    expect(generalizeCommand('git checkout main')).toBe('git checkout *')
+    expect(generalizeCommand('git restore src/a.ts')).toBe('git restore *')
+    expect(generalizeCommand('git branch -d feature')).toBe('git branch *')
+  })
+
   it('falls back to one token when a wrapper has no subcommand', () => {
     expect(generalizeCommand('npm')).toBe('npm *')
+    expect(generalizeCommand('git')).toBe('git *')
   })
 
   it('collapses repeated whitespace', () => {
-    expect(generalizeCommand('git   status')).toBe('git *')
+    expect(generalizeCommand('npm   run   build')).toBe('npm run *')
+  })
+
+  it('never generalizes destructive programs — persists the exact command', () => {
+    expect(generalizeCommand('rm -rf build')).toBe('rm -rf build')
+    expect(generalizeCommand('sudo apt install x')).toBe('sudo apt install x')
+    expect(generalizeCommand('dd if=/dev/zero of=disk')).toBe('dd if=/dev/zero of=disk')
+  })
+
+  it('never generalizes destructive git subcommands', () => {
+    expect(generalizeCommand('git reset --hard')).toBe('git reset --hard')
+    expect(generalizeCommand('git clean -fd')).toBe('git clean -fd')
+    expect(generalizeCommand('git push --force')).toBe('git push --force')
+  })
+
+  it('an approved git commit does NOT auto-allow git reset', () => {
+    const rule = generalizeCommand('git commit -m "a"')
+    expect(globToRegExp(rule).test('git commit -m "b"')).toBe(true)
+    expect(globToRegExp(rule).test('git reset --hard')).toBe(false)
   })
 
   it('generalizes the resulting glob to match later variants', () => {
-    expect(globToRegExp(generalizeCommand('git commit -m "a"')).test('git push origin')).toBe(true)
+    expect(globToRegExp(generalizeCommand('npm run build')).test('npm run test')).toBe(true)
     expect(globToRegExp(generalizeCommand('npm run build')).test('npm install x')).toBe(false)
   })
 })
 
 describe('patternToPersist', () => {
   it('generalizes run_bash commands', () => {
-    expect(patternToPersist('run_bash', "git commit -m 'x'")).toBe('git *')
+    expect(patternToPersist('run_bash', "git commit -m 'x'")).toBe('git commit *')
+  })
+
+  it('keeps destructive commands exact', () => {
+    expect(patternToPersist('run_bash', 'rm -rf node_modules')).toBe('rm -rf node_modules')
   })
 
   it('leaves path subjects untouched', () => {

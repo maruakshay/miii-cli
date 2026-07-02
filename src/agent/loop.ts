@@ -6,7 +6,7 @@ import { validateInput, exampleInput } from '../tools/validate.js'
 import { buildSystemPrompt } from '../prompt/system.js'
 import { loadProjectContext } from '../prompt/context.js'
 import { check, type PermissionContext } from '../permissions/policy.js'
-import { loadConfig, EFFORT_OPTIONS } from '../config.js'
+import { loadConfig, EFFORT_OPTIONS, DEFAULT_NUM_CTX_CAP } from '../config.js'
 import { HookBus } from '../hooks/bus.js'
 import {
   toOllamaMessages,
@@ -143,9 +143,16 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd))
   const ollamaTools = toOllamaTools(TOOLS)
   const toolNames = TOOLS.map((t) => t.name)
+  const cfg = loadConfig()
   // Effort drives temperature + output cap. high → num_predict -1 (unlimited),
   // which ollama.chat omits so the model runs to its own stop.
-  const effort = EFFORT_OPTIONS[loadConfig().effort ?? 'medium']
+  const effort = EFFORT_OPTIONS[cfg.effort ?? 'medium']
+  // Cap the requested context window so a model advertising a huge training
+  // window (e.g. 131072) doesn't make Ollama allocate a KV cache that OOMs the
+  // machine. Override with numCtxCap in config.json. Never raises a small window.
+  const ctxCap = cfg.numCtxCap && cfg.numCtxCap > 0 ? cfg.numCtxCap : DEFAULT_NUM_CTX_CAP
+  const cappedCtx =
+    typeof num_ctx === 'number' && num_ctx > 0 ? Math.min(num_ctx, ctxCap) : undefined
 
   const history: MiiMessage[] = [
     ...opts.history,
@@ -166,6 +173,11 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   let leakNudges = 0
   // Canonical paths the model has read (or written) this run — gates edit/write.
   const seenPaths = new Set<string>()
+
+  // Set when the model finishes on its own (end_turn). If we fall out of the
+  // loop with this still false, we hit MAX_TURNS mid-task — surface it instead
+  // of yielding a bare `done`, which reads as "completed successfully".
+  let endedCleanly = false
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let text = ''
@@ -188,7 +200,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     if (signal) signal.addEventListener('abort', () => ac.abort(), { once: true })
 
     try {
-      for await (const chunk of chat(model, toOllamaMessages(history, system), ollamaTools, { signal: composedSignal, num_ctx, num_predict: effort.num_predict, temperature: effort.temperature })) {
+      for await (const chunk of chat(model, toOllamaMessages(history, system), ollamaTools, { signal: composedSignal, num_ctx: cappedCtx, num_predict: effort.num_predict, temperature: effort.temperature })) {
         if (signal?.aborted) break
         if (chunk.content) {
           text += chunk.content
@@ -291,6 +303,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         yield { type: 'turn-end', stop_reason: 'tool_use' }
         continue
       }
+      endedCleanly = true
       yield { type: 'turn-end', stop_reason: 'end_turn' }
       break
     }
@@ -409,6 +422,12 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     yield { type: 'turn-end', stop_reason: 'tool_use' }
   }
 
+  if (!endedCleanly) {
+    yield {
+      type: 'error',
+      message: `Stopped after ${MAX_TURNS} tool-use turns — the task may be incomplete. Send another message to continue where it left off.`,
+    }
+  }
   yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens }
   return history
 }

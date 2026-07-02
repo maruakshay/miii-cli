@@ -247,6 +247,7 @@ export function App() {
           model={cfg.model}
           host={provEntry.baseUrl}
           provider={provName}
+          providerType={provEntry.type}
           effort={effort}
           query={pickerQuery}
           requireSelection={state === 'select-model'}
