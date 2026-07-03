@@ -15,6 +15,8 @@ export interface ToolResultBlock {
   tool_use_id: string
   content: string
   is_error?: boolean
+  /** Base64 images produced by the tool; surfaced to the model as a user message. */
+  images?: string[]
 }
 
 export type ContentBlock = TextBlock | ToolUse | ToolResultBlock

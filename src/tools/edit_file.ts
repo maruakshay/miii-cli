@@ -3,11 +3,18 @@ import { confinePath } from './paths.js'
 import { verifyHint } from './verifyHint.js'
 import type { Tool } from './types.js'
 
-interface Input {
-  path: string
+interface EditSpec {
   old_str: string
   new_str: string
+}
+
+interface Input {
+  path: string
+  old_str?: string
+  new_str?: string
   replace_all?: boolean
+  /** Batch mode: apply several exact-string edits atomically in one call. */
+  edits?: EditSpec[]
 }
 
 /** Cheap line-similarity: fraction of matching chars by position, ignoring leading/trailing ws. */
@@ -90,22 +97,96 @@ function nearMiss(src: string, old_str: string): string {
   return `\nClosest text in file (lines ${from + 1}-${to}):\n${ctx}`
 }
 
+/**
+ * Find the unique char range of `old_str` in `src`: exact match first, then a
+ * whitespace-tolerant fuzzy match. Used by batch mode, which has no replace_all
+ * — every edit must resolve to exactly one location. Returns the range or a
+ * reason string explaining why it couldn't (with the closest text on no match).
+ */
+function locate(src: string, old_str: string): [number, number] | { error: string } {
+  const first = src.indexOf(old_str)
+  if (first !== -1) {
+    if (src.indexOf(old_str, first + 1) !== -1) {
+      return { error: `old_str not unique — add surrounding context to disambiguate.` }
+    }
+    return [first, first + old_str.length]
+  }
+  const fuzzy = fuzzyRange(src, old_str)
+  if (fuzzy) return fuzzy
+  return { error: `old_str not found.${nearMiss(src, old_str)}` }
+}
+
+/**
+ * Batch edit: resolve every edit against the ORIGINAL buffer, reject overlaps,
+ * then apply right-to-left so earlier offsets stay valid. All-or-nothing — if
+ * any edit fails to resolve or two edits overlap, nothing is written.
+ */
+export function applyBatch(src: string, edits: EditSpec[]): { out: string; count: number } | { error: string } {
+  const ranges: Array<{ start: number; end: number; new_str: string }> = []
+  for (let i = 0; i < edits.length; i++) {
+    const { old_str, new_str } = edits[i]
+    if (typeof old_str !== 'string' || typeof new_str !== 'string') {
+      return { error: `edits[${i}] must have string old_str and new_str.` }
+    }
+    if (old_str === '') return { error: `edits[${i}].old_str is empty.` }
+    if (old_str === new_str) return { error: `edits[${i}] old_str and new_str are identical — nothing to change.` }
+    const r = locate(src, old_str)
+    if (!Array.isArray(r)) return { error: `edits[${i}]: ${r.error}` }
+    ranges.push({ start: r[0], end: r[1], new_str })
+  }
+  const sorted = [...ranges].sort((a, b) => a.start - b.start)
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].start < sorted[i - 1].end) {
+      return { error: `edits overlap in the file — split them into separate calls or widen the context.` }
+    }
+  }
+  let out = src
+  for (const r of [...ranges].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, r.start) + r.new_str + out.slice(r.end)
+  }
+  return { out, count: ranges.length }
+}
+
 export const edit_file: Tool<Input> = {
   name: 'edit_file',
   description:
-    'Replace an exact string in a file. old_str must be unique unless replace_all is set. On no match, returns the closest text in the file.',
+    'Replace an exact string in a file. old_str must be unique unless replace_all is set. On no match, returns the closest text in the file. To make several edits to one file at once, pass an `edits` array of {old_str,new_str} — they apply atomically (all or nothing).',
   input_schema: {
     type: 'object',
     properties: {
       path:        { type: 'string', description: 'File path' },
-      old_str:     { type: 'string', description: 'Exact text to replace (whitespace-sensitive)' },
-      new_str:     { type: 'string', description: 'Replacement text' },
+      old_str:     { type: 'string', description: 'Exact text to replace (whitespace-sensitive). Omit when using edits[].' },
+      new_str:     { type: 'string', description: 'Replacement text. Omit when using edits[].' },
       replace_all: { type: 'boolean', description: 'Replace every occurrence instead of requiring uniqueness' },
+      edits: {
+        type: 'array',
+        description: 'Batch mode: several edits applied atomically. Each old_str must be unique in the file. Alternative to old_str/new_str.',
+        items: {
+          type: 'object',
+          properties: {
+            old_str: { type: 'string', description: 'Exact text to replace (whitespace-sensitive)' },
+            new_str: { type: 'string', description: 'Replacement text' },
+          },
+          required: ['old_str', 'new_str'],
+        },
+      },
     },
-    required: ['path', 'old_str', 'new_str'],
+    required: ['path'],
   },
-  handler: ({ path, old_str, new_str, replace_all }) => {
+  handler: ({ path, old_str, new_str, replace_all, edits }) => {
     try {
+      // Batch mode: resolve + apply all edits atomically against the original.
+      if (Array.isArray(edits) && edits.length > 0) {
+        const abs = confinePath(path)
+        const src = readFileSync(abs, 'utf-8')
+        const res = applyBatch(src, edits)
+        if ('error' in res) return { content: `${res.error} (in ${path})`, is_error: true }
+        writeFileSync(abs, res.out, 'utf-8')
+        return { content: `Edited ${path} (${res.count} edits).${verifyHint(path)}` }
+      }
+      if (typeof old_str !== 'string' || typeof new_str !== 'string') {
+        return { content: `edit_file needs old_str and new_str (or an edits[] array) for ${path}.`, is_error: true }
+      }
       if (old_str === new_str) {
         return {
           content: `old_str and new_str are identical — nothing to change in ${path}. If the file is already correct, do NOT edit again: finish with the respond action and tell the user it is done.`,

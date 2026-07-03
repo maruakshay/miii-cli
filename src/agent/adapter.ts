@@ -43,6 +43,12 @@ export function toOllamaMessages(history: MiiMessage[], system: string): OllamaM
       const texts = msg.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       for (const tr of tool_results) {
         out.push({ role: 'tool', content: tr.content, tool_call_id: tr.tool_use_id })
+        // Ollama only honours `images` on user messages, not tool messages — so a
+        // tool that returned pixels (read_file on an image) gets a follow-up user
+        // message carrying the base64 for the vision model to actually see.
+        if (tr.images && tr.images.length > 0) {
+          out.push({ role: 'user', content: 'Image content from the previous tool result:', images: tr.images })
+        }
       }
       if (texts.length > 0) {
         out.push({ role: 'user', content: texts.map((t) => t.text).join('') })
