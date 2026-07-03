@@ -54,6 +54,9 @@ export function App() {
   sessionIdRef.current = sessionId
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  // Bumped on /clear and /new to remount ChatView's <Static> so the welcome
+  // banner reprints after the hard-clear (Ink won't otherwise reflush it).
+  const [logEpoch, setLogEpoch] = useState(0)
 
   // --- input bar ---
   const [input, setInput] = useState('')
@@ -200,7 +203,7 @@ export function App() {
     input, setInput, caret, setCaret, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId,
     onResumeSession: (id) => titledSessions.current.add(id),
-    sessions, setSessions, setNotice,
+    sessions, setSessions, setNotice, setLogEpoch,
     switchProvider,
   })
 
@@ -220,7 +223,7 @@ export function App() {
       {/* Pre-ready screens render the banner dynamically. In ready/chat mode the
           banner moves into ChatView's <Static> log (Ink prints Static above the
           live frame, so a dynamic banner here would sink below the scrollback). */}
-      {state !== 'ready' && (
+      {state !== 'ready' && state !== 'sessions' && state !== 'models' && (
         <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} updateAvailable={updateAvailable} updateStatus={updateStatus} />
       )}
 
@@ -240,7 +243,7 @@ export function App() {
         />
       )}
 
-      {(state === 'select-model' || state === 'models') && (
+      {state === 'select-model' && (
         <ModelsView
           models={filteredModels}
           cursor={cursor}
@@ -250,7 +253,7 @@ export function App() {
           providerType={provEntry.type}
           effort={effort}
           query={pickerQuery}
-          requireSelection={state === 'select-model'}
+          requireSelection
         />
       )}
 
@@ -263,11 +266,7 @@ export function App() {
         />
       )}
 
-      {state === 'sessions' && (
-        <SessionsView sessions={sessions} cursor={cursor} />
-      )}
-
-      {state === 'ready' && (
+      {(state === 'ready' || state === 'sessions' || state === 'models') && (
         <>
           {notice && (
             <Box marginLeft={2} marginBottom={1}>
@@ -286,13 +285,14 @@ export function App() {
             activeToolUses={agent.activeToolUses}
             activeToolResults={agent.activeToolResults}
             header={<WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} />}
+            logEpoch={logEpoch}
           />
 
-          {input.startsWith('/') && (
+          {state === 'ready' && input.startsWith('/') && (
             <CommandPalette filter={input} cursor={paletteCursor} />
           )}
 
-          {contextWarning !== null && (
+          {state === 'ready' && contextWarning !== null && (
             <Box marginLeft={2} marginBottom={1}>
               <Text color="yellow">
                 {`⚠ context ${contextWarning}% full — run /clear and start fresh`}
@@ -300,14 +300,37 @@ export function App() {
             </Box>
           )}
 
-          {!input.startsWith('/') && (() => {
+          {state === 'ready' && !input.startsWith('/') && (() => {
             const m = parseMention(input)
             if (!m) return null
             return <FilePicker matches={searchFiles(process.cwd(), m.query)} cursor={filePickerCursor} />
           })()}
 
-          <InputBar input={input} caret={caret} disabled={agent.busy} processingLabel={agent.processingLabel} />
-          {!agent.busy && (
+          {/* Pickers have their own inline controls, so they drop the input bar
+              entirely (avoids a stray "processing" prompt). */}
+          {state === 'ready' && (
+            <InputBar input={input} caret={caret} disabled={agent.busy} processingLabel={agent.processingLabel} />
+          )}
+
+          {/* Pickers render below the input bar (like the command palette) so the
+              single scrollback banner stays put — no duplicate header. */}
+          {state === 'sessions' && (
+            <SessionsView sessions={sessions} cursor={cursor} />
+          )}
+          {state === 'models' && (
+            <ModelsView
+              models={filteredModels}
+              cursor={cursor}
+              model={cfg.model}
+              host={provEntry.baseUrl}
+              provider={provName}
+              providerType={provEntry.type}
+              effort={effort}
+              query={pickerQuery}
+            />
+          )}
+
+          {state === 'ready' && !agent.busy && (
             <Box marginLeft={2} marginBottom={1}>
               <Text dimColor>
                 {providerDown

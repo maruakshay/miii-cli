@@ -32,7 +32,11 @@ export function ThinkingBlock({ content }: { content?: string }) {
   const visible = useThinkingVisible()
 
   useEffect(() => {
-    const t = setInterval(() => setFrame((f) => (f + 1) % FRAMES.length), 80)
+    // Match the agent's FLUSH_MS stream/think cadence. At 80ms the spinner and
+    // the 100ms flush beat against each other, so the tall live frame repaints on
+    // two unsynced clocks — visible shimmer. Aligning them collapses it to one
+    // repaint per tick.
+    const t = setInterval(() => setFrame((f) => (f + 1) % FRAMES.length), 100)
     return () => clearInterval(t)
   }, [])
 

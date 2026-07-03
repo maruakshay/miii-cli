@@ -181,6 +181,8 @@ interface KeyboardOptions {
   sessions: SessionMeta[]
   setSessions: (s: SessionMeta[]) => void
   setNotice: (s: string | null) => void
+  /** Bumped on /clear and /new to remount the <Static> log and reprint the banner. */
+  setLogEpoch: (fn: (n: number) => number) => void
 
   // provider switching
   switchProvider: (p: Provider) => void
@@ -193,7 +195,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     providers, pickerQuery, setPickerQuery,
     agent,
     input, setInput, caret, setCaret, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
-    sessionId, setSessionId, onResumeSession, sessions, setSessions, setNotice,
+    sessionId, setSessionId, onResumeSession, sessions, setSessions, setNotice, setLogEpoch,
     switchProvider,
   } = opts
 
@@ -228,6 +230,9 @@ export function useKeyboard(opts: KeyboardOptions) {
     setError(null)
     setNotice(null)
     clearPasteStore()
+    // Remount ChatView's <Static> so the welcome banner reprints on the freshly
+    // cleared screen; Ink otherwise treats it as already-flushed and skips it.
+    setLogEpoch((n) => n + 1)
   }
 
   const effort: Effort = cfg.effort ?? 'medium'
