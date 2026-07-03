@@ -16,6 +16,26 @@ function numbered(lines: string[], start: number): string {
     .join('\n')
 }
 
+// Raster formats a vision model can consume. SVG is intentionally excluded — it
+// is text, so it falls through to the normal text path (and is more useful read
+// as source anyway).
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'])
+// Base64 roughly quadruples size and rides in the prompt; refuse oversized images
+// rather than blow the context window.
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+/** Sniff the leading magic bytes so an image with a wrong/missing extension is still caught. */
+function looksImage(buf: Buffer): boolean {
+  if (buf.length < 4) return false
+  if (buf[0] === 0x89 && buf[1] === 0x50) return true // PNG
+  if (buf[0] === 0xff && buf[1] === 0xd8) return true // JPEG
+  if (buf[0] === 0x47 && buf[1] === 0x49) return true // GIF
+  if (buf[0] === 0x42 && buf[1] === 0x4d) return true // BMP
+  // WEBP: "RIFF"...."WEBP"
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return true
+  return false
+}
+
 export const read_file: Tool<Input> = {
   name: 'read_file',
   description:
@@ -33,6 +53,23 @@ export const read_file: Tool<Input> = {
     try {
       const MAX_CHARS = 200_000
       const buf = readFileSync(confinePath(path))
+
+      // Image: hand the raw pixels back as a base64 attachment for a vision model
+      // rather than refusing it as binary. Extension OR magic bytes qualifies.
+      const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+      if (IMAGE_EXT.has(ext) || looksImage(buf)) {
+        if (buf.length > MAX_IMAGE_BYTES) {
+          return {
+            content: `${path} is an image but too large to attach (${buf.length} bytes > ${MAX_IMAGE_BYTES}). Resize it first.`,
+            is_error: true,
+          }
+        }
+        return {
+          content: `[image ${path} — ${buf.length} bytes, attached for viewing]`,
+          images: [buf.toString('base64')],
+        }
+      }
+
       // Refuse binary — NUL byte in the head is the cheap, reliable signal.
       if (buf.subarray(0, 8000).includes(0)) {
         return { content: `${path} looks binary (${buf.length} bytes); not reading as text.`, is_error: true }

@@ -405,12 +405,13 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       try { await hooks?.firePre(use) } catch { /* hook error ignored */ }
       let r: ToolResultBlock
       try {
-        const out = await tool.handler(use.input)
+        const out = await tool.handler(use.input, { signal })
         r = {
           type: 'tool_result',
           tool_use_id: use.id,
           content: out.content,
           is_error: out.is_error,
+          ...(out.images && out.images.length > 0 ? { images: out.images } : {}),
         }
       } catch (err) {
         r = {

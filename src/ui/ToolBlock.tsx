@@ -215,15 +215,27 @@ export function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: Too
     return <FileEditBlock label="Write" path={input.path ?? ''} added={added} removed={0} previewLines={preview} />
   }
   if (use.name === 'edit_file' && !result?.is_error) {
-    const input = use.input as { path?: string; old_str?: string; new_str?: string }
-    const oldS = input.old_str ?? ''
-    const newS = input.new_str ?? ''
-    const added = countLines(newS)
-    const removed = countLines(oldS)
-    const preview: Array<{ sign: '+' | '-' | ' '; text: string }> = [
-      ...oldS.split('\n').map((t) => ({ sign: '-' as const, text: t })),
-      ...newS.split('\n').map((t) => ({ sign: '+' as const, text: t })),
-    ]
+    const input = use.input as {
+      path?: string
+      old_str?: string
+      new_str?: string
+      edits?: Array<{ old_str?: string; new_str?: string }>
+    }
+    // Batch mode carries an edits[]; single mode carries old_str/new_str. Fold
+    // both into one -/+ preview so the diff block renders either shape.
+    const pairs =
+      Array.isArray(input.edits) && input.edits.length > 0
+        ? input.edits.map((e) => ({ oldS: e.old_str ?? '', newS: e.new_str ?? '' }))
+        : [{ oldS: input.old_str ?? '', newS: input.new_str ?? '' }]
+    let added = 0
+    let removed = 0
+    const preview: Array<{ sign: '+' | '-' | ' '; text: string }> = []
+    for (const { oldS, newS } of pairs) {
+      added += countLines(newS)
+      removed += countLines(oldS)
+      preview.push(...oldS.split('\n').map((t) => ({ sign: '-' as const, text: t })))
+      preview.push(...newS.split('\n').map((t) => ({ sign: '+' as const, text: t })))
+    }
     return <FileEditBlock label="Update" path={input.path ?? ''} added={added} removed={removed} previewLines={preview} />
   }
   const { label, arg } = toolHeader(use)
