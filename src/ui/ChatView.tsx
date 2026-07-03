@@ -7,7 +7,7 @@ import { EMPTY_STATE_HINTS, EMPTY_STATE_TITLE } from './constants.js'
 import { UserMessage, AssistantMessage } from './Message.js'
 import { ToolUseLine } from './ToolBlock.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
-import { clipTail, liveFrameRows, contentWidth, estimateToolRows } from './layout.js'
+import { clipTail, clipTailVisual, visualHeight, liveFrameRows, contentWidth, estimateToolRows } from './layout.js'
 
 interface Props {
   messages: ChatMessage[]
@@ -23,6 +23,11 @@ interface Props {
   // Rendered once as the first line of the static scrollback log (e.g. the
   // welcome banner). Omitted by pre-ready error views so no banner prints.
   header?: ReactNode
+  // Bumped by /clear and /new. Ink's <Static> only writes each item once and
+  // tracks how many it has flushed, so after a hard-clear shrinks the log back
+  // to just the header it won't reprint it. Using this as the <Static> key
+  // remounts it (index resets to 0) so the header prints again on the clean screen.
+  logEpoch?: number
 }
 
 export function ChatView({
@@ -37,6 +42,7 @@ export function ChatView({
   activeToolUses,
   activeToolResults,
   header,
+  logEpoch = 0,
 }: Props) {
   const empty =
     messages.length === 0 && !streaming && !thinking && !pendingPermission && !error
@@ -64,8 +70,22 @@ export function ChatView({
   let streamNode: ReactNode = null
   let streamRows = 0
   if (streaming && streamingContent) {
-    const { text, clipped } = clipTail(renderMarkdownStreaming(streamingContent), liveBudget)
-    streamRows = text.split('\n').length + (clipped > 0 ? 1 : 0)
+    // Clip the RAW buffer to the live budget first, then parse markdown on just
+    // that tail. Parsing (marked + syntax highlight) is O(input); rendering the
+    // whole accumulated answer every 100ms flush made late flushes on long
+    // replies lag and stutter. Bounding the input to ~terminal height keeps each
+    // flush's cost constant regardless of total answer length.
+    const raw = clipTail(streamingContent, liveBudget)
+    // Second clip is by VISUAL rows, not logical lines: the rendered markdown is
+    // drawn in a `wrap="wrap"` box at contentWidth, so a long line occupies
+    // several terminal rows. Counting logical lines let the live frame exceed the
+    // budget and overflow the terminal, forcing Ink's full-screen clear — the
+    // flicker. Mirrors the thinking block's clipTailVisual sizing.
+    const width = contentWidth()
+    const rendered = clipTailVisual(renderMarkdownStreaming(raw.text), liveBudget, width)
+    const text = rendered.text
+    const clipped = raw.clipped + rendered.clipped
+    streamRows = visualHeight(text, width) + (clipped > 0 ? 1 : 0)
     streamNode = (
       <Box flexDirection="column" marginBottom={1}>
         {clipped > 0 && (
@@ -115,7 +135,7 @@ export function ChatView({
 
   return (
     <>
-      <Static items={log}>
+      <Static key={logEpoch} items={log}>
         {(item) =>
           item.key === 'header' ? (
             <Box key={item.key}>{item.node}</Box>

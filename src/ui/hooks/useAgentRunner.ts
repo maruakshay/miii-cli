@@ -167,14 +167,23 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
           case 'turn-end': {
             flushStream(true)
             flushThink(true)
-            setStreaming(false)
             if (ev.stop_reason === 'tool_use') {
+              // Tool turn: clearing `streaming` and committing the turn happen in
+              // the same synchronous tick, so React batches them into one repaint.
+              setStreaming(false)
               flushTurn(null)
               setThinking(true)
               thinkingAcc = ''
               setThinkingContent('')
               firstToken = true
             }
+            // Final turn (non-tool stop): DON'T drop `streaming` here. The commit
+            // (flushTurn with real tokens) can't run until the later 'done' event
+            // lands, and an `await` sits between. Clearing `streaming` now would
+            // paint one frame with the live stream gone but the message not yet in
+            // <Static> — a blank flash, then a full reprint. Leaving `streaming`
+            // true keeps the rendered tail on screen until the post-loop
+            // setStreaming(false)+flushTurn batch swaps it in atomically.
             break
           }
           case 'done': {

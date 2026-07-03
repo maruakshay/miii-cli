@@ -36,6 +36,26 @@ export function clipTail(rendered: string, max: number): { text: string; clipped
   return { text: lines.slice(-max).join('\n'), clipped: lines.length - max }
 }
 
+// Strip SGR/ANSI escapes so width is measured in VISIBLE columns. Rendered
+// markdown (marked-terminal + syntax highlight) embeds color codes that inflate
+// String#length; counting them as columns over-estimates height and mis-clips.
+const ANSI_RE = /\x1b\[[0-9;]*m/g
+export function stripAnsi(s: string): string {
+  return s.replace(ANSI_RE, '')
+}
+
+// Visible height (terminal rows) of already-rendered text at wrap `width`: each
+// logical line wraps to ceil(visibleLen / width) rows. ANSI codes are stripped
+// first so escape sequences aren't counted as columns.
+export function visualHeight(text: string, width: number): number {
+  const w = Math.max(1, width)
+  let rows = 0
+  for (const line of text.split('\n')) {
+    rows += Math.max(1, Math.ceil(stripAnsi(line).length / w))
+  }
+  return rows
+}
+
 // Clip text to the last lines that fit `maxRows` of VISUAL rows at the given
 // wrap `width` — long lines occupy multiple rows, so a plain line count
 // under-estimates height. Used by the thinking block: clipping by logical lines
@@ -48,7 +68,7 @@ export function clipTailVisual(
 ): { text: string; clipped: number } {
   const w = Math.max(1, width)
   const lines = content.split('\n')
-  const visualRows = (line: string) => Math.max(1, Math.ceil(line.length / w))
+  const visualRows = (line: string) => Math.max(1, Math.ceil(stripAnsi(line).length / w))
   let rows = 0
   let start = lines.length
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -73,9 +93,25 @@ export function liveFrameRows(): number {
 // budget — an overflowing live frame forces Ink's full-screen clear, which is the
 // flicker. The expanded (ctrl+o) view is the user's choice and is not budgeted.
 const COLLAPSED_LINES = 3
+// Visual height of a block of text: each logical line wraps to ceil(len/width)
+// terminal rows. Counting logical lines alone under-estimates a long single-line
+// bash/grep result, letting the live frame overflow the terminal — which forces
+// Ink's full-screen erase, the flicker. Mirrors clipTailVisual's row model.
+function visualRows(text: string, width: number, cap: number): number {
+  const w = Math.max(1, width)
+  let rows = 0
+  const lines = text.split('\n')
+  for (const line of lines) {
+    rows += Math.max(1, Math.ceil(line.length / w))
+    if (rows >= cap) return cap
+  }
+  return rows
+}
+
 export function estimateToolRows(use: ToolUseDisplay, result?: ToolResultDisplay): number {
   const input = (use.input ?? {}) as Record<string, unknown>
   const noErr = !result?.is_error
+  const w = contentWidth()
   // write/edit render a header + summary + (clipped) diff preview.
   if (use.name === 'write_file' && noErr) {
     const total = countLines(String(input.content ?? ''))
@@ -94,10 +130,12 @@ export function estimateToolRows(use: ToolUseDisplay, result?: ToolResultDisplay
       (use.name === 'run_bash' || use.name === 'grep' || use.name === 'glob' || result.is_error) &&
       lines.length > 1
     if (multi) {
-      const shown = Math.min(lines.length, COLLAPSED_LINES)
-      rows += 1 + shown + (lines.length > shown ? 1 : 0)
+      // Only the first COLLAPSED_LINES show; count their WRAPPED height so a
+      // long line isn't mis-budgeted as one row.
+      const shownLines = lines.slice(0, COLLAPSED_LINES).join('\n')
+      rows += 1 + visualRows(shownLines, w, COLLAPSED_LINES * 4) + (lines.length > COLLAPSED_LINES ? 1 : 0)
     } else {
-      rows += 1
+      rows += visualRows(lines[0] ?? '', w, 4)
     }
   }
   return rows

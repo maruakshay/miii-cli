@@ -14,7 +14,11 @@ export const InputBar = memo(function InputBar({ input, caret, disabled, process
   const [frame, setFrame] = useState(0)
   useEffect(() => {
     if (!disabled) return
-    const t = setInterval(() => setFrame((f) => (f + 1) % SPIN.length), 150)
+    // 200ms is a clean 2× of the 100ms stream flush (useAgentRunner FLUSH_MS):
+    // the two timers phase-lock instead of beating, so the live frame repaints
+    // on a steady cadence rather than at drifting 100/150ms intervals — the
+    // extra unsynced repaints were a visible flicker source.
+    const t = setInterval(() => setFrame((f) => (f + 1) % SPIN.length), 200)
     return () => clearInterval(t)
   }, [disabled])
 

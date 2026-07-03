@@ -1,7 +1,7 @@
 {
   "name": "miii-agent",
   "version": "0.1.30",
-  "description": "Cursor / Claude Code, but local. An offline AI pair-programmer in your terminal, powered by Ollama. Private by default, free forever.",
+  "description": "Local AI coding agent for your terminal — an open-source, offline alternative to Claude Code, Cursor, and GitHub Copilot, powered by Ollama. Private by default, free forever.",
   "type": "module",
   "bin": {
     "miii": "dist/cli.js"
@@ -52,7 +52,14 @@
     "pair-programming",
     "code-generation",
     "llama-cpp",
-    "lm-studio"
+    "lm-studio",
+    "copilot",
+    "copilot-alternative",
+    "cursor-alternative",
+    "claude-code",
+    "claude-code-alternative",
+    "developer-tools",
+    "qwen"
   ],
   "license": "MIT",
   "dependencies": {

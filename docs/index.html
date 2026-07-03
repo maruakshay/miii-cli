@@ -45,7 +45,7 @@
   code, kbd, .mono { font-family: var(--mono); }
   ::selection { background: rgba(99,91,255,.35); color: #fff; }
 
-  /* aurora — animated gradient field, Stripe-style */
+  /* aurora — animated gradient field */
   .aurora { position: fixed; inset: -20vh -10vw; z-index: -2; pointer-events: none; filter: blur(70px); opacity: .55; }
   .aurora span { position: absolute; border-radius: 50%; mix-blend-mode: screen; will-change: transform; }
   .b1 { width: 46vw; height: 46vw; left: 50%; top: -8vh; background: radial-gradient(circle, #635bff, transparent 65%); animation: drift1 22s ease-in-out infinite; }
@@ -54,7 +54,7 @@
   @keyframes drift1 { 0%,100%{transform:translate(-50%,0)} 50%{transform:translate(-42%,8vh)} }
   @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,6vh)} }
   @keyframes drift3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,10vh)} }
-  /* fine grid overlay for depth */
+  
   body::before {
     content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
     background-image: linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
@@ -63,20 +63,20 @@
   }
 
   /* nav */
-  nav { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(14px); background: rgba(7,11,22,.66); border-bottom: 1px solid var(--line-soft); }
-  nav .wrap { display: flex; align-items: center; gap: 24px; height: 62px; }
+  nav { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(18px); background: rgba(7,11,22,.75); border-bottom: 1px solid var(--line-soft); }
+  nav .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
   .brand { font-family: var(--mono); font-weight: 700; font-size: 18px; letter-spacing: -.5px; display: inline-flex; align-items: center; }
   .brand .cursor { color: var(--accent); animation: blink 1.2s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
   nav .links { margin-left: auto; display: flex; align-items: center; gap: 24px; font-size: 14px; }
-  nav .links a { color: var(--muted); }
+  nav .links a { color: var(--muted); transition: color .2s; }
   nav .links a:hover { color: var(--fg); }
   nav .links .ship { background: var(--grad); color: #fff; padding: 8px 16px; border-radius: 9px; font-weight: 600; box-shadow: 0 6px 20px rgba(77,141,255,.35); }
   nav .links .ship:hover { color: #fff; filter: brightness(1.08); }
   @media (max-width: 720px) { nav .links a:not(.ship) { display: none; } }
 
   /* hero */
-  header.hero { padding: 96px 0 88px; text-align: center; position: relative; }
+  header.hero { padding: 110px 0 80px; text-align: center; position: relative; }
   .pill { display: inline-flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12px; color: var(--accent-2); border: 1px solid var(--line); background: rgba(99,91,255,.08); padding: 6px 14px; border-radius: 999px; margin-bottom: 26px; }
   .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
   h1.title { font-size: clamp(42px, 8.4vw, 84px); line-height: 1.0; margin: 0 0 22px; letter-spacing: -2.5px; font-weight: 800; }
@@ -84,14 +84,15 @@
   .tagline { font-family: var(--mono); color: var(--accent-2); font-size: clamp(13px,2.2vw,17px); letter-spacing: 1px; margin-bottom: 20px; }
   .sub { font-size: clamp(16px,2.3vw,21px); color: var(--muted); max-width: 660px; margin: 0 auto 36px; }
   .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-  .btn { font-family: var(--mono); font-size: 15px; font-weight: 600; padding: 13px 24px; border-radius: 11px; border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 9px; cursor: pointer; transition: transform .18s cubic-bezier(.22,1,.36,1), filter .18s, border-color .18s; }
+  .btn { font-family: var(--mono); font-size: 15px; font-weight: 600; padding: 13px 24px; border-radius: 11px; border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 9px; cursor: pointer; transition: all .2s cubic-bezier(.22,1,.36,1); position: relative; overflow: hidden; }
   .btn:hover { transform: translateY(-2px); }
   .btn.primary { background: var(--grad); color: #fff; border-color: transparent; box-shadow: 0 10px 30px rgba(77,141,255,.4); }
-  .btn.primary:hover { filter: brightness(1.07); }
+  .btn.primary::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent); transform: translateX(-100%); transition: transform 0.6s; }
+  .btn.primary:hover::after { transform: translateX(100%); }
   .btn.ghost { background: rgba(255,255,255,.03); color: var(--fg); }
-  .btn.ghost:hover { border-color: var(--accent); }
+  .btn.ghost:hover { border-color: var(--accent); background: rgba(255,255,255,.06); }
 
-  /* hero showcase card */
+  /* showcase window */
   .showcase { margin: 64px auto 0; max-width: 760px; perspective: 1600px; }
   .win { text-align: left; background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 40px 100px -20px rgba(3,6,18,.9), 0 0 0 1px rgba(99,91,255,.08); transform: rotateX(7deg) translateY(0); transform-origin: top center; transition: transform .5s cubic-bezier(.22,1,.36,1); }
   .showcase:hover .win { transform: rotateX(0deg); }
@@ -99,8 +100,8 @@
   .win-bar .ledge { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
   .win-bar .name { font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .win-bar .meta { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--dim); }
-  .win-body { padding: 20px 22px; font-family: var(--mono); font-size: 13.5px; line-height: 1.85; }
-  .win-body .row { display: block; white-space: pre-wrap; }
+  .win-body { padding: 20px 22px; font-family: var(--mono); font-size: 13.5px; line-height: 1.85; min-height: 240px; }
+  .win-body .row { display: block; white-space: pre-wrap; margin-bottom: 4px; }
   .win-body .u { color: var(--fg); }
   .win-body .u .pr { color: var(--cyan); }
   .win-body .sys { color: var(--dim); }
@@ -126,7 +127,7 @@
   /* compare */
   .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   @media (max-width: 720px){ .compare { grid-template-columns: 1fr; } }
-  .col { border-radius: 18px; padding: 26px; border: 1px solid var(--line); }
+  .col { border-radius: 18px; padding: 26px; border: 1px solid var(--line); transition: border-color .2s; }
   .col.cloud { background: var(--panel-2); }
   .col.local { background: var(--grad-soft); border-color: rgba(99,91,255,.4); position: relative; }
   .col.local::after { content: ""; position: absolute; inset: 0; border-radius: 18px; padding: 1px; background: var(--grad); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: .5; pointer-events: none; }
@@ -141,9 +142,9 @@
 
   /* feature grid */
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 18px; }
-  .card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--line); border-radius: 16px; padding: 24px; transition: border-color .2s, transform .2s; position: relative; overflow: hidden; }
+  .card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--line); border-radius: 16px; padding: 24px; transition: all .3s cubic-bezier(.22,1,.36,1); position: relative; overflow: hidden; }
   .card::before { content: ""; position: absolute; inset: 0; background: radial-gradient(420px circle at var(--mx,50%) var(--my,0%), rgba(99,91,255,.14), transparent 45%); opacity: 0; transition: opacity .25s; pointer-events: none; }
-  .card:hover { border-color: rgba(99,91,255,.5); transform: translateY(-3px); }
+  .card:hover { border-color: rgba(99,91,255,.5); transform: translateY(-4px); box-shadow: 0 12px 30px rgba(3,6,18,.5); }
   .card:hover::before { opacity: 1; }
   .card .ico { width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center; font-size: 20px; margin-bottom: 16px; background: var(--grad-soft); border: 1px solid rgba(99,91,255,.3); }
   .card h3 { margin: 0 0 8px; font-size: 18px; }
@@ -233,6 +234,19 @@
   </div>
 </header>
 
+<div class="showcase">
+  <div class="win">
+    <div class="win-bar">
+      <div class="ledge"></div>
+      <span class="name">miii — zsh</span>
+      <span class="meta">local-first agent</span>
+    </div>
+    <div class="win-body" id="terminal-sim">
+      <!-- Content populated by JS -->
+    </div>
+  </div>
+</div>
+
 <div class="strip">
   <div class="wrap">
     <span class="lab">Runs on</span>
@@ -246,7 +260,7 @@
 <section id="advantage">
   <div class="wrap reveal">
     <p class="eyebrow">The local-first advantage</p>
-    <h2>Most AI tools rent you a cloud.<br />miii owns the machine.</h2>
+    <h2 style="margin-bottom: 12px;">Most AI tools rent you a cloud.<br />miii owns the machine.</h2>
     <p class="lead">
       Cloud agents are slow, metered, and ask you to trust your private codebase to a third-party server.
       miii flips the script: the model runs on your GPU and your code never touches the wire.
@@ -264,7 +278,7 @@
         <h3>▍ miii <span class="badge">local</span></h3>
         <div class="row2 first"><span class="k">code</span><span class="v">Never leaves your machine</span></div>
         <div class="row2"><span class="k">cost</span><span class="v">Free — runs on your hardware</span></div>
-        <div class="row2"><span class="k">setup</span><span class="v"><code>npm i -g miii-agent</code></span></div>
+        <div class="row2"><span class="k">setup</span><span class="v"><code style="color:var(--accent-2)">npm i -g miii-agent</code></span></div>
         <div class="row2"><span class="k">offline</span><span class="v">Yes</span></div>
         <div class="row2"><span class="k">latency</span><span class="v">Your GPU only</span></div>
       </div>
@@ -281,7 +295,7 @@
       <div class="card"><div class="ico">📖</div><h3>Reads &amp; writes code</h3><p><code>read_file</code>, <code>write_file</code>, <code>edit_file</code> — precise string-level edits with whitespace tolerance, no blind rewrites.</p></div>
       <div class="card"><div class="ico">🔎</div><h3>Searches your repo</h3><p><code>glob</code> + <code>grep</code> with context, type filters, multiline and count modes across the whole project.</p></div>
       <div class="card"><div class="ico">⚡</div><h3>Runs your shell</h3><p><code>run_bash</code> executes commands and tests, so the agent verifies outcomes instead of guessing.</p></div>
-      <div class="card"><div class="ico">🔒</div><h3>Permission-gated</h3><p>Every sensitive op is approved by you. "Always" rules persist to <code>~/.miii/permissions.json</code>. File tools are confined to your workspace.</p></div>
+      <div class="card"><div class="ico">🔒</div><h3>Permission-gated</h3><p>Every sensitive op is approved by you. "Always" rules persist to <code style="color:var(--accent-2)">~/.miii/permissions.json</code>. File tools are confined to your workspace.</p></div>
       <div class="card"><div class="ico">🧾</div><h3>Lossless output spill</h3><p>Huge tool outputs aren't truncated — they spill to disk with a head+tail preview, and the model pages the middle on demand.</p></div>
       <div class="card"><div class="ico">🩺</div><h3>Model doctor</h3><p><code>miii doctor</code> validates your local models against real engineering tasks and tells you which can actually drive the agent.</p></div>
     </div>
@@ -306,7 +320,6 @@ ollama pull qwen2.5-coder:14b</pre>
       <div class="step">
         <h3><span class="n">3</span> Run it</h3>
         <pre><span class="p">miii</span>
-
 <span class="c"># then just talk to it</span>
 <span class="p">&gt;</span> @src/server.ts add rate limiting
 <span class="p">&gt;</span> why are my tests failing?</pre>
@@ -348,8 +361,48 @@ ollama pull qwen2.5-coder:14b</pre>
 </footer>
 
 <script>
-// Changelog is generated at runtime: fetch CHANGELOG.md and parse it in the browser.
-// No build step, no baked HTML — the page reflects the repo's latest release automatically.
+// Dynamic Terminal Simulation
+(function () {
+  const sim = document.getElementById("terminal-sim");
+  const lines = [
+    { t: "miii", c: "u" },
+    { t: "> @src/api.ts implement health check", c: "u pr" },
+    { t: "Searching for api.ts...", c: "sys" },
+    { t: "Running read_file(src/api.ts)", c: "tool" },
+    { t: "Updating src/api.ts...", c: "tool" },
+    { t: "+ export const healthCheck = () => ({ status: 'ok' });", c: "add" },
+    { t: "Verifying change with npm test...", c: "sys" },
+    { t: "✓ all tests passed", c: "ok" },
+    { t: "I've added the health check endpoint to src/api.ts. All tests are green.", c: "u" },
+    { t: "> ", c: "u pr" }
+  ];
+
+  async function typeLine(lineObj) {
+    const row = document.createElement("div");
+    row.className = `row ${lineObj.c}`;
+    sim.appendChild(row);
+    
+    const text = lineObj.t;
+    for (let i = 0; i < text.length; i++) {
+      row.textContent += text[i];
+      await new Promise(r => setTimeout(r, 15 + Math.random() * 20));
+    }
+    if (lineObj.t === "> ") {
+       row.innerHTML += '<span class="caret"></span>';
+    }
+  }
+
+  async function runSim() {
+    for (const line of lines) {
+      await typeLine(line);
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 600));
+    }
+  }
+
+  runSim();
+})();
+
+// Changelog fetcher
 (function () {
   const REPO = "maruakshay/miii-cli";
   const RAW = `https://raw.githubusercontent.com/${REPO}/main/CHANGELOG.md`;
@@ -357,22 +410,15 @@ ollama pull qwen2.5-coder:14b</pre>
   const MAX = 8;
   const el = document.getElementById("timeline");
 
-  const esc = (s) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  // Split `text ([sha](url))` (the form release-please appends) into its parts.
   function split(line) {
     const m = line.match(/^(.*?)\s*\(\[([0-9a-f]{7,})\]\((https?:\/\/[^)]+)\)\)\s*$/);
-    return m
-      ? { text: m[1].trim(), sha: m[2] }
-      : { text: line.trim(), sha: null };
+    return m ? { text: m[1].trim(), sha: m[2] } : { text: line.trim(), sha: null };
   }
 
-  // Minimal inline markdown for changelog entries: **bold** and `code`.
   function li({ text, sha }) {
-    const html = esc(text)
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>");
+    const html = esc(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
     if (!sha) return `<li>${html}</li>`;
     return `<li>${html} <a class="sha" href="${COMMIT(sha)}">${sha.slice(0, 7)}</a></li>`;
   }
@@ -395,25 +441,17 @@ ollama pull qwen2.5-coder:14b</pre>
         const it = raw.match(/^\*\s+(.*)$/);
         if (it && cur) {
           const parts = split(it[1].trim());
-          if (seen.has(parts.text)) continue; // release-please double-lists same text
+          if (seen.has(parts.text)) continue;
           seen.add(parts.text);
           groups[cur].push(li(parts));
         }
       }
-      const sections = Object.entries(groups)
-        .filter(([, v]) => v.length)
-        .map(([name, items]) => {
+      const sections = Object.entries(groups).filter(([, v]) => v.length).map(([name, items]) => {
           const cls = /fix/i.test(name) ? "fix" : "feat";
           return `<div class="ch-group ${cls}"><h4>${esc(name)}</h4><ul>${items.join("")}</ul></div>`;
-        })
-        .join("");
+        }).join("");
       if (!sections) continue;
-      out.push(
-        `<article class="release">` +
-          `<header class="release-head"><span class="tag">v${esc(version)}</span>` +
-          (date ? `<time>${esc(date)}</time>` : "") +
-          `</header>${sections}</article>`
-      );
+      out.push(`<article class="release"><header class="release-head"><span class="tag">v${esc(version)}</span>${date ? `<time>${esc(date)}</time>` : ""}</header>${sections}</article>`);
     }
     return out;
   }
@@ -429,9 +467,7 @@ ollama pull qwen2.5-coder:14b</pre>
       });
     })
     .catch(() => {
-      el.innerHTML =
-        '<p class="ch-status err mono">Could not load the changelog. ' +
-        `<a href="https://github.com/${REPO}/blob/main/CHANGELOG.md">Read it on GitHub →</a></p>`;
+      el.innerHTML = '<p class="ch-status err mono">Could not load the changelog. <a href="https://github.com/' + REPO + '/blob/main/CHANGELOG.md">Read it on GitHub →</a></p>';
     });
 })();
 
@@ -451,6 +487,5 @@ ollama pull qwen2.5-coder:14b</pre>
   });
 })();
 </script>
-
 </body>
 </html>

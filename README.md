@@ -1,9 +1,9 @@
-<h1 align="center">miii</h1>
+<h1 align="center">miii — Local AI Coding Agent for Your Terminal</h1>
 
 <p align="center">
-  <strong>Cursor / Claude Code, but local.</strong><br>
-  An offline AI pair-programmer in your terminal, powered by Ollama.<br>
-  Private by default. Free forever.
+  <strong>An open-source, offline alternative to Claude Code, Cursor, and GitHub Copilot.</strong><br>
+  A private AI pair-programmer in your terminal, powered by Ollama and any local LLM.<br>
+  Private by default. Free forever. Works offline.
 </p>
 
 <p align="center">
@@ -15,26 +15,41 @@
 </p>
 
 <p align="center">
-  <img src="demo3.gif" alt="miii demo">
+  <img src="demo3.gif" alt="miii local AI coding agent terminal demo powered by Ollama">
+</p>
+
+<p align="center">
+  🔒 <strong>100% local</strong> — your code never leaves your machine &nbsp;·&nbsp;
+  💸 <strong>Free</strong> — no API keys, no per-token billing &nbsp;·&nbsp;
+  ⚡ <strong>Offline</strong> — runs on your own GPU
 </p>
 
 ---
 
-## What is this?
+## What is miii? — a local AI coding agent
 
 miii lives in your terminal and codes alongside you — reading files, writing features, running tests, fixing bugs. The twist: it runs on **your** hardware, powered by [Ollama](https://ollama.com) (or any local OpenAI-compatible server like [llama.cpp](https://github.com/ggml-org/llama.cpp) / [LM Studio](https://lmstudio.ai)).
 
-Your code never leaves your disk. There's nothing to log in to. Pull a model, type `miii`, go.
+Your code never leaves your disk. There's nothing to log in to. Pull a model, type `miii`, go. It's the open-source, offline answer to cloud coding assistants like Claude Code, Cursor, and GitHub Copilot.
 
-## Try it in 30 seconds
+## Install (macOS, Linux, Windows)
 
 **macOS / Linux:**
 
 ```bash
 ollama pull qwen2.5-coder:14b   # any coding model works
+```
+
+**Which model should I use?**
+- **Low VRAM (8GB):** `qwen2.5-coder:7b` (Fast, capable)
+- **Mid VRAM (16-24GB):** `qwen2.5-coder:14b` (Sweet spot)
+- **High VRAM (48GB+):** `qwen2.5-coder:32b` (Powerhouse)
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/maruakshay/miii-cli/main/install.sh | sh
 miii
 ```
+*(The installer downloads the pre-compiled binary and adds it to your local path)*
 
 **Windows (PowerShell):**
 
@@ -77,7 +92,7 @@ miii --version  # what you're running
 Opt out of background updates by adding `"autoUpdate": false` to `~/.miii/config.json`,
 or re-run the install script (`curl … | sh`) any time to update by hand.
 
-## Why local-first?
+## Why local-first? Private, free, offline
 
 Most "AI coding tools" are just wrappers around a cloud API — slow, metered, and they ship your private codebase to someone else's server.
 
@@ -89,13 +104,16 @@ Most "AI coding tools" are just wrappers around a cloud API — slow, metered, a
 | Offline      | No                    | Yes                          |
 | Latency      | Network + queue       | Your GPU only                |
 
-It doesn't just chat, either — it decomposes the problem, calls tools, and checks its own work before claiming victory.
+It doesn't just chat, either — it follows a **Plan $\rightarrow$ Act $\rightarrow$ Observe** loop:
+1. **Plan**: Decomposes the problem into a sequence of concrete steps.
+2. **Act**: Calls the necessary tools to gather context or modify code.
+3. **Observe**: Verifies the result and adjusts the plan until the goal is met.
 
 ## Five letters, five ideas
 
 **s**mall · **s**imple · **s**mart · **s**trategic · **s**emantic — a tiny codebase you can read in an afternoon, no config ceremony, plans before it acts, and operates on the *meaning* of your code, not blind text matching.
 
-## A few things that make it fun
+## Features
 
 - **🧪 `miii doctor`** — not every local model can drive an agent. Doctor runs your models through real engineering tasks and tells you which ones actually deliver.
   ```bash
@@ -189,6 +207,15 @@ The model pages through the middle with ranged `read_file` reads. Spill files ar
 <details>
 <summary><strong>Development</strong></summary>
 
+**Project Architecture:**
+```text
+src/
+ ├── agent/    # The core reasoning loop
+ ├── tools/    # Implementation of read/write/bash
+ ├── terminal/ # UI and input handling
+ └── config/   # Settings and provider logic
+```
+
 ```bash
 git clone https://github.com/maruakshay/miii-cli.git
 cd miii-cli
@@ -210,6 +237,26 @@ npm run build && npm link   # restore later with: npm install -g miii-agent
 </details>
 
 ---
+
+## FAQ
+
+**Does miii work without internet?**
+Yes. Once you've pulled a model with Ollama, miii runs fully offline. No network calls, no account, no cloud.
+
+**Is my code sent anywhere?**
+No. Every file read, edit, and model inference happens on your machine. Your codebase never leaves your disk.
+
+**Which model is best for coding?**
+Depends on VRAM: `qwen2.5-coder:7b` (8GB), `qwen2.5-coder:14b` (16–24GB, the sweet spot), `qwen2.5-coder:32b` (48GB+). Run `miii doctor` to grade your installed models on real engineering tasks.
+
+**How is miii different from Claude Code, Cursor, or GitHub Copilot?**
+Claude Code, Cursor, and Copilot are cloud services — metered, account-gated, and they ship your code to a third-party server. miii is open-source, free, and runs entirely on your hardware. Same terminal-agent workflow as Claude Code, but on your own local model.
+
+**How is it different from Continue.dev?**
+Continue.dev is an IDE extension. miii is a standalone terminal agent — no editor required — with a Plan → Act → Observe loop, permission-gated tools, and lossless output spill built in.
+
+**Do I need a GPU?**
+No, but it helps. Smaller models run on CPU; a GPU makes larger models fast enough for real work.
 
 ## Status
 
