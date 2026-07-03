@@ -1,6 +1,6 @@
 {
   "name": "miii-agent",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "description": "Local AI coding agent for your terminal — an open-source, offline alternative to Claude Code, Cursor, and GitHub Copilot, powered by Ollama. Private by default, free forever.",
   "type": "module",
   "bin": {

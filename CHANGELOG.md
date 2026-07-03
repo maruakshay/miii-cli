@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.31...miii-agent-v0.1.32) (2026-07-03)
+
+
+### Features
+
+* **tools:** batch edits, process-tree kill, abort propagation, image read ([#66](https://github.com/maruakshay/miii-cli/issues/66)) ([d12e593](https://github.com/maruakshay/miii-cli/commit/d12e59337e1f6f04f5cdf274db5e83e9f80ecad5))
+
 ## [0.1.31](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.30...miii-agent-v0.1.31) (2026-07-03)
 
 
