@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.30...miii-agent-v0.1.31) (2026-07-03)
+
+
+### Bug Fixes
+
+* publish package metadata refresh (SEO description + keywords) ([f16d105](https://github.com/maruakshay/miii-cli/commit/f16d1059af26ad567373c6a284073e3fb2bd897a))
+
 ## [0.1.30](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.29...miii-agent-v0.1.30) (2026-07-02)
 
 
