@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.34](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.33...miii-agent-v0.1.34) (2026-07-04)
+
+
+### Bug Fixes
+
+* surface empty/early-dropped Ollama streams ([#71](https://github.com/maruakshay/miii-cli/issues/71)) ([7db6168](https://github.com/maruakshay/miii-cli/commit/7db6168e9af902d9a96a8720fc78124986d512ba))
+
 ## [0.1.33](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.32...miii-agent-v0.1.33) (2026-07-04)
 
 
