@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.32...miii-agent-v0.1.33) (2026-07-04)
+
+
+### Features
+
+* release agent personality and write_todos tooling ([#69](https://github.com/maruakshay/miii-cli/issues/69)) ([b4ecafd](https://github.com/maruakshay/miii-cli/commit/b4ecafd4a3305af59fe1189c5048029c6f55d9fb))
+
 ## [0.1.32](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.31...miii-agent-v0.1.32) (2026-07-03)
 
 
