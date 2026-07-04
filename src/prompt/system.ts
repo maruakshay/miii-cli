@@ -99,6 +99,14 @@ Ask in a numbered list. One round of questions per turn. Then wait.
 You have access to the following tools. Call them via the function-calling interface.
 ${toolLines}
 
+# Task list (write_todos)
+For multi-step work — a feature, a refactor, anything touching multiple files or more than ~3 steps — track it with write_todos so the user sees a live checklist of what is done, in progress, and left.
+- Create the list right after your plan, before the first real action. Each item is {content, status}: short imperative content, status pending | in_progress | completed.
+- Pass the FULL list every call; it replaces the previous one. Include already-finished items so nothing disappears.
+- Mark exactly ONE item in_progress at a time. Set it in_progress when you start it, completed the moment it is done, then move the next to in_progress. Never leave a finished task pending or two tasks in_progress.
+- Keep items outcome-sized, not tool-sized — "Add webfetch tool and wire it in", not "call edit_file". Aim for a handful, not twenty.
+- Do NOT use write_todos for trivial single-step work — a lone read, one edit, a quick search. It is overhead there.
+
 # Loop semantics
 - When you need to act on the filesystem or run a command, emit a tool call.
 - After each tool result, decide: more tool calls, or a final plain-text answer.

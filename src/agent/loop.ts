@@ -49,7 +49,7 @@ function readGuard(name: string, input: unknown, seen: Set<string>): string | nu
   if (seen.has(abs)) return null
   if (name === 'write_file' && !existsSync(abs)) return null
   const verb = name === 'edit_file' ? 'edit' : 'overwrite'
-  return `Refusing to ${verb} ${p}: you have not read it this turn. Call read_file on ${p} first, then retry the ${name}.`
+  return `I won't ${verb} ${p} without seeing it first — I don't want to clobber something. Read it with read_file, then retry the ${name}.`
 }
 
 /**
@@ -345,7 +345,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         const r: ToolResultBlock = {
           type: 'tool_result',
           tool_use_id: use.id,
-          content: `Unknown tool: ${use.name}`,
+          content: `Unknown tool: ${use.name}. There's no tool by that name — check the spelling against the tools you were given.`,
           is_error: true,
         }
         results.push(r)
@@ -378,7 +378,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         const r: ToolResultBlock = {
           type: 'tool_result',
           tool_use_id: use.id,
-          content: `Permission denied for ${use.name}.`,
+          content: `Permission denied — the user chose not to run ${use.name}. Try a different approach, or ask them what they'd prefer.`,
           is_error: true,
         }
         results.push(r)

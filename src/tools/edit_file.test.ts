@@ -55,13 +55,13 @@ describe('applyBatch', () => {
       { old_str: 'z = 3', new_str: 'z = 9' },
     ])
     expect('error' in r).toBe(true)
-    if ('error' in r) expect(r.error).toMatch(/edits\[1\].*not found/)
+    if ('error' in r) expect(r.error).toMatch(/Edit #2.*couldn't find/)
   })
 
   it('rejects a non-unique old_str', () => {
     const r = applyBatch('dup\ndup\n', [{ old_str: 'dup', new_str: 'x' }])
     expect('error' in r).toBe(true)
-    if ('error' in r) expect(r.error).toMatch(/not unique/)
+    if ('error' in r) expect(r.error).toMatch(/more than one place/)
   })
 
   it('rejects overlapping edits', () => {
@@ -103,7 +103,7 @@ describe('edit_file handler', () => {
     const p = seed('a.txt', 'x x x')
     const out = await edit_file.handler({ path: p, old_str: 'x', new_str: 'y' })
     expect(out.is_error).toBe(true)
-    expect(out.content).toMatch(/not unique/)
+    expect(out.content).toMatch(/more than once/)
   })
 
   it('replaces every occurrence with replace_all', async () => {
@@ -118,7 +118,7 @@ describe('edit_file handler', () => {
     const p = seed('a.txt', 'abc')
     const out = await edit_file.handler({ path: p, old_str: 'abc', new_str: 'abc' })
     expect(out.is_error).toBe(true)
-    expect(out.content).toMatch(/identical/)
+    expect(out.content).toMatch(/nothing to change/)
   })
 
   it('falls back to a unique whitespace-tolerant match', async () => {
@@ -162,8 +162,8 @@ describe('edit_file handler', () => {
     const p = seed('a.txt', 'const alpha = 1\nconst beta = 2\n')
     const out = await edit_file.handler({ path: p, old_str: 'const alph = 1', new_str: 'x' })
     expect(out.is_error).toBe(true)
-    expect(out.content).toMatch(/not found/)
-    expect(out.content).toMatch(/Closest text/)
+    expect(out.content).toMatch(/couldn't find/)
+    expect(out.content).toMatch(/closest text/i)
     expect(out.content).toMatch(/const alpha = 1/)
   })
 })

@@ -6,7 +6,7 @@ export const PROVIDER_NAME = 'openai'
 const DEFAULT_CONTEXT = 4096
 
 export function notAvailable(entry: ProviderEntry): string {
-  return `Cannot reach OpenAI-compatible provider at ${entry.baseUrl}. Make sure the server is running and the baseUrl is correct.`
+  return `I couldn't reach the provider at ${entry.baseUrl}. Check that the server is running and the baseUrl is correct.`
 }
 
 function headers(entry: ProviderEntry): Record<string, string> {
@@ -33,7 +33,7 @@ export async function listModels(entry: ProviderEntry): Promise<string[]> {
     if (!res.ok) {
       let detail = ''
       try { detail = await res.text() } catch {}
-      throw new Error(`Provider error (HTTP ${res.status}): ${detail || res.statusText}`)
+      throw new Error(`The provider came back with an error (HTTP ${res.status}): ${detail || res.statusText}`)
     }
     const body = await res.json() as { data: Array<{ id: string }> }
     return body.data.map((m) => m.id)
@@ -146,13 +146,13 @@ export async function* chat(
       let detail = ''
       try { detail = await res.text() } catch {}
       if (res.status === 404) {
-        throw new Error(`Model "${model}" not found at ${entry.baseUrl}. Make sure it's available.`)
+        throw new Error(`The provider at ${entry.baseUrl} has no model called "${model}". Double-check the name, or pick another with /models.`)
       }
-      throw new Error(`Provider error (HTTP ${res.status}): ${detail || res.statusText}`)
+      throw new Error(`The provider came back with an error (HTTP ${res.status}): ${detail || res.statusText}`)
     }
 
     const reader = res.body?.getReader()
-    if (!reader) throw new Error('No response body')
+    if (!reader) throw new Error('The provider answered but sent no body to read.')
 
     const decoder = new TextDecoder()
     let buffer = ''
@@ -235,7 +235,7 @@ export async function* chat(
       throw new Error(notAvailable(entry))
     }
     if (timeoutSignal.aborted && !opts?.signal?.aborted) {
-      throw new Error(`Provider request timed out after ${TIMEOUT_MS / 1000}s. The model may still be loading or thinking.`)
+      throw new Error(`The provider didn't respond within ${TIMEOUT_MS / 1000}s, so I stopped waiting. The model may still be loading or thinking — give it another try.`)
     }
     throw err
   }

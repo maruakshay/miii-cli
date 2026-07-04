@@ -70,9 +70,9 @@ export const run_bash: Tool<Input> = {
       const out = all ?? ''
       const is_error = aborted || timedOut || exitCode !== 0
       const note = timedOut
-        ? `\n[timed out after ${timeout}ms — process tree killed]`
+        ? `\n[Timed out after ${timeout}ms, so I stopped the command and everything it started. Raise timeout_ms for long builds or test suites.]`
         : aborted
-          ? `\n[aborted — process tree killed]`
+          ? `\n[Cancelled — I stopped the command and everything it started.]`
           : ''
       const body = out || (is_error ? `(no output)` : '')
       const content = `${spillIfLarge(body, 'command output')}\n[exit ${exitCode ?? 'killed'}]${note}`

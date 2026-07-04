@@ -6,6 +6,7 @@ import { write_file } from './write_file.js'
 import { run_bash } from './run_bash.js'
 import { grep } from './grep.js'
 import { glob } from './glob.js'
+import { write_todos } from './write_todos.js'
 
 export const TOOLS: Tool[] = [
   edit_file as unknown as Tool,
@@ -14,6 +15,7 @@ export const TOOLS: Tool[] = [
   run_bash as unknown as Tool,
   grep as unknown as Tool,
   glob as unknown as Tool,
+  write_todos as unknown as Tool,
 ]
 
 export function getTool(name: string): Tool | undefined {

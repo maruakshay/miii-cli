@@ -46,8 +46,8 @@ export function spillIfLarge(full: string, label = 'output', budget = INLINE_BUD
   const tail = budget - head
   const preview = full.slice(0, head) + '\n…\n' + full.slice(-tail)
   const notice = path
-    ? `[${label} truncated: ${full.length} bytes. Full output at ${path} — read it with read_file offset/limit to see the elided middle.]`
-    : `[${label} truncated to ${budget} bytes; spill to disk failed, middle is lost.]`
+    ? `[This ${label} was long (${full.length} bytes), so I'm showing the start and end. The full text is saved at ${path} — read it with read_file offset/limit to see the middle.]`
+    : `[This ${label} was too long to show in full, and I couldn't save the rest to disk, so the middle is missing.]`
   return `${preview}\n${notice}`
 }
 

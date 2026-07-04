@@ -94,7 +94,7 @@ function nearMiss(src: string, old_str: string): string {
     .slice(from, to)
     .map((l, i) => `${String(from + i + 1).padStart(width, ' ')}\t${l}`)
     .join('\n')
-  return `\nClosest text in file (lines ${from + 1}-${to}):\n${ctx}`
+  return `\nHere's the closest text I could find (lines ${from + 1}-${to}) — copy it exactly:\n${ctx}`
 }
 
 /**
@@ -107,13 +107,13 @@ function locate(src: string, old_str: string): [number, number] | { error: strin
   const first = src.indexOf(old_str)
   if (first !== -1) {
     if (src.indexOf(old_str, first + 1) !== -1) {
-      return { error: `old_str not unique — add surrounding context to disambiguate.` }
+      return { error: `That text shows up in more than one place, so I can't tell which one you mean. Add a line or two around it to make it unique.` }
     }
     return [first, first + old_str.length]
   }
   const fuzzy = fuzzyRange(src, old_str)
   if (fuzzy) return fuzzy
-  return { error: `old_str not found.${nearMiss(src, old_str)}` }
+  return { error: `I couldn't find that text — it may differ by whitespace or a stray character.${nearMiss(src, old_str)}` }
 }
 
 /**
@@ -126,18 +126,18 @@ export function applyBatch(src: string, edits: EditSpec[]): { out: string; count
   for (let i = 0; i < edits.length; i++) {
     const { old_str, new_str } = edits[i]
     if (typeof old_str !== 'string' || typeof new_str !== 'string') {
-      return { error: `edits[${i}] must have string old_str and new_str.` }
+      return { error: `Edit #${i + 1} is missing text — each edit needs both an old_str and a new_str string.` }
     }
-    if (old_str === '') return { error: `edits[${i}].old_str is empty.` }
-    if (old_str === new_str) return { error: `edits[${i}] old_str and new_str are identical — nothing to change.` }
+    if (old_str === '') return { error: `Edit #${i + 1} has an empty old_str, so there's nothing to look for. Give it the exact text you want to replace.` }
+    if (old_str === new_str) return { error: `Edit #${i + 1} has the same old_str and new_str, so it wouldn't change anything.` }
     const r = locate(src, old_str)
-    if (!Array.isArray(r)) return { error: `edits[${i}]: ${r.error}` }
+    if (!Array.isArray(r)) return { error: `Edit #${i + 1}: ${r.error}` }
     ranges.push({ start: r[0], end: r[1], new_str })
   }
   const sorted = [...ranges].sort((a, b) => a.start - b.start)
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i].start < sorted[i - 1].end) {
-      return { error: `edits overlap in the file — split them into separate calls or widen the context.` }
+      return { error: `Two of these edits touch the same spot, so I can't apply them together. Split them into separate calls, or widen each old_str so they don't overlap.` }
     }
   }
   let out = src
@@ -185,11 +185,11 @@ export const edit_file: Tool<Input> = {
         return { content: `Edited ${path} (${res.count} edits).${verifyHint(path)}` }
       }
       if (typeof old_str !== 'string' || typeof new_str !== 'string') {
-        return { content: `edit_file needs old_str and new_str (or an edits[] array) for ${path}.`, is_error: true }
+        return { content: `To edit ${path} I need either an old_str/new_str pair or an edits[] array — neither came through.`, is_error: true }
       }
       if (old_str === new_str) {
         return {
-          content: `old_str and new_str are identical — nothing to change in ${path}. If the file is already correct, do NOT edit again: finish with the respond action and tell the user it is done.`,
+          content: `old_str and new_str are the same, so there's nothing to change in ${path}. If the file is already correct, don't edit it again — finish with the respond action and tell the user it's done.`,
           is_error: true,
         }
       }
@@ -207,12 +207,12 @@ export const edit_file: Tool<Input> = {
             return { content: `Edited ${path} (whitespace-tolerant match).${verifyHint(path)}` }
           }
         }
-        return { content: `old_str not found in ${path}.${nearMiss(src, old_str)}`, is_error: true }
+        return { content: `I couldn't find that text in ${path} — it may differ by whitespace or a stray character.${nearMiss(src, old_str)}`, is_error: true }
       }
       const all = replace_all === true
       if (!all && src.indexOf(old_str, first + 1) !== -1) {
         return {
-          content: `old_str not unique in ${path}. Add surrounding context to disambiguate, or set replace_all.`,
+          content: `That text appears more than once in ${path}, so I don't know which one to change. Add a line or two around it to single it out, or set replace_all to change them all.`,
           is_error: true,
         }
       }
