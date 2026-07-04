@@ -60,7 +60,7 @@ export const read_file: Tool<Input> = {
       if (IMAGE_EXT.has(ext) || looksImage(buf)) {
         if (buf.length > MAX_IMAGE_BYTES) {
           return {
-            content: `${path} is an image but too large to attach (${buf.length} bytes > ${MAX_IMAGE_BYTES}). Resize it first.`,
+            content: `${path} is an image, but at ${buf.length} bytes it's too big to attach (limit is ${MAX_IMAGE_BYTES}). Resize it and try again.`,
             is_error: true,
           }
         }
@@ -72,7 +72,7 @@ export const read_file: Tool<Input> = {
 
       // Refuse binary — NUL byte in the head is the cheap, reliable signal.
       if (buf.subarray(0, 8000).includes(0)) {
-        return { content: `${path} looks binary (${buf.length} bytes); not reading as text.`, is_error: true }
+        return { content: `${path} looks like a binary file (${buf.length} bytes), so I'm not reading it as text.`, is_error: true }
       }
       // Normalize CRLF so the \r doesn't ride along on every numbered line.
       const raw = buf.toString('utf-8').replace(/\r\n/g, '\n')
@@ -86,7 +86,7 @@ export const read_file: Tool<Input> = {
 
       let body = numbered(slice, start)
       if (body.length > MAX_CHARS) {
-        body = body.slice(0, MAX_CHARS) + `\n[truncated: output exceeded ${MAX_CHARS} chars — use offset/limit]`
+        body = body.slice(0, MAX_CHARS) + `\n[There's more — this hit the ${MAX_CHARS}-char limit. Use offset/limit to read the rest.]`
       }
       if (ranged) {
         const end = start - 1 + slice.length

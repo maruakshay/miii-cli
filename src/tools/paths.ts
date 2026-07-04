@@ -22,7 +22,7 @@ function isUnder(parent: string, child: string): boolean {
  */
 export function confinePath(p: string): string {
   if (typeof p !== 'string' || p.length === 0) {
-    throw new Error('Path is required.')
+    throw new Error('I need a file path here, but none was given.')
   }
   const root = process.cwd()
   const abs = resolve(root, p)
@@ -31,5 +31,5 @@ export function confinePath(p: string): string {
   if (isUnder(root, abs) || isUnder(SPILL_DIR, abs)) {
     return abs
   }
-  throw new Error(`Path "${p}" is outside the working directory (${root}). Access denied.`)
+  throw new Error(`"${p}" sits outside the working directory (${root}), so I can't touch it. Stay within the project folder.`)
 }

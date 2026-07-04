@@ -99,8 +99,9 @@ export const grep: Tool<Input> = {
       const lines = (res.stdout ?? '').split('\n').slice(0, limit)
       const out = lines.join('\n')
       const code = res.exitCode ?? 0
-      if (!out && code === 1) return { content: 'No matches.' }
-      return { content: out || res.stderr || 'No matches.', is_error: code > 1 }
+      const noMatch = `Nothing matched "${pattern}". Try a looser pattern, case_insensitive, or a wider path.`
+      if (!out && code === 1) return { content: noMatch }
+      return { content: out || res.stderr || noMatch, is_error: code > 1 }
     } catch (err) {
       return { content: err instanceof Error ? err.message : String(err), is_error: true }
     }

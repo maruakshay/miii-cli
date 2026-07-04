@@ -68,5 +68,5 @@ export function validateInput(schema: JsonSchema, input: unknown): string | null
   const issues = result.error.issues
     .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
     .join('; ')
-  return `Invalid arguments: ${issues}`
+  return `Some arguments didn't look right: ${issues}`
 }

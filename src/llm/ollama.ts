@@ -5,8 +5,8 @@ import type { OllamaMessage, OllamaTool, ChatChunk, ChatOptions } from './types.
 
 export const PROVIDER_NAME = 'ollama'
 export const NOT_INSTALLED =
-  'Ollama is not installed. Install it with: npm i -g ollama\nOr download from https://ollama.com/download'
-const NOT_RUNNING = 'Ollama is not running. Start it with: ollama serve'
+  "I can't find Ollama on this machine. Install it with: npm i -g ollama\nOr download it from https://ollama.com/download"
+const NOT_RUNNING = "Ollama isn't running, so I can't reach it. Start it with: ollama serve"
 
 function makeClient(entry: ProviderEntry, signal?: AbortSignal): Ollama {
   const opts: ConstructorParameters<typeof Ollama>[0] = { host: entry.baseUrl }
@@ -94,7 +94,7 @@ export async function modelContext(entry: ProviderEntry, model: string): Promise
     }
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('unknown model')) {
-      throw new Error(`Model "${model}" not found. Run: ollama pull ${model}`)
+      throw new Error(`I don't see a model called "${model}" on Ollama. Pull it first with: ollama pull ${model}`)
     }
     throw err
   }
@@ -154,7 +154,7 @@ export async function* chat(
     }
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('unknown model')) {
-      throw new Error(`Model "${model}" not found. Run: ollama pull ${model}`)
+      throw new Error(`I don't see a model called "${model}" on Ollama. Pull it first with: ollama pull ${model}`)
     }
     throw err
   }

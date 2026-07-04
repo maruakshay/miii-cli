@@ -14,6 +14,7 @@ export const TOOL_LABEL: Record<string, string> = {
   run_bash: 'Bash',
   glob: 'Glob',
   grep: 'Grep',
+  write_todos: 'Todos',
 }
 
 // hljs language name keyed by file extension; undefined = render plain (no highlight).
@@ -106,6 +107,43 @@ function FileEditBlock({
           <Text dimColor>… {extra} more lines · ctrl+o to expand</Text>
         </Box>
       )}
+    </Box>
+  )
+}
+
+type TodoStatus = 'pending' | 'in_progress' | 'completed'
+type TodoItem = { content: string; status: TodoStatus }
+
+// Live task checklist rendered like a kanban board: every item shows its column
+// (done / in progress / todo) so the user can see progress at a glance. The list
+// lives in the tool's input, redrawn in full on each call.
+function TodoBlock({ todos }: { todos: TodoItem[] }) {
+  const done = todos.filter((t) => t.status === 'completed').length
+  const doing = todos.filter((t) => t.status === 'in_progress').length
+  const glyph: Record<TodoStatus, string> = { completed: '✔', in_progress: '▶', pending: '○' }
+  const color: Record<TodoStatus, string> = { completed: 'green', in_progress: 'yellow', pending: 'gray' }
+  return (
+    <Box flexDirection="column" marginLeft={2}>
+      <Box>
+        <Text color="green">● </Text>
+        <Text color="white">Todos </Text>
+        <Text dimColor>
+          ({done}/{todos.length} done{doing > 0 ? `, ${doing} in progress` : ''})
+        </Text>
+      </Box>
+      {todos.map((t, i) => (
+        <Box key={i} marginLeft={4}>
+          <Text color={color[t.status]}>{glyph[t.status]} </Text>
+          <Text
+            color={t.status === 'in_progress' ? 'yellow' : undefined}
+            dimColor={t.status !== 'in_progress'}
+            strikethrough={t.status === 'completed'}
+            bold={t.status === 'in_progress'}
+          >
+            {t.content}
+          </Text>
+        </Box>
+      ))}
     </Box>
   )
 }
@@ -207,6 +245,10 @@ function ToolResultBlock({ result, toolName }: { result: ToolResultDisplay; tool
 }
 
 export function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: ToolResultDisplay }) {
+  if (use.name === 'write_todos' && !result?.is_error) {
+    const todos = (use.input as { todos?: TodoItem[] }).todos
+    if (Array.isArray(todos) && todos.length > 0) return <TodoBlock todos={todos} />
+  }
   if (use.name === 'write_file' && !result?.is_error) {
     const input = use.input as { path?: string; content?: string }
     const content = input.content ?? ''

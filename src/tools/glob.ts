@@ -79,7 +79,7 @@ export const glob: Tool<Input> = {
         res = await tryFind()
       }
       const all = (res.stdout ?? '').split('\n').filter(Boolean)
-      if (all.length === 0) return { content: 'No files matched.' }
+      if (all.length === 0) return { content: `Nothing matched "${pattern}". Try a broader pattern or a different path.` }
       const lines = byMtimeDesc(all).slice(0, limit)
       return { content: lines.join('\n') }
     } catch (err) {
