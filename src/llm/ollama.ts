@@ -158,9 +158,18 @@ export async function* chat(
     }
     throw err
   }
+  // Track whether the stream produced any real signal (content, thinking, or a
+  // tool call) before it dropped. Only a late drop — after we already have
+  // output — is safe to treat as a clean end. An early drop with nothing yielded
+  // is a genuine failure (model unloaded / OOM / crashed mid-request) and must
+  // surface, not synthesize a blank `done` that ends the turn silently.
+  let sawOutput = false
   try {
     for await (const chunk of stream) {
       if (signal?.aborted) break
+      if (chunk.message.content || (chunk.message as { thinking?: string }).thinking || (chunk.message.tool_calls?.length ?? 0) > 0) {
+        sawOutput = true
+      }
       yield {
         content: stripHarmony(chunk.message.content),
         thinking: stripHarmony((chunk.message as { thinking?: string }).thinking),
@@ -180,13 +189,22 @@ export async function* chat(
     }
     // Cloud Ollama endpoints sometimes close the stream after emitting all
     // content but without a final `done:true` chunk. The ollama SDK treats that
-    // as fatal (AbortableAsyncIterator throws this exact message). We already
-    // have the content, so treat it as a clean end-of-turn: synthesize a done
-    // chunk (token counts unknown → 0) instead of surfacing a red error.
+    // as fatal (AbortableAsyncIterator throws this exact message). If we already
+    // got output, treat it as a clean end-of-turn: synthesize a done chunk (token
+    // counts unknown → 0) instead of surfacing a red error. But an EARLY drop
+    // with nothing yielded is a real failure (model unloaded / OOM / crashed) —
+    // re-throw so it surfaces instead of ending the turn silently.
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.includes('Did not receive done or success response in stream')) {
-      yield { content: '', done: true, prompt_eval_count: 0, eval_count: 0 }
-      return
+      if (sawOutput) {
+        yield { content: '', done: true, prompt_eval_count: 0, eval_count: 0 }
+        return
+      }
+      throw new Error(
+        'Ollama closed the stream before sending any output — the model likely ' +
+        'unloaded, ran out of memory, or crashed mid-request. Check `ollama ps`, ' +
+        'then retry or switch to a smaller model.',
+      )
     }
     throw err
   } finally {
