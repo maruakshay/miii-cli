@@ -331,6 +331,22 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         yield { type: 'turn-end', stop_reason: 'tool_use' }
         continue
       }
+      // Turn produced literally nothing — no visible text and no tool call. This
+      // is not a clean end: it usually means the model returned an empty response
+      // (stream dropped mid-request, or the output cap was spent entirely on
+      // hidden thinking tokens). Ending silently here looks to the user like the
+      // run just aborted with no reason. Surface it instead of a bare end_turn.
+      if (assistantText.trim() === '') {
+        yield {
+          type: 'error',
+          message:
+            'The model returned an empty response — likely unloaded/OOM mid-stream or the ' +
+            'output cap was consumed by thinking before any answer. Retry, switch models, or ' +
+            'lower the context/effort.',
+        }
+        yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens }
+        return history
+      }
       endedCleanly = true
       yield { type: 'turn-end', stop_reason: 'end_turn' }
       break
