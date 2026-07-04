@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { write_todos } from './write_todos.js'
+import type { ToolResult } from './types.js'
 
-const run = (input: unknown) => write_todos.handler(input as Parameters<typeof write_todos.handler>[0])
+// write_todos.handler is synchronous; the Tool type widens its return to
+// ToolResult | Promise<ToolResult>, so narrow it back here.
+const run = (input: unknown) =>
+  write_todos.handler(input as Parameters<typeof write_todos.handler>[0]) as ToolResult
 
 describe('write_todos', () => {
   it('renders a kanban-style list with a done count', () => {
