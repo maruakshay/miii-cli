@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.35](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.34...miii-agent-v0.1.35) (2026-09-05)
+
+
+### Features
+
+* **agent:** repair near-miss tool calls and size the prompt to the window ([#74](https://github.com/maruakshay/miii-cli/issues/74)) ([0d3f7b8](https://github.com/maruakshay/miii-cli/commit/0d3f7b814bee809d6c155f6d88dedab91c66e310))
+* **ui:** rework onboarding, and stop wildcard rules spanning command… ([#76](https://github.com/maruakshay/miii-cli/issues/76)) ([6fcc880](https://github.com/maruakshay/miii-cli/commit/6fcc8809dd93893118823ae2ad037cc591e3d9bc))
+
 ## [0.1.34](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.33...miii-agent-v0.1.34) (2026-07-04)
 
 
