@@ -5,7 +5,7 @@
  * delegates streaming logic to useAgentRunner and key handling to useKeyboard.
  */
 import { useState, useEffect, useRef } from 'react'
-import { Box, Text, useApp } from 'ink'
+import { Box, Text, useApp, useStdout } from 'ink'
 import { homedir } from 'os'
 import { sep } from 'path'
 import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
@@ -18,6 +18,7 @@ import { SessionsView } from './SessionsView.js'
 import { CommandPalette } from './CommandPalette.js'
 import { persistSession, setSessionTitle, summarizeConversation, newSessionId, type SessionMeta } from '../session/store.js'
 import { setTerminalTitle, resetTerminalTitle } from './terminalTitle.js'
+import { enableMouse, disableMouse } from './mouse.js'
 import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
@@ -54,8 +55,8 @@ export function App() {
   sessionIdRef.current = sessionId
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [notice, setNotice] = useState<string | null>(null)
-  // Bumped on /clear and /new to remount ChatView's <Static> so the welcome
-  // banner reprints after the hard-clear (Ink won't otherwise reflush it).
+  // Bumped on /clear and /new to remount ChatView's transcript so its measured
+  // height restarts from the empty log.
   const [logEpoch, setLogEpoch] = useState(0)
 
   // --- input bar ---
@@ -84,6 +85,24 @@ export function App() {
 
   // Restore the terminal tab title when miii exits (component unmounts).
   useEffect(() => resetTerminalTitle, [])
+
+  // The transcript scrolls inside the app's own viewport, so miii needs the
+  // wheel: ask the terminal to report clicks and wheel notches while it runs,
+  // and hand reporting back on the way out.
+  useEffect(() => {
+    enableMouse()
+    return disableMouse
+  }, [])
+
+  // Ink recalculates its layout on resize but doesn't re-render the tree, so the
+  // fixed-height root below would keep the old row count. Bump state to force it.
+  const { stdout } = useStdout()
+  const [termRows, setTermRows] = useState(stdout?.rows ?? 24)
+  useEffect(() => {
+    const onResize = () => setTermRows(stdout?.rows ?? 24)
+    stdout?.on('resize', onResize)
+    return () => { stdout?.off('resize', onResize) }
+  }, [stdout])
 
   // Tracks sessions whose LLM title has been generated, so we summarise once.
   const titledSessions = useRef<Set<string>>(new Set())
@@ -218,11 +237,18 @@ export function App() {
     return Math.round((used / activeCtx) * 100)
   })()
 
+  // Chat mode owns the whole screen: the root is pinned to the terminal height
+  // (less one row, so writing the frame can't scroll it) and ChatView's viewport
+  // flex-grows into whatever the input bar and pickers leave. Pre-ready screens
+  // stay auto-height — they're short, and a full-height frame there would just
+  // blank the terminal.
+  const fullScreen = state === 'ready' || state === 'sessions' || state === 'models'
+
   return (
-    <Box flexDirection="column" paddingX={1}>
-      {/* Pre-ready screens render the banner dynamically. In ready/chat mode the
-          banner moves into ChatView's <Static> log (Ink prints Static above the
-          live frame, so a dynamic banner here would sink below the scrollback). */}
+    <Box flexDirection="column" paddingX={1} height={fullScreen ? Math.max(8, termRows - 1) : undefined}>
+      {/* Pre-ready screens render the banner dynamically. In ready/chat mode it
+          moves inside the scrolling transcript, as its first row, so it scrolls
+          away with the rest of the history. */}
       {state !== 'ready' && state !== 'sessions' && state !== 'models' && (
         <WelcomeBlock variant="compact" model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} provider={provName} error={agent.error} updateAvailable={updateAvailable} updateStatus={updateStatus} />
       )}
@@ -267,9 +293,12 @@ export function App() {
       )}
 
       {(state === 'ready' || state === 'sessions' || state === 'models') && (
+        // Everything except the transcript is flexShrink={0}: the root is pinned
+        // to the terminal height, and the viewport is what gives up rows when the
+        // palette, a picker or a warning needs them.
         <>
           {notice && (
-            <Box marginLeft={2} marginBottom={1}>
+            <Box marginLeft={2} marginBottom={1} flexShrink={0}>
               <Text color="green">{`✓ ${notice}`}</Text>
             </Box>
           )}
@@ -289,11 +318,13 @@ export function App() {
           />
 
           {state === 'ready' && input.startsWith('/') && (
-            <CommandPalette filter={input} cursor={paletteCursor} />
+            <Box flexShrink={0} flexDirection="column">
+              <CommandPalette filter={input} cursor={paletteCursor} />
+            </Box>
           )}
 
           {state === 'ready' && contextWarning !== null && (
-            <Box marginLeft={2} marginBottom={1}>
+            <Box marginLeft={2} marginBottom={1} flexShrink={0}>
               <Text color="yellow">
                 {`⚠ context ${contextWarning}% full — run /clear and start fresh`}
               </Text>
@@ -303,41 +334,51 @@ export function App() {
           {state === 'ready' && !input.startsWith('/') && (() => {
             const m = parseMention(input)
             if (!m) return null
-            return <FilePicker matches={searchFiles(process.cwd(), m.query)} cursor={filePickerCursor} />
+            return (
+              <Box flexShrink={0} flexDirection="column">
+                <FilePicker matches={searchFiles(process.cwd(), m.query)} cursor={filePickerCursor} />
+              </Box>
+            )
           })()}
 
           {/* Pickers have their own inline controls, so they drop the input bar
               entirely (avoids a stray "processing" prompt). */}
           {state === 'ready' && (
-            <InputBar
-              input={input}
-              caret={caret}
-              disabled={agent.busy}
-              processingLabel={agent.processingLabel}
-              hint={providerDown ? 'provider unavailable — /provider to switch · /models to pick a model' : undefined}
-            />
+            <Box flexShrink={0} flexDirection="column">
+              <InputBar
+                input={input}
+                caret={caret}
+                disabled={agent.busy}
+                processingLabel={agent.processingLabel}
+                hint={providerDown ? 'provider unavailable — /provider to switch · /models to pick a model' : undefined}
+              />
+            </Box>
           )}
 
           {/* Pickers render below the input bar (like the command palette) so the
-              single scrollback banner stays put — no duplicate header. */}
+              transcript's banner stays put — no duplicate header. */}
           {state === 'sessions' && (
-            <SessionsView sessions={sessions} cursor={cursor} />
+            <Box flexShrink={0} flexDirection="column">
+              <SessionsView sessions={sessions} cursor={cursor} />
+            </Box>
           )}
           {state === 'models' && (
-            <ModelsView
-              models={filteredModels}
-              cursor={cursor}
-              model={cfg.model}
-              host={provEntry.baseUrl}
-              provider={provName}
-              providerType={provEntry.type}
-              effort={effort}
-              query={pickerQuery}
-            />
+            <Box flexShrink={0} flexDirection="column">
+              <ModelsView
+                models={filteredModels}
+                cursor={cursor}
+                model={cfg.model}
+                host={provEntry.baseUrl}
+                provider={provName}
+                providerType={provEntry.type}
+                effort={effort}
+                query={pickerQuery}
+              />
+            </Box>
           )}
 
           {updateAvailable && (
-            <Box marginLeft={2} marginBottom={1}>
+            <Box marginLeft={2} marginBottom={1} flexShrink={0}>
               <Text color={updateStatus === 'failed' ? 'red' : updateStatus === 'installed' ? 'green' : 'yellow'}>
                 {updateBannerText(updateAvailable, updateStatus)}
               </Text>

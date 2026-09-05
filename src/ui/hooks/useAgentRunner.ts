@@ -194,8 +194,8 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
             // Final turn (non-tool stop): DON'T drop `streaming` here. The commit
             // (flushTurn with real tokens) can't run until the later 'done' event
             // lands, and an `await` sits between. Clearing `streaming` now would
-            // paint one frame with the live stream gone but the message not yet in
-            // <Static> — a blank flash, then a full reprint. Leaving `streaming`
+            // paint one frame with the live stream gone but the message not yet
+            // committed to the transcript — a blank flash, then a reprint. Leaving `streaming`
             // true keeps the rendered tail on screen until the post-loop
             // setStreaming(false)+flushTurn batch swaps it in atomically.
             break

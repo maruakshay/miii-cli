@@ -3,15 +3,37 @@ import { Box, Text } from 'ink'
 import { renderMarkdown } from './markdown.js'
 import type { ChatMessage } from './types.js'
 import { ToolUseLine } from './ToolBlock.js'
-import { formatTokens, formatDuration, contentWidth } from './layout.js'
+import { formatTokens, formatDuration, contentWidth, padLines, userTextWidth } from './layout.js'
+import { useTerminalWidth } from './hooks/useTerminalWidth.js'
+
+/**
+ * An echoed user message is drawn as a card: a coloured rule down the left edge
+ * and a filled body, so a turn reads as one object even when it wraps over
+ * several rows — the rule is what carries continuity down the block, and it's
+ * what keeps a wrapped message from looking like two.
+ *
+ * Colours are named rather than hex so they track the terminal's own palette
+ * instead of fighting a light or dark theme.
+ */
+const USER_BG = 'gray'
+const USER_ACCENT = 'blue'
+const USER_RULE = '\u258c'
 
 export const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage }) {
+  // Read through the hook, not process.stdout: this component is memoised, so a
+  // resize would otherwise leave the block padded to the old width.
+  const cols = useTerminalWidth()
+  // Trailing blank lines would render as empty shaded rows hanging off the end
+  // of the card, so the content is trimmed to its last real line first.
+  const lines = padLines(msg.content.replace(/\s+$/, ''), userTextWidth(cols))
   return (
-    <Box flexDirection="row" marginBottom={1}>
-      <Text color="gray">❯ </Text>
-      <Box flexGrow={1}>
-        <Text>{msg.content}</Text>
-      </Box>
+    <Box flexDirection="column" marginBottom={1}>
+      {lines.map((line, i) => (
+        <Box key={i} flexDirection="row">
+          <Text color={USER_ACCENT}>{USER_RULE}</Text>
+          <Text backgroundColor={USER_BG}>{` ${line} `}</Text>
+        </Box>
+      ))}
     </Box>
   )
 })

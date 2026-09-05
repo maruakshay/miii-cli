@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 
-// Tool output is collapsed to a few lines by default; ctrl+o toggles full view.
-// Global flag + subscriber set so the keyboard handler can flip every mounted
+// Tool output is collapsed to a few lines by default; a click or ctrl+o toggles
+// full view.
+// Global flag + subscriber set so the input handler can flip every mounted
 // tool block at once without threading state through the component tree.
 let globalToolExpanded = false
 const toolExpandListeners = new Set<() => void>()

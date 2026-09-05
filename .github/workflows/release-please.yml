@@ -42,14 +42,39 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || needs.release-please.outputs.tag }}
+      # Node 24 for npm 11, which can authenticate to npm over OIDC. Node 20
+      # ships npm 10, which cannot — that's what stranded 0.1.35.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run build
-      # NPM_TOKEN is a granular automation token; npm caps their lifetime at
-      # 90 days, so it has to be regenerated before it expires or this fails.
-      - run: npm publish --provenance --access public
+
+      # Already on npm? Then this is the manual-recovery path being re-run, or a
+      # version that was hand-published. Publishing again is a hard error, so
+      # skip instead of failing the release.
+      - id: check
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if npm view "miii-agent@${version}" version >/dev/null 2>&1; then
+            echo "miii-agent@${version} is already on npm — nothing to publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Two ways in, so a release never waits on a secret being fresh:
+      #   1. Trusted publishing (OIDC). npm 11 exchanges this job's id-token for
+      #      a short-lived credential — nothing to rotate. Needs a trusted
+      #      publisher for miii-agent on npmjs.com, pointing at this repo and
+      #      this workflow file (Settings -> Trusted publisher).
+      #   2. NPM_TOKEN. Used when no trusted publisher is configured. Granular
+      #      tokens expire after at most 90 days, so this one needs regenerating
+      #      on a timer — which is how publishing broke after 0.1.34.
+      # npm tries OIDC first and falls back to the token, so both can be in
+      # place at once and whichever is working wins.
+      - if: steps.check.outputs.skip != 'true'
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -14,6 +14,8 @@ import { filteredCommands } from '../CommandPalette.js'
 import { invalidateFileCache, parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
 import { toggleToolExpanded } from '../toolExpand.js'
+import { parseMouseEvent } from '../mouse.js'
+import { scrollBy, scrollToBottom, resetScroll } from '../scroll.js'
 import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
 import {
   persistSession,
@@ -27,6 +29,12 @@ import {
 import type { useAgentRunner } from './useAgentRunner.js'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high']
+
+// Rows moved per wheel notch — three matches what terminals scroll natively.
+const WHEEL_ROWS = 3
+// A page is the visible transcript minus two rows of overlap, so you keep your
+// place across a jump.
+const PAGE_ROWS = () => Math.max(1, (process.stdout.rows ?? 24) - 8)
 
 // A paste collapses to a chip when it spans more than this many lines, or (for a
 // single huge line) exceeds the char fallback. Words are a poor proxy — pasted
@@ -181,7 +189,7 @@ interface KeyboardOptions {
   sessions: SessionMeta[]
   setSessions: (s: SessionMeta[]) => void
   setNotice: (s: string | null) => void
-  /** Bumped on /clear and /new to remount the <Static> log and reprint the banner. */
+  /** Bumped on /clear and /new to remount the transcript after a hard clear. */
   setLogEpoch: (fn: (n: number) => number) => void
 
   // provider switching
@@ -211,9 +219,9 @@ export function useKeyboard(opts: KeyboardOptions) {
   /**
    * Hard-clear the terminal: erase the screen AND the scrollback buffer, then
    * home the cursor (\x1b[2J = screen, \x1b[3J = scrollback, \x1b[H = home).
-   * Ink's <Static> log only writes each item once, so wiping the real terminal
-   * leaves the old transcript gone — the new command renders on a clean screen,
-   * like Claude Code.
+   * The transcript itself is state (cleared alongside this), so this is only
+   * about the terminal's own buffer: anything printed before miii started, and
+   * whatever Ink last painted, so the fresh session opens on a clean screen.
    */
   function hardClear() {
     write('\x1b[2J\x1b[3J\x1b[H')
@@ -230,14 +238,36 @@ export function useKeyboard(opts: KeyboardOptions) {
     setError(null)
     setNotice(null)
     clearPasteStore()
-    // Remount ChatView's <Static> so the welcome banner reprints on the freshly
-    // cleared screen; Ink otherwise treats it as already-flushed and skips it.
+    resetScroll()
+    // Remount the transcript so its measured height restarts from the empty log
+    // instead of the heights Ink last laid out.
     setLogEpoch((n) => n + 1)
   }
 
   const effort: Effort = cfg.effort ?? 'medium'
 
   useInput((char, key) => {
+    // --- mouse ---
+    // The transcript lives in miii's own viewport, so wheel notches scroll it
+    // (the terminal's scrollback isn't in play). Every report is swallowed here
+    // so an escape sequence can never land in the prompt. A left click toggles
+    // the collapsed tool output, same as ctrl+o.
+    const mouse = parseMouseEvent(char)
+    if (mouse) {
+      if (!mouse.press) return
+      if (mouse.wheel) scrollBy(mouse.up ? -WHEEL_ROWS : WHEEL_ROWS)
+      else if (mouse.button === 0) toggleToolExpanded()
+      return
+    }
+
+    // --- scrolling ---
+    if (key.pageUp) { scrollBy(-PAGE_ROWS()); return }
+    if (key.pageDown) { scrollBy(PAGE_ROWS()); return }
+    // shift+arrow nudges the view a line at a time, leaving the bare arrows to
+    // the pickers and history.
+    if (key.shift && key.upArrow) { scrollBy(-1); return }
+    if (key.shift && key.downArrow) { scrollBy(1); return }
+
     // --- global shortcuts ---
     if (key.ctrl && char === 'c') { exit(); return }
     // Ctrl+T toggles thinking block content visibility
@@ -355,6 +385,8 @@ export function useKeyboard(opts: KeyboardOptions) {
         setActiveToolResults([])
         setError(null)
         setSessionId(meta.id)
+        // A resumed transcript opens at its tail, like the session never left.
+        resetScroll()
         setTerminalTitle(meta.title)
         onResumeSession(meta.id)
         setNotice(`resumed · ${meta.title}`)
@@ -452,6 +484,9 @@ export function useKeyboard(opts: KeyboardOptions) {
 
       // submit / built-in commands
       if (key.return) {
+        // Whatever you were reading, sending snaps the view back to the tail so
+        // the reply is visible as it arrives.
+        scrollToBottom()
         const trimmed = input.trim()
         pushHistory(trimmed)
         historyIndex = -1

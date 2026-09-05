@@ -4,7 +4,7 @@ import type { ToolUseDisplay, ToolResultDisplay } from './types.js'
 import { useToolExpanded } from './toolExpand.js'
 import { countLines, truncate } from './layout.js'
 
-// Tool output is collapsed to a few lines by default; ctrl+o toggles full view.
+// Tool output is collapsed to a few lines by default; a click or ctrl+o toggles full view.
 const COLLAPSED_LINES = 3
 
 export const TOOL_LABEL: Record<string, string> = {
@@ -104,7 +104,7 @@ function FileEditBlock({
       })}
       {extra > 0 && (
         <Box marginLeft={4}>
-          <Text dimColor>… {extra} more lines · ctrl+o to expand</Text>
+          <Text dimColor>… {extra} more lines · click or ctrl+o to expand</Text>
         </Box>
       )}
     </Box>
@@ -237,7 +237,7 @@ function ToolResultBlock({ result, toolName }: { result: ToolResultDisplay; tool
       ))}
       {extra > 0 && (
         <Box marginLeft={4}>
-          <Text dimColor>… {extra} more lines · ctrl+o to expand</Text>
+          <Text dimColor>… {extra} more lines · click or ctrl+o to expand</Text>
         </Box>
       )}
     </Box>
