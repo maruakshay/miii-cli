@@ -3,6 +3,7 @@ import { highlight, supportsLanguage } from 'cli-highlight'
 import type { ToolUseDisplay, ToolResultDisplay } from './types.js'
 import { useToolExpanded } from './toolExpand.js'
 import { countLines, truncate } from './layout.js'
+import { renderMarkdown } from './markdown.js'
 
 // Tool output is collapsed to a few lines by default; a click or ctrl+o toggles full view.
 const COLLAPSED_LINES = 3
@@ -15,6 +16,7 @@ export const TOOL_LABEL: Record<string, string> = {
   glob: 'Glob',
   grep: 'Grep',
   write_todos: 'Todos',
+  exit_plan_mode: 'Plan',
 }
 
 // hljs language name keyed by file extension; undefined = render plain (no highlight).
@@ -244,7 +246,37 @@ function ToolResultBlock({ result, toolName }: { result: ToolResultDisplay; tool
   )
 }
 
+/**
+ * The proposed plan, rendered in full.
+ *
+ * Every other tool block collapses, because the user is skimming what the agent
+ * did. This one is the thing they are being asked to approve, so it never
+ * truncates and never hides behind ctrl+o — a plan you have to expand to read
+ * is a plan you approve without reading.
+ */
+function PlanBlock({ plan, result }: { plan: string; result?: ToolResultDisplay }) {
+  return (
+    <Box flexDirection="column" marginLeft={2}>
+      <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
+        <Text color="cyan" bold>Proposed plan</Text>
+        <Box marginTop={1}>
+          <Text>{renderMarkdown(plan.trim())}</Text>
+        </Box>
+      </Box>
+      {result && (
+        <Text color={result.is_error ? 'yellow' : 'green'}>
+          {'⎿  '}{result.is_error ? 'kept planning' : 'approved — starting work'}
+        </Text>
+      )}
+    </Box>
+  )
+}
+
 export function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: ToolResultDisplay }) {
+  if (use.name === 'exit_plan_mode') {
+    const plan = (use.input as { plan?: string }).plan
+    if (typeof plan === 'string' && plan.trim()) return <PlanBlock plan={plan} result={result} />
+  }
   if (use.name === 'write_todos' && !result?.is_error) {
     const todos = (use.input as { todos?: TodoItem[] }).todos
     if (Array.isArray(todos) && todos.length > 0) return <TodoBlock todos={todos} />

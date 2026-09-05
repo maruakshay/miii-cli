@@ -1,3 +1,5 @@
+import type { PermissionMode } from '../permissions/policy.js'
+
 export interface TextBlock {
   type: 'text'
   text: string
@@ -36,6 +38,11 @@ export type AgentEvent =
   | { type: 'tool-use'; block: ToolUse }
   | { type: 'tool-result'; block: ToolResultBlock }
   | { type: 'permission-denied'; toolName: string; tool_use_id: string }
+  /**
+   * The permission mode changed mid-run — the user approved a plan. The UI
+   * mirrors it so the indicator and the next turn agree with the loop.
+   */
+  | { type: 'mode-change'; mode: PermissionMode }
   | { type: 'turn-end'; stop_reason: StopReason }
   | { type: 'done'; prompt_tokens: number; eval_tokens: number }
   | { type: 'aborted'; prompt_tokens: number; eval_tokens: number; duration_ms: number }

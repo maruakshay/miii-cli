@@ -1,8 +1,16 @@
 /**
- * Permission policy with a persistent rule store.
+ * Permission policy: a persistent rule store plus the mode that decides how
+ * much gets asked at all.
  *
- * Rules live in ~/.miii/permissions.json as { tool, pattern } pairs. `pattern`
- * is a glob matched against a per-tool "subject" string:
+ * Rules live in two files, both `{ rules: [{ tool, pattern }] }`:
+ *   <cwd>/.miii/permissions.json   project scope — where "always" writes
+ *   ~/.miii/permissions.json       user scope — applies in every project
+ * Both are read on every call; the project file is written by default because a
+ * rule's subject is usually project-relative. A path pattern like "src/index.ts"
+ * saved globally would auto-allow that path in *every* repo you ever open, which
+ * is not what anyone means by "don't ask again".
+ *
+ * `pattern` is a glob matched against a per-tool "subject" string:
  *   run_bash                 → the command
  *   read/write/edit_file     → the path
  *   grep/glob                → the search root path
@@ -16,6 +24,11 @@
  *
  * A wildcard rule never authorizes a compound command ("npm test && rm -rf ~"):
  * see ruleAllows(). That holds for hand-edited globs too.
+ *
+ * On top of the rules sits the permission MODE (shift+tab in the UI), which can
+ * widen or narrow the whole gate: `plan` makes the session read-only, `default`
+ * consults the rules, `acceptEdits` stops asking about file writes, and `bypass`
+ * stops asking about anything.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { join } from 'path'
@@ -33,44 +46,124 @@ export type AskFn = (toolName: string, input: unknown) => Promise<AskAnswer>
 
 export interface PermissionContext {
   ask: AskFn
+  /**
+   * The mode in force for this call. Passed per-call rather than stored,
+   * because approving a plan changes it mid-run: the loop rebuilds the context
+   * each time so a call is never judged against a stale mode.
+   */
+  mode?: PermissionMode
 }
 
-const RULES_DIR = join(homedir(), '.miii')
-const RULES_PATH = join(RULES_DIR, 'permissions.json')
+/**
+ * How much the harness asks before acting.
+ *
+ * - `default`    — stored rules auto-allow; anything else prompts.
+ * - `plan`       — read-only. Nothing may be written or run outside the
+ *                  read-only command set; the agent researches and proposes a
+ *                  plan via exit_plan_mode, which the user approves to leave.
+ * - `acceptEdits`— file writes inside the workspace stop prompting; commands
+ *                  still do, because a command can reach outside it.
+ * - `bypass`     — nothing prompts. For a sandbox or a throwaway tree.
+ */
+export type PermissionMode = 'default' | 'plan' | 'acceptEdits' | 'bypass'
 
-export function loadRules(): Rule[] {
-  if (!existsSync(RULES_PATH)) return []
+/** Cycle order for shift+tab. `default` is first so the cycle returns to it. */
+export const PERMISSION_MODES: PermissionMode[] = ['default', 'plan', 'acceptEdits', 'bypass']
+
+export const MODE_LABEL: Record<PermissionMode, string> = {
+  default: 'normal',
+  plan: 'plan mode',
+  acceptEdits: 'auto-accept edits',
+  bypass: 'bypass permissions',
+}
+
+/** One-line explanation shown when the mode changes. */
+export const MODE_HINT: Record<PermissionMode, string> = {
+  default: 'asks before writing files or running commands',
+  plan: 'read-only — researches and proposes a plan for you to approve',
+  acceptEdits: 'writes files without asking · commands still prompt',
+  bypass: 'runs everything without asking — be sure about this tree',
+}
+
+export function nextMode(mode: PermissionMode): PermissionMode {
+  const i = PERMISSION_MODES.indexOf(mode)
+  return PERMISSION_MODES[(i + 1) % PERMISSION_MODES.length]
+}
+
+/** Where an "always" answer is persisted. */
+export type RuleScope = 'project' | 'user'
+
+const USER_RULES_DIR = join(homedir(), '.miii')
+
+/**
+ * Resolved lazily rather than at module load: the project scope follows the
+ * working directory, and reading it once at import would pin it to whatever
+ * directory the process happened to start in.
+ */
+function rulesDir(scope: RuleScope): string {
+  return scope === 'user' ? USER_RULES_DIR : join(process.cwd(), '.miii')
+}
+
+function rulesPath(scope: RuleScope): string {
+  return join(rulesDir(scope), 'permissions.json')
+}
+
+function readRulesFile(path: string): Rule[] {
+  if (!existsSync(path)) return []
   try {
-    const data = JSON.parse(readFileSync(RULES_PATH, 'utf-8')) as { rules?: Rule[] }
-    return Array.isArray(data.rules) ? data.rules : []
+    const data = JSON.parse(readFileSync(path, 'utf-8')) as { rules?: Rule[] }
+    return Array.isArray(data.rules) ? data.rules.filter((r) => r && r.tool && r.pattern) : []
   } catch {
     return []
   }
 }
 
-function saveRules(rules: Rule[]): void {
-  mkdirSync(RULES_DIR, { recursive: true })
+/** Rules stored in one scope. */
+export function loadScopedRules(scope: RuleScope): Rule[] {
+  return readRulesFile(rulesPath(scope))
+}
+
+/**
+ * Every rule in force here: the project's own, then the user-wide ones. Order
+ * is presentation-only — a call is allowed if any rule matches.
+ */
+export function loadRules(): Rule[] {
+  return [...loadScopedRules('project'), ...loadScopedRules('user')]
+}
+
+function saveRules(scope: RuleScope, rules: Rule[]): void {
+  const dir = rulesDir(scope)
+  mkdirSync(dir, { recursive: true })
   // Write to a temp file then rename — atomic swap so a crash mid-write can't
   // corrupt the rule file.
-  const tmp = RULES_PATH + '.tmp'
+  const path = rulesPath(scope)
+  const tmp = path + '.tmp'
   writeFileSync(tmp, JSON.stringify({ rules }, null, 2), 'utf-8')
-  renameSync(tmp, RULES_PATH)
+  renameSync(tmp, path)
 }
 
-export function addRule(tool: string, pattern: string): void {
-  addRules(tool, [pattern])
+export function addRule(tool: string, pattern: string, scope: RuleScope = 'project'): void {
+  addRules(tool, [pattern], scope)
 }
 
-/** Persist several patterns for one tool in a single load/save cycle. */
-export function addRules(tool: string, patterns: string[]): void {
-  const rules = loadRules()
+/**
+ * Persist several patterns for one tool in a single load/save cycle.
+ *
+ * Deduplication is against the target scope only. A pattern already granted
+ * user-wide is not re-written into the project file, so the check below also
+ * consults the merged view.
+ */
+export function addRules(tool: string, patterns: string[], scope: RuleScope = 'project'): void {
+  const existing = loadRules()
+  const rules = loadScopedRules(scope)
   let changed = false
   for (const pattern of patterns) {
+    if (existing.some((r) => r.tool === tool && r.pattern === pattern)) continue
     if (rules.some((r) => r.tool === tool && r.pattern === pattern)) continue
     rules.push({ tool, pattern })
     changed = true
   }
-  if (changed) saveRules(rules)
+  if (changed) saveRules(scope, rules)
 }
 
 /** Extract the string a rule pattern matches against for a given tool call. */
@@ -269,12 +362,93 @@ export function ruleAllows(rule: Rule, toolName: string, subject: string): boole
 /** Read-only tools are always allowed — never prompt for these. */
 const ALWAYS_ALLOW = new Set(['read_file', 'grep', 'glob'])
 
+/** Tools that write to the workspace — what `acceptEdits` stops asking about. */
+export const EDIT_TOOLS = new Set(['write_file', 'edit_file'])
+
+/**
+ * Programs that only report. The list is deliberately short and boring: it is
+ * the set of things plan mode will even offer to run, so anything whose
+ * read-only-ness depends on an argument (`sed -i`, `find -delete`) stays off it.
+ */
+const READ_ONLY_PROGRAMS = new Set([
+  'ls', 'cat', 'head', 'tail', 'wc', 'file', 'stat', 'du', 'df',
+  'pwd', 'which', 'whoami', 'date', 'env', 'printenv', 'echo',
+  'grep', 'egrep', 'fgrep', 'rg', 'ag', 'tree', 'diff', 'cmp',
+  'find', 'sort', 'uniq', 'cut', 'tr', 'nl',
+  'node', 'python', 'python3', 'jq', 'basename', 'dirname', 'realpath',
+])
+
+/**
+ * git subcommands that only report. `log`/`diff`/`show` are the ones that make
+ * planning useful — what changed recently is most of the answer to "why is this
+ * like this".
+ */
+const READ_ONLY_GIT = new Set([
+  'status', 'log', 'diff', 'show', 'branch', 'remote', 'ls-files',
+  'blame', 'describe', 'rev-parse', 'tag', 'shortlog',
+])
+
+/**
+ * Flags that turn a listed program into a writing one. `find` is the reason
+ * this exists: it only reports until you hand it -delete or -exec.
+ *
+ * Deliberately no bare `-i`. It means "in place" to sed and perl, which are not
+ * on the list above and never will be — but it means "ignore case" to grep,
+ * which is on it, and blocking `grep -i` would make plan mode useless for the
+ * searching it is mostly for.
+ */
+const WRITING_FLAGS = [
+  /(?:^|\s)--in-place\b/,
+  /(?:^|\s)--write\b/,
+  /(?:^|\s)-delete\b/,
+  /(?:^|\s)-exec\b/,
+  /(?:^|\s)-execdir\b/,
+  /(?:^|\s)-fprint\b/,
+]
+
+/**
+ * Is this shell command safe to run while planning — does it only report?
+ *
+ * A compound command is never read-only however innocent its first token, since
+ * `ls && rm -rf x` starts with `ls`. That is the same command-boundary rule that
+ * stops a wildcard permission rule spanning a `&&` (see ruleAllows), and it
+ * rules out redirections too, which write by definition.
+ *
+ * `node` and `python` are listed because a plan often needs a version or a `-e`
+ * one-liner, and they can obviously write if told to. Which is why plan mode
+ * still sends them through the normal prompt rather than auto-allowing them:
+ * read-only here means "may be offered", never "is safe".
+ */
+export function isReadOnlyCommand(command: string): boolean {
+  const trimmed = command.trim()
+  if (!trimmed) return false
+  if (hasUnquotedShellOperator(trimmed)) return false
+  if (WRITING_FLAGS.some((re) => re.test(trimmed))) return false
+  const tokens = trimmed.split(/\s+/)
+  const prog = tokens[0]
+  if (prog === 'git') return tokens.length > 1 && READ_ONLY_GIT.has(tokens[1])
+  return READ_ONLY_PROGRAMS.has(prog)
+}
+
+/**
+ * The gate every tool call passes through.
+ *
+ * Plan mode is NOT enforced here — the agent loop blocks mutating tools before
+ * this point, with a message steering the model back to proposing a plan. By
+ * the time a call reaches `check` in plan mode it is already something plan
+ * mode permits, and it still has to be approved like anything else.
+ */
 export async function check(
   toolName: string,
   input: unknown,
   ctx: PermissionContext,
 ): Promise<Decision> {
+  const mode = ctx.mode ?? 'default'
+  if (mode === 'bypass') return 'allow'
   if (ALWAYS_ALLOW.has(toolName)) return 'allow'
+  // Edits are already confined to the workspace by the file tools, so
+  // auto-accepting them is bounded in a way auto-accepting a command is not.
+  if (mode === 'acceptEdits' && EDIT_TOOLS.has(toolName)) return 'allow'
 
   const subject = subjectFor(toolName, input)
   const rules = loadRules()

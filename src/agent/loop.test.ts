@@ -47,7 +47,10 @@ vi.mock('../llm/client.js', () => ({
   },
 }))
 
-const KNOWN = ['echo', 'run_bash']
+const KNOWN = ['echo', 'run_bash', 'read_file', 'edit_file', 'write_file', 'exit_plan_mode']
+// What the real registry advertises while planning — mirrored here so the
+// loop's plan enforcement is exercised against the same set it ships with.
+const PLAN_TOOLS = ['read_file', 'run_bash', 'exit_plan_mode']
 function makeTool(name: string) {
   return {
     name,
@@ -63,6 +66,8 @@ vi.mock('../tools/registry.js', () => ({
   TOOLS: [makeTool('echo'), makeTool('run_bash')],
   getTool: (name: string) => (KNOWN.includes(name) ? makeTool(name) : undefined),
   toOllamaTools: () => [],
+  toolsForMode: (mode: string) =>
+    (mode === 'plan' ? PLAN_TOOLS : ['echo', 'run_bash']).map(makeTool),
 }))
 
 vi.mock('../tools/validate.js', () => ({
@@ -72,7 +77,10 @@ vi.mock('../tools/validate.js', () => ({
 
 vi.mock('../prompt/system.js', () => ({ buildSystemPrompt: () => 'SYS' }))
 vi.mock('../prompt/context.js', () => ({ loadProjectContext: () => '' }))
-vi.mock('../permissions/policy.js', () => ({
+// Only check() is faked. isReadOnlyCommand is a pure classifier with no I/O,
+// and plan mode's whole boundary rests on it — a stub here would test the stub.
+vi.mock('../permissions/policy.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../permissions/policy.js')>()),
   check: async () => {
     h.checkCalls++
     h.onCheck?.()
@@ -467,5 +475,135 @@ describe('near-miss tool calls', () => {
     const r = firstResults(history)[0]
     expect(r.is_error).toBe(true)
     expect(r.content).toContain('Unknown tool')
+  })
+})
+
+// ---- plan mode -----------------------------------------------------------
+
+/**
+ * A permissions context whose `ask` always answers the same way, recording how
+ * many times it was consulted. Plan approval goes through `ask` directly rather
+ * than through check(), so these two counters distinguish the paths.
+ */
+function asker(answer: 'yes' | 'no' | 'always') {
+  const calls: string[] = []
+  return {
+    calls,
+    permissions: {
+      ask: async (toolName: string) => {
+        calls.push(toolName)
+        return answer
+      },
+    } as never,
+  }
+}
+
+/** Did the run execute this tool's handler? */
+function ranTool(name: string, ran: string[]): boolean {
+  return ran.includes(name)
+}
+
+describe('plan mode', () => {
+  it('refuses a tool it never advertised, and points at exit_plan_mode', async () => {
+    const ran: string[] = []
+    h.toolHandlers.echo = () => { ran.push('echo'); return { content: 'ok' } }
+    h.script = [toolThenDone([call('echo', { a: 1 })]), textThenDone('ok')]
+
+    const { history } = await drive({ mode: 'plan', ...asker('yes') })
+    const r = firstResults(history)[0]
+
+    expect(r.is_error).toBe(true)
+    expect(r.content).toContain('read-only')
+    expect(r.content).toContain('exit_plan_mode')
+    // The point of the guard: the handler must not have run.
+    expect(ranTool('echo', ran)).toBe(false)
+    assertBlockOrdering(history)
+  })
+
+  it('runs a command that only reports', async () => {
+    const ran: string[] = []
+    h.toolHandlers.run_bash = () => { ran.push('run_bash'); return { content: 'a.ts' } }
+    h.script = [toolThenDone([call('run_bash', { command: 'ls src' })]), textThenDone('ok')]
+
+    const { history } = await drive({ mode: 'plan', ...asker('yes') })
+    expect(firstResults(history)[0].is_error).toBeFalsy()
+    expect(ranTool('run_bash', ran)).toBe(true)
+  })
+
+  it('refuses a command that writes, and one that smuggles a write past a &&', async () => {
+    for (const command of ['rm -rf build', 'ls && rm -rf build', 'cat a > b']) {
+      h.callIndex = 0
+      const ran: string[] = []
+      h.toolHandlers.run_bash = () => { ran.push('run_bash'); return { content: 'ok' } }
+      h.script = [toolThenDone([call('run_bash', { command })]), textThenDone('ok')]
+
+      const { history } = await drive({ mode: 'plan', ...asker('yes') })
+      const r = firstResults(history)[0]
+      expect(r.is_error, command).toBe(true)
+      expect(r.content, command).toContain('only commands that report')
+      expect(ranTool('run_bash', ran), command).toBe(false)
+    }
+  })
+
+  it('approving a plan leaves plan mode and unblocks the rest of the run', async () => {
+    const ran: string[] = []
+    h.toolHandlers.run_bash = () => { ran.push('run_bash'); return { content: 'ok' } }
+    h.script = [
+      toolThenDone([call('exit_plan_mode', { plan: '1. delete build/' })]),
+      // Refused a turn ago; allowed now, which is the whole assertion.
+      toolThenDone([call('run_bash', { command: 'rm -rf build' })]),
+      textThenDone('done'),
+    ]
+
+    const { events, history } = await drive({ mode: 'plan', ...asker('yes') })
+
+    expect(events).toContainEqual({ type: 'mode-change', mode: 'default' })
+    const approval = firstResults(history)[0]
+    expect(approval.is_error).toBeFalsy()
+    expect(approval.content).toContain('approved')
+    expect(ranTool('run_bash', ran)).toBe(true)
+  })
+
+  it('"always" approves the plan and stops asking about edits', async () => {
+    h.script = [toolThenDone([call('exit_plan_mode', { plan: 'do it' })]), textThenDone('done')]
+    const { events } = await drive({ mode: 'plan', ...asker('always') })
+    expect(events).toContainEqual({ type: 'mode-change', mode: 'acceptEdits' })
+  })
+
+  it('rejecting a plan keeps the session read-only', async () => {
+    const ran: string[] = []
+    h.toolHandlers.run_bash = () => { ran.push('run_bash'); return { content: 'ok' } }
+    h.script = [
+      toolThenDone([call('exit_plan_mode', { plan: 'delete everything' })]),
+      toolThenDone([call('run_bash', { command: 'rm -rf build' })]),
+      textThenDone('done'),
+    ]
+
+    const { events, history } = await drive({ mode: 'plan', ...asker('no') })
+
+    expect(types(events)).not.toContain('mode-change')
+    const rejection = firstResults(history)[0]
+    expect(rejection.is_error).toBe(true)
+    expect(rejection.content).toContain('still in plan mode')
+    expect(ranTool('run_bash', ran)).toBe(false)
+  })
+
+  it('never routes plan approval through the rule store', async () => {
+    // An "always" that persisted as a permission rule would auto-approve every
+    // future plan — plan mode would silently stop being a gate at all.
+    h.script = [toolThenDone([call('exit_plan_mode', { plan: 'do it' })]), textThenDone('done')]
+    const a = asker('always')
+    await drive({ mode: 'plan', ...a })
+    expect(a.calls).toEqual(['exit_plan_mode'])
+    expect(h.checkCalls).toBe(0)
+  })
+
+  it('leaves an ordinary run untouched', async () => {
+    const ran: string[] = []
+    h.toolHandlers.run_bash = () => { ran.push('run_bash'); return { content: 'ok' } }
+    h.script = [toolThenDone([call('run_bash', { command: 'rm -rf build' })]), textThenDone('done')]
+    const { history } = await drive({ ...asker('yes') })
+    expect(firstResults(history)[0].is_error).toBeFalsy()
+    expect(ranTool('run_bash', ran)).toBe(true)
   })
 })

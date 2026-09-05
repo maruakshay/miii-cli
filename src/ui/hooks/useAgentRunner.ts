@@ -9,6 +9,7 @@ import { runAgent } from '../../agent/loop.js'
 import { compactHistory, estimateHistoryTokens } from '../../agent/compact.js'
 import type { ChatMessage, PermissionRequest, PermissionAnswer, ToolUseDisplay, ToolResultDisplay } from '../types.js'
 import type { MiiMessage } from '../../agent/types.js'
+import { MODE_HINT, MODE_LABEL, nextMode, type PermissionMode } from '../../permissions/policy.js'
 import { tailLine } from '../layout.js'
 
 // How often (ms) we flush streaming text to React state — avoids a re-render per token.
@@ -36,10 +37,37 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
    */
   const [usedTokens, setUsedTokens] = useState(0)
   const [compacting, setCompacting] = useState(false)
+  /**
+   * Permission mode. Held here rather than in App because the loop can change
+   * it mid-run (the user approving a plan), and this is where that event lands.
+   */
+  const [mode, setModeState] = useState<PermissionMode>('default')
 
   const busyRef = useRef(false)
+  /**
+   * Mirror of `mode` for the async send path. `sendMessage` captures the mode
+   * at the moment it starts; reading the ref means a run always begins from the
+   * mode the user can currently see, not one a render behind.
+   */
+  const modeRef = useRef<PermissionMode>(mode)
+  modeRef.current = mode
   const abortRef = useRef<AbortController | null>(null)
   const pendingPermissionRef = useRef<PermissionRequest | null>(null)
+
+  /** Set the permission mode and describe the change in the transcript. */
+  function setMode(next: PermissionMode) {
+    modeRef.current = next
+    setModeState(next)
+    return next
+  }
+
+  /**
+   * shift+tab — step to the next mode, returning it so the caller can say so.
+   * The notice belongs to App, which owns that strip of the screen.
+   */
+  function cycleMode(): PermissionMode {
+    return setMode(nextMode(modeRef.current))
+  }
 
   /** Prompt the UI for a permission decision and await the user's choice. */
   function askPermission(toolName: string, input: unknown): Promise<PermissionAnswer> {
@@ -147,6 +175,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
         userText: text,
         images,
         permissions: { ask: askPermission },
+        mode: modeRef.current,
         signal: controller.signal,
         num_ctx: activeCtx ?? undefined,
       })
@@ -189,6 +218,20 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
             })
             setActiveToolResults([...turnResults])
             setProcessingLabel('crunching…')
+            break
+          }
+          case 'mode-change': {
+            // The loop, not the user, moved the mode — approving a plan leaves
+            // plan mode. Mirror it so the indicator matches what the agent can
+            // actually do from here, and note it in the transcript.
+            setMode(ev.mode)
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: 'assistant',
+                content: `▸ **plan approved** — ${MODE_LABEL[ev.mode]}: ${MODE_HINT[ev.mode]}`,
+              },
+            ])
             break
           }
           case 'turn-end': {
@@ -324,10 +367,12 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     activeToolResults, setActiveToolResults,
     usedTokens, setUsedTokens,
     compacting,
+    mode, setMode, cycleMode,
     // refs (for keyboard handler)
     busyRef,
     abortRef,
     pendingPermissionRef,
+    modeRef,
     // actions
     sendMessage,
     resolvePermission,

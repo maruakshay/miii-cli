@@ -7,6 +7,14 @@ import {
   widestPattern,
   hasUnquotedShellOperator,
   ruleAllows,
+  isReadOnlyCommand,
+  nextMode,
+  check,
+  PERMISSION_MODES,
+  MODE_LABEL,
+  MODE_HINT,
+  type PermissionMode,
+  type AskFn,
 } from './policy.js'
 
 /** Approve `command` with "always", then ask whether `next` runs unprompted. */
@@ -241,5 +249,100 @@ describe('a wildcard rule never spans a command boundary', () => {
   it('leaves path subjects alone — an & in a filename is not an operator', () => {
     const rule = { tool: 'write_file', pattern: 'src/*' }
     expect(ruleAllows(rule, 'write_file', 'src/a&b.ts')).toBe(true)
+  })
+})
+
+describe('permission modes', () => {
+  it('cycles through every mode and returns to the start', () => {
+    const seen: PermissionMode[] = []
+    let m: PermissionMode = 'default'
+    for (let i = 0; i < PERMISSION_MODES.length; i++) {
+      seen.push(m)
+      m = nextMode(m)
+    }
+    expect(seen).toEqual(PERMISSION_MODES)
+    expect(m).toBe('default')
+  })
+
+  it('labels and explains every mode', () => {
+    for (const mode of PERMISSION_MODES) {
+      expect(MODE_LABEL[mode], mode).toBeTruthy()
+      expect(MODE_HINT[mode], mode).toBeTruthy()
+    }
+  })
+})
+
+describe('isReadOnlyCommand', () => {
+  it('accepts commands that only report', () => {
+    for (const cmd of ['ls', 'ls -la src', 'cat package.json', 'grep -rn foo src', 'wc -l a.ts']) {
+      expect(isReadOnlyCommand(cmd), cmd).toBe(true)
+    }
+  })
+
+  it("does not mistake grep's -i for sed's", () => {
+    // Case-insensitive search is most of what planning uses grep for; treating
+    // -i as "in place" here would block the tool's commonest flag.
+    expect(isReadOnlyCommand('grep -i todo src')).toBe(true)
+    expect(isReadOnlyCommand('grep -rin todo src')).toBe(true)
+  })
+
+  it('lets find report but not act', () => {
+    expect(isReadOnlyCommand('find . -name "*.ts"')).toBe(true)
+    expect(isReadOnlyCommand('find . -name "*.ts" -delete')).toBe(false)
+    expect(isReadOnlyCommand('find . -exec rm {} ;')).toBe(false)
+  })
+
+  it('accepts git subcommands that only report, and no others', () => {
+    for (const cmd of ['git status', 'git log --oneline -5', 'git diff HEAD']) {
+      expect(isReadOnlyCommand(cmd), cmd).toBe(true)
+    }
+    for (const cmd of ['git commit -m x', 'git push', 'git reset --hard', 'git']) {
+      expect(isReadOnlyCommand(cmd), cmd).toBe(false)
+    }
+  })
+
+  it('rejects anything that writes', () => {
+    for (const cmd of ['rm -rf build', 'npm install', 'mkdir x', 'touch a', 'sed -i s/a/b/ f']) {
+      expect(isReadOnlyCommand(cmd), cmd).toBe(false)
+    }
+  })
+
+  it('refuses a compound command however harmless its first token', () => {
+    // The exact hole the wildcard rule scoping exists to close, in the other
+    // direction: "ls" says nothing about what follows the &&.
+    for (const cmd of ['ls && rm -rf build', 'cat a > b', 'ls; rm x', 'echo $(rm -rf /)', 'ls | tee out']) {
+      expect(isReadOnlyCommand(cmd), cmd).toBe(false)
+    }
+  })
+
+  it('rejects an empty command', () => {
+    expect(isReadOnlyCommand('   ')).toBe(false)
+  })
+})
+
+describe('check() honours the mode', () => {
+  const never: AskFn = async () => {
+    throw new Error('should not have prompted')
+  }
+
+  it('never asks in bypass mode', async () => {
+    expect(await check('run_bash', { command: 'rm -rf /' }, { ask: never, mode: 'bypass' })).toBe('allow')
+  })
+
+  it('stops asking about edits in acceptEdits, but not about commands', async () => {
+    expect(await check('edit_file', { path: 'a.ts' }, { ask: never, mode: 'acceptEdits' })).toBe('allow')
+    let asked = false
+    const decision = await check(
+      'run_bash',
+      { command: 'zzz-not-a-real-program --xyz' },
+      { ask: async () => { asked = true; return 'no' }, mode: 'acceptEdits' },
+    )
+    expect(asked).toBe(true)
+    expect(decision).toBe('deny')
+  })
+
+  it('always allows the read-only tools', async () => {
+    expect(await check('read_file', { path: 'a.ts' }, { ask: never })).toBe('allow')
+    expect(await check('grep', { pattern: 'x' }, { ask: never, mode: 'plan' })).toBe('allow')
   })
 })
