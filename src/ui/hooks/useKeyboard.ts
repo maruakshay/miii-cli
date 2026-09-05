@@ -11,7 +11,7 @@ import { useInput, useStdout } from 'ink'
 import { readClipboardImage } from '../clipboard.js'
 import { setModel, setEffort, type NamedProvider, type Provider, type Effort } from '../../config.js'
 import { filteredCommands } from '../CommandPalette.js'
-import { parseMention, searchFiles } from '../FilePicker.js'
+import { invalidateFileCache, parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
 import { toggleToolExpanded } from '../toolExpand.js'
 import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
@@ -200,7 +200,7 @@ export function useKeyboard(opts: KeyboardOptions) {
   } = opts
 
   const {
-    pendingPermissionRef, permissionCursor, setPermissionCursor, resolvePermission,
+    pendingPermissionRef, permissionCursor, setPermissionCursor, resolvePermission, cancelPermission,
     busyRef, abortRef,
     sendMessage, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingContent,
     setActiveToolUses, setActiveToolResults, setError,
@@ -246,6 +246,11 @@ export function useKeyboard(opts: KeyboardOptions) {
     if (key.ctrl && char === 'o') { toggleToolExpanded(); return }
 
     if (key.escape && busyRef.current && abortRef.current) {
+      // Settle a permission prompt that's waiting on the user before aborting.
+      // The agent loop is parked on that promise; aborting alone never wakes it,
+      // so the turn would hang with the input locked. 'no' is the honest answer
+      // — they cancelled rather than approved.
+      cancelPermission()
       abortRef.current.abort()
       return
     }
@@ -385,6 +390,9 @@ export function useKeyboard(opts: KeyboardOptions) {
 
       const paletteOpen = input.startsWith('/')
       const matches = paletteOpen ? filteredCommands(input) : []
+      // typing the '@' that opens a mention drops the file cache, so a picker
+      // opened just after creating a file still lists it.
+      if (char === '@') invalidateFileCache()
       const mention = !paletteOpen ? parseMention(input) : null
       const fileMatches = mention ? searchFiles(process.cwd(), mention.query) : []
       const fileOpen = mention !== null && fileMatches.length > 0

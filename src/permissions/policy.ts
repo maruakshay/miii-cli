@@ -8,10 +8,14 @@
  *   grep/glob                → the search root path
  *
  * On a tool call we first consult stored rules; a match auto-allows without
- * prompting. Otherwise we ask the user. If they answer 'always' we persist a
- * rule for the exact subject so the same call is never asked again. This makes
- * the "persists as a Tool(pattern) rule" promise in the system prompt true.
- * Globs (e.g. "npm test *") can also be added by hand-editing the JSON file.
+ * prompting. Otherwise we ask the user. If they answer 'always' we persist both
+ * the exact subject and a generalized glob, so neither the same call nor a close
+ * variant is asked again. This makes the "persists as a Tool(pattern) rule"
+ * promise in the system prompt true. Globs (e.g. "npm test *") can also be added
+ * by hand-editing the JSON file.
+ *
+ * A wildcard rule never authorizes a compound command ("npm test && rm -rf ~"):
+ * see ruleAllows(). That holds for hand-edited globs too.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { join } from 'path'
@@ -54,10 +58,19 @@ function saveRules(rules: Rule[]): void {
 }
 
 export function addRule(tool: string, pattern: string): void {
+  addRules(tool, [pattern])
+}
+
+/** Persist several patterns for one tool in a single load/save cycle. */
+export function addRules(tool: string, patterns: string[]): void {
   const rules = loadRules()
-  if (rules.some((r) => r.tool === tool && r.pattern === pattern)) return
-  rules.push({ tool, pattern })
-  saveRules(rules)
+  let changed = false
+  for (const pattern of patterns) {
+    if (rules.some((r) => r.tool === tool && r.pattern === pattern)) continue
+    rules.push({ tool, pattern })
+    changed = true
+  }
+  if (changed) saveRules(rules)
 }
 
 /** Extract the string a rule pattern matches against for a given tool call. */
@@ -132,11 +145,52 @@ const DESTRUCTIVE_GIT_SUBCOMMANDS = new Set([
 ])
 
 /**
+ * Does `command` contain a shell control operator OUTSIDE quotes — something
+ * that chains another command (`;` `&` `&&` `||` `|`, a newline), substitutes
+ * one (`` ` `` , `$(`), or redirects a stream (`>` `<`)?
+ *
+ * Quoting is respected so the everyday false positives don't fire: the `&&` in
+ * `git commit -m "fix a && b"` and the `|` in `grep "a|b" file` are literal
+ * text, not operators. Inside double quotes only command substitution still
+ * counts, since the shell keeps expanding it there.
+ *
+ * Used to keep a wildcard rule from spanning a command boundary — see ruleAllows().
+ */
+export function hasUnquotedShellOperator(command: string): boolean {
+  let quote: "'" | '"' | null = null
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    // A backslash escapes the next char everywhere except inside single quotes.
+    if (ch === '\\' && quote !== "'") {
+      i++
+      continue
+    }
+    if (quote) {
+      if (ch === quote) quote = null
+      // Single quotes are fully literal; double quotes still expand $() and ``.
+      else if (quote === '"' && (ch === '`' || (ch === '$' && command[i + 1] === '('))) return true
+      continue
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch
+      continue
+    }
+    if (ch === ';' || ch === '&' || ch === '|' || ch === '\n' || ch === '>' || ch === '<' || ch === '`') return true
+    if (ch === '$' && command[i + 1] === '(') return true
+  }
+  return false
+}
+
+/**
  * Turn a concrete command into a generalized glob to persist on "always".
  * "npm run build" → "npm run *", "npx tsc --noEmit" → "npx tsc *",
  * "git commit -m '...'" → "git commit *". Destructive commands (rm, dd, sudo,
  * "git reset", …) are NOT generalized — the exact command is persisted so a
  * single approval can't blanket-authorize a whole dangerous program.
+ *
+ * A compound command (`a && b`, `a | b`) is never generalized either: its first
+ * token says nothing about what the rest of the line does, so widening it would
+ * hand out a rule far broader than what the user actually read and approved.
  */
 export function generalizeCommand(command: string): string {
   const trimmed = command.trim()
@@ -144,6 +198,7 @@ export function generalizeCommand(command: string): string {
   if (tokens.length === 0 || tokens[0] === '') return command
   const prog = tokens[0]
   if (NEVER_GENERALIZE.has(prog)) return trimmed
+  if (hasUnquotedShellOperator(trimmed)) return trimmed
   if (prog === 'git' && tokens.length > 1 && DESTRUCTIVE_GIT_SUBCOMMANDS.has(tokens[1])) {
     return trimmed
   }
@@ -152,9 +207,29 @@ export function generalizeCommand(command: string): string {
   return `${prefix} *`
 }
 
-/** The pattern to persist when the user answers "always" for a tool call. */
-export function patternToPersist(toolName: string, subject: string): string {
-  return toolName === 'run_bash' ? generalizeCommand(subject) : subject
+/**
+ * The rules to persist when the user answers "always" for a tool call.
+ *
+ * For run_bash this is BOTH the exact command and its generalized glob. The
+ * glob alone is not enough: "npm test" generalizes to "npm test *", which needs
+ * a space and at least one more character, so the very command the user just
+ * approved would keep re-prompting forever. Destructive commands generalize to
+ * themselves, so the list collapses to the single exact rule.
+ */
+export function patternsToPersist(toolName: string, subject: string): string[] {
+  if (toolName !== 'run_bash') return [subject]
+  const exact = subject.trim()
+  const glob = generalizeCommand(subject)
+  return glob === exact ? [exact] : [exact, glob]
+}
+
+/**
+ * The widest rule an "always" answer would persist — what the prompt shows the
+ * user as the blast radius of that choice.
+ */
+export function widestPattern(toolName: string, subject: string): string {
+  const patterns = patternsToPersist(toolName, subject)
+  return patterns[patterns.length - 1] ?? ''
 }
 
 /** Convert a glob (only `*` and `?` special) into an anchored RegExp. */
@@ -164,8 +239,26 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${pattern}$`)
 }
 
-function matches(rule: Rule, toolName: string, subject: string): boolean {
+/**
+ * A wildcard rule must never span a command boundary. `*` compiles to `.*`,
+ * which happily swallows "&& rm -rf ~" — so an approval of "npm test" would
+ * silently auto-allow "npm test && rm -rf ~". Refuse to satisfy a wildcard rule
+ * from a compound command; the user gets prompted for the real thing instead.
+ *
+ * Exact (wildcard-free) rules are unaffected, so a user who deliberately
+ * approved a specific pipeline still has it auto-allowed on the next identical
+ * call. Only run_bash subjects are commands — path subjects match literally.
+ */
+function outOfWildcardScope(rule: Rule, toolName: string, subject: string): boolean {
+  if (toolName !== 'run_bash') return false
+  if (!rule.pattern.includes('*') && !rule.pattern.includes('?')) return false
+  return hasUnquotedShellOperator(subject)
+}
+
+/** Does this stored rule authorize this call? The whole auto-allow decision. */
+export function ruleAllows(rule: Rule, toolName: string, subject: string): boolean {
   if (rule.tool !== toolName) return false
+  if (outOfWildcardScope(rule, toolName, subject)) return false
   try {
     return globToRegExp(rule.pattern).test(subject)
   } catch {
@@ -185,10 +278,10 @@ export async function check(
 
   const subject = subjectFor(toolName, input)
   const rules = loadRules()
-  if (rules.some((r) => matches(r, toolName, subject))) return 'allow'
+  if (rules.some((r) => ruleAllows(r, toolName, subject))) return 'allow'
 
   const answer = await ctx.ask(toolName, input)
   if (answer === 'no') return 'deny'
-  if (answer === 'always') addRule(toolName, patternToPersist(toolName, subject))
+  if (answer === 'always') addRules(toolName, patternsToPersist(toolName, subject))
   return 'allow'
 }

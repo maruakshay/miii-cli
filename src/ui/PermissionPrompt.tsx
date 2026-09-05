@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import type { PermissionRequest } from './types.js'
 import { TOOL_LABEL } from './ToolBlock.js'
-import { subjectFor, patternToPersist } from '../permissions/policy.js'
+import { subjectFor, widestPattern } from '../permissions/policy.js'
 
 function summarizeInput(input: unknown): string {
   if (!input || typeof input !== 'object') return ''
@@ -26,10 +26,11 @@ function summarizeInput(input: unknown): string {
 
 export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; cursor: number }) {
   const label = TOOL_LABEL[req.toolName] ?? req.toolName
-  // The glob an "always" choice would persist. Showing it makes the blast radius
-  // explicit — e.g. "npm run *" auto-allows every npm script, while a destructive
-  // command persists exact so it can't blanket-authorize the whole program.
-  const rule = patternToPersist(req.toolName, subjectFor(req.toolName, req.input))
+  // The widest glob an "always" choice would persist. Showing it makes the blast
+  // radius explicit — e.g. "npm run *" auto-allows every npm script, while a
+  // destructive or compound command persists exact so it can't blanket-authorize
+  // the whole program.
+  const rule = widestPattern(req.toolName, subjectFor(req.toolName, req.input))
   const options = [
     { label: 'Yes', key: 'yes' },
     { label: rule ? `Yes, don't ask again for ${rule}` : "Yes, don't ask again for this", key: 'always' },

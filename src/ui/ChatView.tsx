@@ -3,7 +3,6 @@ import { Box, Text, Static } from 'ink'
 import { renderMarkdownStreaming } from './markdown.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import type { ChatMessage, ToolUseDisplay, ToolResultDisplay, PermissionRequest } from './types.js'
-import { EMPTY_STATE_HINTS, EMPTY_STATE_TITLE } from './constants.js'
 import { UserMessage, AssistantMessage } from './Message.js'
 import { ToolUseLine } from './ToolBlock.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
@@ -44,9 +43,6 @@ export function ChatView({
   header,
   logEpoch = 0,
 }: Props) {
-  const empty =
-    messages.length === 0 && !streaming && !thinking && !pendingPermission && !error
-
   // Static log = finished, immutable scrollback. Ink's <Static> writes each item
   // to stdout exactly once and never repaints it, so streaming flushes (which
   // touch only the live frame below) can't trigger a full-history redraw — the
@@ -147,15 +143,6 @@ export function ChatView({
 
       {/* Live frame — repaints freely; holds only the in-flight turn. */}
       <Box flexDirection="column" marginLeft={1} marginBottom={1}>
-        {empty && (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text dimColor>{EMPTY_STATE_TITLE}</Text>
-            {EMPTY_STATE_HINTS.map((h, i) => (
-              <Text key={i} dimColor>{'  '}{h}</Text>
-            ))}
-          </Box>
-        )}
-
         {thinking && <ThinkingBlock content={thinkingContent} />}
 
         {streamNode}

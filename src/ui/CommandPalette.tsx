@@ -1,18 +1,7 @@
 import { Box, Text } from 'ink'
+import { COMMANDS, type Command } from './constants.js'
 
-export interface Command {
-  name: string
-  description: string
-}
-
-export const COMMANDS: Command[] = [
-  { name: '/models', description: 'pick model · tab to change provider · ←→ effort' },
-  { name: '/provider', description: 'open provider picker (configured in ~/.miii/config.json)' },
-  { name: '/new',    description: 'save current session and start fresh' },
-  { name: '/sessions', description: 'list sessions and resume one' },
-  { name: '/clear',  description: 'clear chat and reset context' },
-  { name: '/exit',   description: 'quit miii' },
-]
+export type { Command }
 
 interface Props {
   filter: string
@@ -28,10 +17,9 @@ export function CommandPalette({ filter, cursor }: Props) {
   return (
     <Box
       flexDirection="column"
+      width="100%"
       borderStyle="round"
       borderColor="gray"
-      marginX={1}
-      marginBottom={0}
       paddingX={1}
     >
       {filtered.map((cmd, i) => {
