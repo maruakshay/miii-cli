@@ -1,5 +1,93 @@
 # Changelog
 
+## [3.0.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v2.0.0...miii-agent-v3.0.0) (2026-09-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ui:** ChatMessage gains a `thinking` field. Agent history doesn't carry thinking, so a resumed session shows no thoughts on turns from before the resume.
+
+### Features
+
+* add demo GIF to showcase functionality ([64188ff](https://github.com/maruakshay/miii-cli/commit/64188ffc8f24fdf5ac830cf4262b34b847babecf))
+* add demo GIF to showcase functionality ([b44eb65](https://github.com/maruakshay/miii-cli/commit/b44eb651cf5e718b05ff8ac0514a9a1f6a66941b))
+* add GitHub Pages landing site with live changelog ([023363f](https://github.com/maruakshay/miii-cli/commit/023363f5313fae2c6bcca4ef8c9a69f82f6c1374))
+* add npm package + release-please automation ([60b48df](https://github.com/maruakshay/miii-cli/commit/60b48dfbaec822f81b3bebf538f7f38c79facd5f))
+* add terminal hard-clear functionality and enhance command handling in useKeyboard ([e47136e](https://github.com/maruakshay/miii-cli/commit/e47136ea765e54b1aac32498dd6783e63e8a7d36))
+* **agent:** repair near-miss tool calls and size the prompt to the window ([#74](https://github.com/maruakshay/miii-cli/issues/74)) ([0d3f7b8](https://github.com/maruakshay/miii-cli/commit/0d3f7b814bee809d6c155f6d88dedab91c66e310))
+* background auto-update and leaked tool-call recovery ([71a1094](https://github.com/maruakshay/miii-cli/commit/71a109422ddff9ad5836e53333fd5a0a534f493b))
+* background auto-update and leaked tool-call recovery ([111dfab](https://github.com/maruakshay/miii-cli/commit/111dfabe183c89b2303cb781a85265709a23e09e))
+* **cli:** self-update command, auto-allow read-only tools, always em… ([1d89911](https://github.com/maruakshay/miii-cli/commit/1d89911d5b28d4c257e62c522c821855c1345abe))
+* **cli:** self-update command, auto-allow read-only tools, always emit exit code ([a3fd8c1](https://github.com/maruakshay/miii-cli/commit/a3fd8c154d6254fe47f79bda1d2f0e7b8716922e))
+* enhance chat function to support reasoning models and improve ThinkingBlock layout handling ([d1b18a9](https://github.com/maruakshay/miii-cli/commit/d1b18a997170c068f6151d6f7a30bce5065b9d0a))
+* enhance grammar usage for Ollama tool-calling based on model pa… ([a7a4559](https://github.com/maruakshay/miii-cli/commit/a7a455929ab27189e142235077cbfeb6385ed47e))
+* enhance grammar usage for Ollama tool-calling based on model parameters ([b0955ca](https://github.com/maruakshay/miii-cli/commit/b0955caa066b4333c578c20db6d60257b42a9706))
+* enhance landing page with updated descriptions, improved styles, and new features section ([85b905c](https://github.com/maruakshay/miii-cli/commit/85b905c45f84763b0ff421116c5bcfe42ab525b3))
+* enhance UI/UX with markdown rendering, input history, and improved layout ([f5aa1ae](https://github.com/maruakshay/miii-cli/commit/f5aa1aec58b50df8e631666c9c789ead7f9da242))
+* **eval:** add model eval harness and `miii doctor` ([6a62680](https://github.com/maruakshay/miii-cli/commit/6a62680e8dfb5549a66e252abda0e5ffc06481cb))
+* **eval:** add model eval harness and `miii doctor` ([ac3baa4](https://github.com/maruakshay/miii-cli/commit/ac3baa4c64e75234f97e46e18c1a0bd657c16c2c))
+* **grep:** add context, files_only, type, multiline, count, fixed_strings ([9098f0b](https://github.com/maruakshay/miii-cli/commit/9098f0bd18e7099704215bee90240749771cec26))
+* image paste for vision models ([c8627ae](https://github.com/maruakshay/miii-cli/commit/c8627aef640edbedc9e0a1bdda17f9ca6a43ed4d))
+* image paste for vision models ([8a35a57](https://github.com/maruakshay/miii-cli/commit/8a35a5757cd781fc70dde45548283380a4b46902))
+* implement grammar-constrained actions and generalized permissions ([41742f4](https://github.com/maruakshay/miii-cli/commit/41742f49683837158bf4d88baffcfd346383f88f))
+* implement grammar-constrained actions and generalized permissions ([2d5ec6b](https://github.com/maruakshay/miii-cli/commit/2d5ec6bf8a694513bc3ccaf3df3ddfc9666e53bc))
+* implement update check functionality in App component ([6e6ec62](https://github.com/maruakshay/miii-cli/commit/6e6ec62d6681d829cafd12d2f0f0b768c48798d5))
+* native tool-calling + truncation guards for local models ([cc7a17d](https://github.com/maruakshay/miii-cli/commit/cc7a17dea10aa9700997e36eb4b264d43ea03b5b))
+* native tool-calling + truncation guards for local models ([d0ad200](https://github.com/maruakshay/miii-cli/commit/d0ad200667289735141d326393e84075e2c04f86))
+* **prompt:** add goal-understanding and attention re-attend system ([61cadf1](https://github.com/maruakshay/miii-cli/commit/61cadf133d84dd9cb4fb889e01113609dcdfe991))
+* **prompt:** read project MIII.md into system prompt ([bc01133](https://github.com/maruakshay/miii-cli/commit/bc011336705de27737f33cf716f19f284b10f7a4))
+* **prompt:** read project MIII.md into system prompt ([88abb2f](https://github.com/maruakshay/miii-cli/commit/88abb2fe226593efb7c9d867d6c67816e0e8d828))
+* refine agent personality and update processing labels ([1462bc7](https://github.com/maruakshay/miii-cli/commit/1462bc7f63033b5efda27827dedb60298f18ea4d))
+* refine agent personality and update processing labels ([8ffbc47](https://github.com/maruakshay/miii-cli/commit/8ffbc47ca7b7e3db42f16e55a6aab08195222319))
+* reflect session summary in terminal tab title ([341eb89](https://github.com/maruakshay/miii-cli/commit/341eb89c3de2794dec2765393cf59de8d7ac9641))
+* reflect session summary in terminal tab title ([9ea2bd0](https://github.com/maruakshay/miii-cli/commit/9ea2bd02d5be9bcae297a00c70c1255062ee08ee))
+* release agent personality and write_todos tooling ([#69](https://github.com/maruakshay/miii-cli/issues/69)) ([b4ecafd](https://github.com/maruakshay/miii-cli/commit/b4ecafd4a3305af59fe1189c5048029c6f55d9fb))
+* **security:** input validation, path confinement, persistent permissions ([f800a6c](https://github.com/maruakshay/miii-cli/commit/f800a6c15234fa12238879a49da1d8d573edd197))
+* **session:** store sessions globally per-project like Claude Code ([690eaa0](https://github.com/maruakshay/miii-cli/commit/690eaa069d99ece77ddfe1ad0d8dc3d835ce95e4))
+* **session:** summarize first exchange into title ([b8fe10c](https://github.com/maruakshay/miii-cli/commit/b8fe10c649bcc5409b52de576cd70b9d74eef8f1))
+* **session:** summarize first exchange into title ([768b66a](https://github.com/maruakshay/miii-cli/commit/768b66a0304f9c9dfbf8f7e6a6bf9529dd66136b))
+* **tools:** batch edits, process-tree kill, abort propagation, image read ([#66](https://github.com/maruakshay/miii-cli/issues/66)) ([d12e593](https://github.com/maruakshay/miii-cli/commit/d12e59337e1f6f04f5cdf274db5e83e9f80ecad5))
+* **tools:** lossless output spill, ranged reads, smarter edit/glob ([8e6ef83](https://github.com/maruakshay/miii-cli/commit/8e6ef831da6490a702dc2c2ac8837b3c7ac42eda))
+* **tools:** lossless output spill, ranged reads, smarter edit/glob ([69d19b5](https://github.com/maruakshay/miii-cli/commit/69d19b58bb987f4553226229fd964b330cde57c8))
+* **ui/tools:** ctrl+o expand, diff bg highlight, fuzzy edit, verify nudge ([b3a32e3](https://github.com/maruakshay/miii-cli/commit/b3a32e3f037e31ab264d0b8bbc72129fa42f7e3f))
+* **ui/tools:** ctrl+o expand, diff bg highlight, fuzzy edit, verify nudge ([7e57ac2](https://github.com/maruakshay/miii-cli/commit/7e57ac2fb162a0cea6c54bb34340691aae7f7560))
+* **ui:** add sessions view and align command palette descriptions ([8d052d7](https://github.com/maruakshay/miii-cli/commit/8d052d7dc58687b8c49e88d35f11c9d74cf71ec1))
+* **ui:** change thinking toggle shortcut to ctrl+t ([97be0cd](https://github.com/maruakshay/miii-cli/commit/97be0cdc805bb0e97e52923152d298bfc613a3c9))
+* **ui:** commit thinking to the transcript instead of the live frame ([#83](https://github.com/maruakshay/miii-cli/issues/83)) ([aa9a2f3](https://github.com/maruakshay/miii-cli/commit/aa9a2f33802821f3eef1b32fb5888ca9e9a73929))
+* **ui:** full-width diff bg with right margin; polish README ([995a549](https://github.com/maruakshay/miii-cli/commit/995a549085a948bb8c89878ab6ec63d35499f030))
+* **ui:** full-width diff bg with right margin; polish README ([b2d51b7](https://github.com/maruakshay/miii-cli/commit/b2d51b7df92de0e9bf9846726f159af372f4a716))
+* **ui:** handle missing/stopped ollama gracefully ([bda0da3](https://github.com/maruakshay/miii-cli/commit/bda0da37f2b2eb697ffe4bfc810efeea9f920b64))
+* **ui:** polish permission prompt, unify cursor glyphs, add empty state ([815bab2](https://github.com/maruakshay/miii-cli/commit/815bab2f259b95fdc277b1533fa3ab09e590b721))
+* **ui:** rework onboarding, and stop wildcard rules spanning command… ([#76](https://github.com/maruakshay/miii-cli/issues/76)) ([6fcc880](https://github.com/maruakshay/miii-cli/commit/6fcc8809dd93893118823ae2ad037cc591e3d9bc))
+* **ui:** scrollback with mouse support, and a card for user messages ([#79](https://github.com/maruakshay/miii-cli/issues/79)) ([d4c5461](https://github.com/maruakshay/miii-cli/commit/d4c5461e5d6b930ede8beeb0bbbb7d9d84aeb9ad))
+* **ui:** syntax-highlight diffs, fix modal overflow, firm update banner ([a06eb26](https://github.com/maruakshay/miii-cli/commit/a06eb26d2dbdc01fa549e86c1a5aa017cfea14cb))
+* **ui:** syntax-highlight diffs, fix modal overflow, firm update banner ([634b77d](https://github.com/maruakshay/miii-cli/commit/634b77d2ab64f8ce057576c870a0ecb22ad3dc25))
+* unified named-provider config with opencode-style picker ([88cadfe](https://github.com/maruakshay/miii-cli/commit/88cadfeaa780fa656016096ffdcfc32581acf5d8))
+* unified named-provider config with opencode-style picker ([f4dc609](https://github.com/maruakshay/miii-cli/commit/f4dc6098d852a8488d77f8614bd0d9f291862798))
+* update README and package description for clarity and emphasis on local-first AI capabilities ([793b257](https://github.com/maruakshay/miii-cli/commit/793b257f02a279bbb42498a19ea2658e52dadc83))
+
+
+### Bug Fixes
+
+* encode Windows drive letter colon in session directory name ([dcbba4d](https://github.com/maruakshay/miii-cli/commit/dcbba4dbab89e6f254e35fca73f7c8987e88c04a))
+* encode Windows drive letter colon in session directory name ([80cacbd](https://github.com/maruakshay/miii-cli/commit/80cacbdc981b5ab7982ec6265aaab05c4301ad04))
+* harden config/context/permissions and smooth first-run UX ([9a20ee5](https://github.com/maruakshay/miii-cli/commit/9a20ee5a033ef751f775f2d45e9895c424993c4b))
+* harden config/context/permissions and smooth first-run UX ([67f95e3](https://github.com/maruakshay/miii-cli/commit/67f95e3f7bd9de1a72d04eacfd207d1cc5604611))
+* **input:** paste chips for large pastes, robust paste sanitizing ([1af7ee0](https://github.com/maruakshay/miii-cli/commit/1af7ee0ba0a1b50769e1890eacae412326c94e70))
+* **input:** paste chips for large pastes, robust paste sanitizing ([58d170b](https://github.com/maruakshay/miii-cli/commit/58d170bc232d54426a14ca46e3ba5550c25c0081))
+* **loop:** detect repeats before committing assistant turn ([c3c8251](https://github.com/maruakshay/miii-cli/commit/c3c8251d31c0b01f5b2345582e40b7de785f98c2))
+* **loop:** detect repeats before committing assistant turn ([dc9d8fc](https://github.com/maruakshay/miii-cli/commit/dc9d8fcf29edd1e6ad95243da7c3ad593086960b))
+* **pkg:** correct bin path and use prepack for build ([cd98db2](https://github.com/maruakshay/miii-cli/commit/cd98db288c943a753575ec842a2cb71c4d429fb3))
+* publish package metadata refresh (SEO description + keywords) ([f16d105](https://github.com/maruakshay/miii-cli/commit/f16d1059af26ad567373c6a284073e3fb2bd897a))
+* surface empty/early-dropped Ollama streams ([#71](https://github.com/maruakshay/miii-cli/issues/71)) ([7db6168](https://github.com/maruakshay/miii-cli/commit/7db6168e9af902d9a96a8720fc78124986d512ba))
+* **ui:** show line count header for non-grep/glob tool results ([b232c5d](https://github.com/maruakshay/miii-cli/commit/b232c5dd94f51c6211edeb21714d7974a371a399))
+* **ui:** stop ChatView and InputBar flicker during streaming ([d7833be](https://github.com/maruakshay/miii-cli/commit/d7833be3f609174b4ac27b4b501fa5ef1f500280))
+* **ui:** stop ChatView and InputBar flicker during streaming ([a69b98b](https://github.com/maruakshay/miii-cli/commit/a69b98b17cd3d847315e9484002b9ab5bcdd6ac7))
+* **ui:** swallow coalesced mouse reports so they can't reach the prompt ([#81](https://github.com/maruakshay/miii-cli/issues/81)) ([e3fd5f6](https://github.com/maruakshay/miii-cli/commit/e3fd5f6167ae195e166fcef73874585e04fa2465))
+* **ui:** update colors for file edit and message indicators ([9d26e77](https://github.com/maruakshay/miii-cli/commit/9d26e770558cb82eb24167d94eadaaeadb313fd4))
+* update demo GIF path in README ([99843d9](https://github.com/maruakshay/miii-cli/commit/99843d9073e7cc041cdb7098411c78ca7e7f7c13))
+* use native tool-calling for all Ollama models ([f67fee5](https://github.com/maruakshay/miii-cli/commit/f67fee5c5ac56e88e1eb2a84a0416d218218390e))
+
 ## [2.0.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.37...miii-agent-v2.0.0) (2026-09-05)
 
 
