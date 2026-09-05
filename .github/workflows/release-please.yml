@@ -46,10 +46,10 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
-      # Trusted Publishing (OIDC) needs npm >= 11.5.1; Node 20 ships npm 10.
-      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
-      # No NODE_AUTH_TOKEN: npm trusts this workflow via OIDC, and provenance
-      # is attached automatically.
-      - run: npm publish --access public
+      # NPM_TOKEN is a granular automation token; npm caps their lifetime at
+      # 90 days, so it has to be regenerated before it expires or this fails.
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
