@@ -1,11 +1,11 @@
 import { existsSync } from 'fs'
 import { chat } from '../llm/client.js'
 import { confinePath } from '../tools/paths.js'
-import { TOOLS, getTool, toOllamaTools } from '../tools/registry.js'
+import { getTool, toOllamaTools, toolsForMode } from '../tools/registry.js'
 import { validateInput, exampleInput } from '../tools/validate.js'
 import { buildSystemPrompt } from '../prompt/system.js'
 import { loadProjectContext } from '../prompt/context.js'
-import { check, type PermissionContext } from '../permissions/policy.js'
+import { check, isReadOnlyCommand, type PermissionContext, type PermissionMode } from '../permissions/policy.js'
 import { loadConfig, EFFORT_OPTIONS, DEFAULT_NUM_CTX_CAP } from '../config.js'
 import { HookBus } from '../hooks/bus.js'
 import {
@@ -51,6 +51,44 @@ function readGuard(name: string, input: unknown, seen: Set<string>): string | nu
   if (name === 'write_file' && !existsSync(abs)) return null
   const verb = name === 'edit_file' ? 'edit' : 'overwrite'
   return `I won't ${verb} ${p} without seeing it first — I don't want to clobber something. Read it with read_file, then retry the ${name}.`
+}
+
+/** The tools plan mode advertises — the set planGuard holds the model to. */
+const PLAN_TOOLS = new Set(toolsForMode('plan').map((t) => t.name))
+
+/**
+ * Harness-enforced plan mode, the mechanical twin of the prompt's "READ-ONLY".
+ *
+ * Withholding the write tools from the schema stops most of this, but a small
+ * model that has seen `edit_file` earlier in the transcript will call it anyway,
+ * and a model asked not to write will still reach for `run_bash` to do it. So
+ * the boundary is enforced here rather than trusted to the prompt: a mutating
+ * call in plan mode never reaches the tool handler, and the model is told what
+ * to do instead of being left to guess from a bare refusal.
+ *
+ * Returns an actionable error string to block the call, or null to allow it.
+ */
+function planGuard(name: string, input: unknown, mode: PermissionMode): string | null {
+  if (mode !== 'plan') return null
+  if (!PLAN_TOOLS.has(name)) {
+    return (
+      `You're in plan mode, which is read-only, so ${name} did not run and nothing changed. ` +
+      `Finish researching with read_file, grep, glob and read-only run_bash commands, then ` +
+      `call exit_plan_mode with your plan. The user approves it before any of it happens.`
+    )
+  }
+  if (name === 'run_bash') {
+    const command = (input as { command?: unknown }).command
+    if (typeof command === 'string' && !isReadOnlyCommand(command)) {
+      return (
+        `You're in plan mode, so only commands that report can run — this one was refused ` +
+        `and nothing happened. Use ls, cat, grep, git status/log/diff and the like (one ` +
+        `command at a time, no pipes or &&). Anything that builds, installs, writes or ` +
+        `deletes belongs in the plan you hand to exit_plan_mode, not in this turn.`
+      )
+    }
+  }
+  return null
 }
 
 /**
@@ -125,6 +163,8 @@ export interface RunAgentOpts {
   /** Base64-encoded images attached to this turn's user message. */
   images?: string[]
   permissions: PermissionContext
+  /** Permission mode at the start of the run; approving a plan changes it. */
+  mode?: PermissionMode
   hooks?: HookBus
   signal?: AbortSignal
   num_ctx?: number
@@ -144,9 +184,13 @@ export interface RunAgentOpts {
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
   const startTime = Date.now()
-  const ollamaTools = toOllamaTools(TOOLS)
-  const toolNames = TOOLS.map((t) => t.name)
   const cfg = loadConfig()
+  /**
+   * Live for the whole run: approving a plan flips it mid-run, and everything
+   * derived from it — the advertised tools, the system prompt, what the
+   * permission gate allows — is rebuilt per turn so nothing trails a turn behind.
+   */
+  let mode: PermissionMode = opts.mode ?? 'default'
   // Effort drives temperature + output cap. high → num_predict -1 (unlimited),
   // which ollama.chat omits so the model runs to its own stop.
   const effort = EFFORT_OPTIONS[cfg.effort ?? 'medium']
@@ -156,9 +200,9 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   const ctxCap = cfg.numCtxCap && cfg.numCtxCap > 0 ? cfg.numCtxCap : DEFAULT_NUM_CTX_CAP
   const cappedCtx =
     typeof num_ctx === 'number' && num_ctx > 0 ? Math.min(num_ctx, ctxCap) : undefined
-  // Built after cappedCtx: the prompt sizes itself to the window we actually
-  // negotiated, dropping its optional layer when there is no room to spare.
-  const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd), cappedCtx)
+  // Read once: MIII.md is the same file all run, and re-reading it per turn
+  // would let an edit land mid-task and silently change the rules underfoot.
+  const projectContext = loadProjectContext(cwd)
 
   const history: MiiMessage[] = [
     ...opts.history,
@@ -186,6 +230,16 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   let endedCleanly = false
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
+    // Derived from `mode`, which the user can change mid-run by approving a
+    // plan. The model must see the tools it actually has this turn, and a
+    // near-miss name must only ever resolve to one of them.
+    const activeTools = toolsForMode(mode)
+    const ollamaTools = toOllamaTools(activeTools)
+    const toolNames = activeTools.map((t) => t.name)
+    // Built after cappedCtx: the prompt sizes itself to the window we actually
+    // negotiated, dropping its optional layer when there is no room to spare.
+    const system = buildSystemPrompt(activeTools, cwd, projectContext, cappedCtx, mode)
+
     let text = ''
     let tool_calls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> | undefined
     // Reasoning models think THEN answer. Some providers still trickle a few
@@ -415,7 +469,61 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         continue
       }
 
-      const decision = await check(use.name, use.input, permissions)
+      const blocked = planGuard(use.name, use.input, mode)
+      if (blocked) {
+        const r: ToolResultBlock = {
+          type: 'tool_result',
+          tool_use_id: use.id,
+          content: blocked,
+          is_error: true,
+        }
+        results.push(r)
+        yield { type: 'tool-result', block: r }
+        continue
+      }
+
+      // The one call that changes the rules rather than the project. It is put
+      // to the user directly instead of through check(): the answer decides how
+      // the rest of the run behaves, and an "always" here must never be
+      // persisted as a permission rule — a saved "stop asking me to approve
+      // plans" would make plan mode a no-op forever after.
+      if (use.name === 'exit_plan_mode' && mode === 'plan') {
+        const answer = await permissions.ask('exit_plan_mode', use.input)
+        if (answer === 'no') {
+          const r: ToolResultBlock = {
+            type: 'tool_result',
+            tool_use_id: use.id,
+            content:
+              'The user did not approve this plan, so you are still in plan mode and nothing ' +
+              'has changed. Ask what they want different, or go read more, then propose a ' +
+              'revised plan with exit_plan_mode. Do not try to make changes.',
+            is_error: true,
+          }
+          results.push(r)
+          yield { type: 'tool-result', block: r }
+          continue
+        }
+        // "Always" is the second yes: approve the plan AND stop prompting for
+        // the edits carrying it out, which is what a user who just read the
+        // whole plan is actually agreeing to.
+        mode = answer === 'always' ? 'acceptEdits' : 'default'
+        yield { type: 'mode-change', mode }
+        const r: ToolResultBlock = {
+          type: 'tool_result',
+          tool_use_id: use.id,
+          content:
+            'The user approved the plan. You are out of plan mode and the write tools are ' +
+            'available again' +
+            (mode === 'acceptEdits' ? ', and file edits will no longer be prompted' : '') +
+            '. Carry it out now, starting with the first step. Do not restate the plan — the ' +
+            'user has read it. Track progress with write_todos if it runs to several steps.',
+        }
+        results.push(r)
+        yield { type: 'tool-result', block: r }
+        continue
+      }
+
+      const decision = await check(use.name, use.input, { ...permissions, mode })
       if (decision === 'deny') {
         const r: ToolResultBlock = {
           type: 'tool_result',

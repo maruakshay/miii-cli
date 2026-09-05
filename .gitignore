@@ -3,5 +3,6 @@
 *.log
 .DS_Store
 .claude
-.miii
+.miii/permissions.json
+.miii/output
 .vitest-*

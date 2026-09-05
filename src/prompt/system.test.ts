@@ -5,7 +5,7 @@ import {
   CORE_TOKEN_BUDGET,
   EXTENDED_MIN_CTX,
 } from './system.js'
-import { TOOLS, toOllamaTools } from '../tools/registry.js'
+import { TOOLS, toOllamaTools, toolsForMode } from '../tools/registry.js'
 import type { ProjectContext } from './context.js'
 
 const CWD = '/home/dev/project'
@@ -127,5 +127,38 @@ describe('resolved contradictions', () => {
 
   it('does not tax every finished turn with a what-next question', () => {
     expect(large()).not.toContain('always close by asking')
+  })
+})
+
+describe('plan mode', () => {
+  const plan = (ctx = 4096) => buildSystemPrompt(toolsForMode('plan'), CWD, undefined, ctx, 'plan')
+
+  it('is sent even on a cramped window', () => {
+    // Plan mode changes what the model is *able* to do. A model that is not
+    // told spends its turns calling write tools it does not have.
+    expect(plan(4096)).toContain('Plan mode')
+    expect(plan(4096)).toContain('exit_plan_mode')
+  })
+
+  it('still fits the core budget with the plan tier on top', () => {
+    expect(estimateTokens(plan(4096))).toBeLessThanOrEqual(CORE_TOKEN_BUDGET)
+  })
+
+  it('names only the tools plan mode actually has', () => {
+    const prompt = plan(32768)
+    for (const t of toolsForMode('plan')) expect(prompt).toContain(t.name)
+    // The withheld ones are named in the prose that explains their absence, so
+    // check the tool list line itself rather than the whole prompt.
+    const toolLine = prompt.split('\n').find((l) => l.includes('read_file, ')) ?? ''
+    expect(toolLine).not.toContain('write_file')
+    expect(toolLine).not.toContain('edit_file')
+  })
+
+  it('says nothing about planning in an ordinary session', () => {
+    // exit_plan_mode is not offered outside plan mode; describing it anyway
+    // invites the model to stall instead of doing the work.
+    const normal = buildSystemPrompt(toolsForMode('default'), CWD, undefined, 32768)
+    expect(normal).not.toContain('Plan mode')
+    expect(normal).not.toContain('exit_plan_mode')
   })
 })

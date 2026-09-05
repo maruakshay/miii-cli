@@ -24,7 +24,40 @@ function summarizeInput(input: unknown): string {
   return ''
 }
 
+/**
+ * Approving a plan, not a tool call.
+ *
+ * The plan itself is already on screen above (ToolBlock renders it in full), so
+ * this asks the one question left. "Yes, and stop asking about edits" is the
+ * honest second option: someone who has just read a whole plan and approved it
+ * does not want to re-approve each file it named.
+ */
+function PlanApproval({ cursor }: { cursor: number }) {
+  const options = [
+    'Yes — start working',
+    "Yes, and don't ask about file edits from here",
+    'No — keep planning, I want changes',
+  ]
+  return (
+    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="cyan" paddingX={1}>
+      <Text color="cyan" bold>Ready to start?</Text>
+      <Box marginTop={1}>
+        <Text dimColor>The plan above is what will happen. Nothing has been changed yet.</Text>
+      </Box>
+      <Box flexDirection="column" marginTop={1}>
+        {options.map((label, i) => (
+          <Text key={label} color={i === cursor ? 'cyan' : undefined}>
+            {i === cursor ? '❯ ' : '  '}
+            {i + 1}. {label}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  )
+}
+
 export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; cursor: number }) {
+  if (req.toolName === 'exit_plan_mode') return <PlanApproval cursor={cursor} />
   const label = TOOL_LABEL[req.toolName] ?? req.toolName
   // The widest glob an "always" choice would persist. Showing it makes the blast
   // radius explicit — e.g. "npm run *" auto-allows every npm script, while a
@@ -33,7 +66,12 @@ export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; curs
   const rule = widestPattern(req.toolName, subjectFor(req.toolName, req.input))
   const options = [
     { label: 'Yes', key: 'yes' },
-    { label: rule ? `Yes, don't ask again for ${rule}` : "Yes, don't ask again for this", key: 'always' },
+    {
+      // Naming the scope matters: the rule goes in the project's own
+      // .miii/permissions.json, so "don't ask again" means here, not everywhere.
+      label: rule ? `Yes, don't ask again for ${rule} (this project)` : "Yes, don't ask again in this project",
+      key: 'always',
+    },
     { label: 'No', key: 'no' },
   ]
   const summary = summarizeInput(req.input)

@@ -381,6 +381,7 @@ export function App() {
                 caret={caret}
                 disabled={agent.busy}
                 processingLabel={agent.processingLabel}
+                mode={agent.mode}
                 hint={
                   providerDown
                     ? 'provider unavailable — /provider to switch · /models to pick a model'

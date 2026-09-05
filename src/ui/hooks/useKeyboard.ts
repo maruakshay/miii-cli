@@ -28,6 +28,8 @@ import {
   type SessionMeta,
 } from '../../session/store.js'
 import { estimateHistoryTokens } from '../../agent/compact.js'
+import { loadScopedRules, MODE_HINT, MODE_LABEL, type PermissionMode } from '../../permissions/policy.js'
+import { expandCommand, findCustomCommand, invalidateCustomCommands } from '../../commands/custom.js'
 import type { useAgentRunner } from './useAgentRunner.js'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high']
@@ -214,6 +216,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     busyRef, abortRef,
     sendMessage, compact, messages, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingTail,
     setActiveToolUses, setActiveToolResults, setError, setUsedTokens,
+    setMode, cycleMode, modeRef,
   } = agent
 
   const { write } = useStdout()
@@ -266,6 +269,47 @@ export function useKeyboard(opts: KeyboardOptions) {
   }
 
   const effort: Effort = cfg.effort ?? 'medium'
+
+  /**
+   * Resolve a submitted line to a custom command plus its argument string.
+   * Returns null for anything that isn't one, so the caller can fall through to
+   * treating the line as an ordinary message.
+   */
+  function customCommandFor(line: string) {
+    if (!line.startsWith('/')) return null
+    const name = line.split(/\s/)[0]
+    const command = findCustomCommand(name)
+    return command ? { command, args: line.slice(name.length) } : null
+  }
+
+  /** Announce a mode the user just moved to. */
+  function noticeMode(mode: PermissionMode) {
+    setNotice(`${MODE_LABEL[mode]} — ${MODE_HINT[mode]}`)
+  }
+
+  /**
+   * Print the saved approval rules into the transcript, grouped by where they
+   * live. Answers the question the permission prompt raises and never closes:
+   * what have I already agreed to, and does it follow me to my next project?
+   */
+  function showPermissions() {
+    const sections = (['project', 'user'] as const).map((scope) => {
+      const rules = loadScopedRules(scope)
+      const where = scope === 'project' ? '`.miii/permissions.json` (this project)' : '`~/.miii/permissions.json` (every project)'
+      if (!rules.length) return `**${scope}** — ${where}\n\nnothing saved yet.`
+      const lines = rules.map((r) => `- \`${r.tool}\` → \`${r.pattern}\``).join('\n')
+      return `**${scope}** — ${where}\n\n${lines}`
+    })
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content:
+          `⚖ **approval rules**\n\n${sections.join('\n\n')}\n\n` +
+          'Delete a rule by editing the file. "Yes, don\'t ask again" writes to the project file.',
+      },
+    ])
+  }
 
   useInput((char, key) => {
     // --- mouse ---
@@ -449,6 +493,16 @@ export function useKeyboard(opts: KeyboardOptions) {
     if (state === 'ready') {
       if (busyRef.current) return
 
+      // shift+tab cycles the permission mode. Handled before the palette's tab
+      // completion below, which matches on key.tab alone and would otherwise
+      // swallow it whenever the input happens to start with '/'. Only while
+      // idle: the running turn captured its mode when it started, so changing
+      // it mid-run would show a mode the agent is not actually operating under.
+      if (key.tab && key.shift) {
+        noticeMode(cycleMode())
+        return
+      }
+
       // Ctrl+V — paste an image off the OS clipboard (Cmd+V only pastes text, so
       // a copied screenshot needs an explicit reader). Inserts an image chip.
       if (key.ctrl && char === 'v') {
@@ -467,6 +521,9 @@ export function useKeyboard(opts: KeyboardOptions) {
       // typing the '@' that opens a mention drops the file cache, so a picker
       // opened just after creating a file still lists it.
       if (char === '@') invalidateFileCache()
+      // Same idea for '/': a command file written a moment ago should show up
+      // in the palette that is about to open, not on the next launch.
+      if (char === '/') invalidateCustomCommands()
       const mention = !paletteOpen ? parseMention(input) : null
       const fileMatches = mention ? searchFiles(process.cwd(), mention.query) : []
       const fileOpen = mention !== null && fileMatches.length > 0
@@ -530,6 +587,10 @@ export function useKeyboard(opts: KeyboardOptions) {
         // the reply is visible as it arrives.
         scrollToBottom()
         const trimmed = input.trim()
+        // Resolved once, up front: the built-in chain below tests it as a
+        // condition and then uses it, and looking it up twice re-reads the
+        // command directory on every send.
+        const custom = customCommandFor(trimmed)
         pushHistory(trimmed)
         historyIndex = -1
         historyDraft = ''
@@ -567,6 +628,14 @@ export function useKeyboard(opts: KeyboardOptions) {
           setSessions(listSessions())
           setCursor(() => 0)
           setState('sessions')
+        } else if (trimmed === '/plan') {
+          // Explicit way in, for people who haven't found shift+tab. Toggles,
+          // so the same key gets you back out of a plan you no longer want.
+          const next: PermissionMode = modeRef.current === 'plan' ? 'default' : 'plan'
+          setMode(next)
+          noticeMode(next)
+        } else if (trimmed === '/permissions') {
+          showPermissions()
         } else if (trimmed === '/exit') {
           exit()
         } else if (trimmed.startsWith('/provider ')) {
@@ -578,6 +647,12 @@ export function useKeyboard(opts: KeyboardOptions) {
           } else {
             setNotice(`unknown provider "${p}" — configured: ${names.join(', ')}`)
           }
+        } else if (custom) {
+          // A Markdown file under .miii/commands. Its body becomes the prompt,
+          // so from here on it is an ordinary turn — which is the point: a
+          // custom command is a saved message, not a new kind of thing.
+          setNotice(null)
+          sendMessage(expandCommand(custom.command.body, custom.args))
         } else if (trimmed) {
           setNotice(null)
           // Pull any image chips out of the text, gathering their base64 bytes

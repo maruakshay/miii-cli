@@ -1,4 +1,5 @@
 import type { Tool } from '../tools/types.js'
+import type { PermissionMode } from '../permissions/policy.js'
 import type { ProjectContext } from './context.js'
 import { CONTEXT_FILENAME, MAX_CONTEXT_BYTES } from './context.js'
 
@@ -116,20 +117,50 @@ File tools are confined to the working directory. Any call may prompt the user f
 }
 
 /**
+ * Plan mode. Sent on every window size, tight ones included: it changes what
+ * the model is *able* to do, so a model that doesn't get told is a model that
+ * spends its turns calling write tools it does not have and reading back
+ * refusals. That earns its tokens even at 4k.
+ */
+function planning(): string {
+  return `
+# Plan mode — READ-ONLY
+You are researching, not building. Nothing you do this turn may change the
+project: you have no write_file and no edit_file, and run_bash will only run
+commands that report (ls, cat, grep, git status/log/diff, …). A command that
+writes is refused, not queued.
+- Work out what the change actually requires: read the real files, follow the
+  call sites, check how the project already does this. Do not guess and do not
+  design against a file you have not opened.
+- Then call exit_plan_mode with the plan. Steps in the order you would do them,
+  each naming the files it touches, concrete enough that the next step is never
+  "figure out how X works". Keep it short — it is a plan, not an essay.
+- The user approves the plan before anything is written. If they reject it, they
+  will say what is wrong: revise and propose again.
+- If the request needs no plan — a question, a lookup, one obvious edit — say so
+  in prose and stop. Do not manufacture a plan for it.
+`
+}
+
+/**
  * Build the system prompt for a turn.
  *
  * `num_ctx` is the window the loop actually negotiated. Pass it so the prompt
  * can size itself; when it is unknown (the provider did not report a window) we
  * send the full prompt, since an unreported window is more often a capable
  * remote model than a cramped local one.
+ *
+ * `mode` is the permission mode in force. Only plan mode changes the prompt —
+ * the others change what gets asked, not what the model should be doing.
  */
 export function buildSystemPrompt(
   tools: Tool[],
   cwd: string,
   project?: ProjectContext,
   num_ctx?: number,
+  mode: PermissionMode = 'default',
 ): string {
-  const base = core(tools, cwd, project)
+  const base = core(tools, cwd, project) + (mode === 'plan' ? planning() : '')
   const roomy = num_ctx === undefined || num_ctx >= EXTENDED_MIN_CTX
   return roomy ? base + extended() : base
 }

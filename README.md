@@ -59,7 +59,9 @@ miii reads your files, writes the code, runs your tests, and fixes what breaks �
 - **🧪 `miii doctor`** — not every local model can drive an agent. Grades your installed models on real engineering tasks.
 - **🖼️ Paste images** — `Ctrl+V` a screenshot to ask why a UI looks broken. Needs a vision model (`llava`, `llama3.2-vision`, …).
 - **💧 Lossless output spill** — a 50K-line test log is never truncated. The full text goes to disk and the model pages through it.
+- **📋 Plan mode** — `shift+tab` (or `/plan`) makes the session read-only. miii researches your code, proposes a plan, and touches nothing until you approve it. The block is enforced by the harness, not asked for in the prompt: with no write tools and only reporting commands, a model that tries `sed -i` or `cat > file` anyway gets refused.
 - **🔒 Permission-gated tools** — you approve what the agent touches, and see the exact rule before you save it. A saved wildcard never stretches across a command boundary, so approving `npm test` can't quietly authorize `npm test && rm -rf ~`.
+- **⌨️ Your own slash commands** — drop `review.md` in `.miii/commands/` and `/review` is a command, in the palette, checked into the repo with everything else.
 - **📄 `MIII.md`** — drop one in your repo to teach miii your conventions and commands. Same idea as `CLAUDE.md`, read every turn.
 
 **Picking a model:** 8GB VRAM → `qwen2.5-coder:7b` · 16–24GB → `qwen2.5-coder:14b` (sweet spot) · 48GB+ → `qwen2.5-coder:32b`.
@@ -89,7 +91,41 @@ Answering "always" saves both the exact command and a generalized glob (`npm run
 
 Two things are never widened: destructive programs (`rm`, `dd`, `sudo`, `git reset`, …) and compound commands, whose first token says nothing about what the rest of the line does. A saved glob also refuses to match any command containing an unquoted `;` `&&` `||` `|` `>` or `$(…)`, so an approval can't be stretched past the command you actually read.
 
-Saved rules live in `~/.miii/permissions.json`.
+Saved rules live in **`.miii/permissions.json` in the project** — that is what "always" writes to. Approval subjects are usually project-relative (`src/index.ts` means a different file in every repo), so a rule that followed you everywhere would be granting far more than you agreed to. Rules in `~/.miii/permissions.json` apply in every project; put the ones you really do mean globally there by hand. `/permissions` lists both and says which file each came from.
+
+Gitignore `.miii/permissions.json` — it is a record of what *you* approved. `.miii/commands/` is meant to be committed.
+</details>
+
+<details>
+<summary><strong>Permission modes</strong> — <code>shift+tab</code></summary>
+
+`shift+tab` cycles the mode; the input frame changes colour with it.
+
+| Mode | What it does |
+|------|--------------|
+| **normal** | asks before writing files or running commands |
+| **plan mode** | read-only — research and a plan, approved before anything happens |
+| **auto-accept edits** | writes files without asking; commands still prompt, since a command can reach outside the workspace |
+| **bypass permissions** | runs everything without asking (red frame — for a sandbox or a throwaway tree) |
+
+In **plan mode** the write tools are not offered at all and `run_bash` runs only commands that report — `ls`, `cat`, `grep`, `find`, `git status/log/diff`, one at a time, no pipes or `&&`. A compound command is refused however harmless its first word, because `ls` tells you nothing about what comes after the `&&`. When the research is done miii calls `exit_plan_mode` with the plan and you get three choices: start work, start work and stop asking about the edits, or send it back for another pass.
+</details>
+
+<details>
+<summary><strong>Custom slash commands</strong></summary>
+
+A Markdown file is a command. `.miii/commands/review.md` becomes `/review`:
+
+```markdown
+---
+description: review the staged diff
+---
+Review the staged diff for bugs and unhandled errors. Focus on $ARGUMENTS.
+```
+
+`$ARGUMENTS` is everything typed after the command; `$1`…`$9` are its individual words. A command that references neither gets the arguments appended, so nothing you type is silently dropped.
+
+`.miii/commands/` is project scope — check it in, and the whole team gets it. `~/.miii/commands/` is yours in every project. A project command shadows a personal one of the same name, and neither can shadow a built-in.
 </details>
 
 <details>
@@ -99,6 +135,7 @@ Saved rules live in `~/.miii/permissions.json`.
 |-----|--------|
 | `Enter` | Send prompt |
 | `/` | Open the command palette |
+| `Shift+Tab` | Cycle permission mode — normal → plan → auto-accept → bypass |
 | `@filename` | Attach file to context |
 | `Ctrl+V` | Paste clipboard image (needs a vision model) |
 | `Ctrl+T` | Toggle the model's thinking |
@@ -114,6 +151,8 @@ Saved rules live in `~/.miii/permissions.json`.
 
 | Command | Action |
 |---------|--------|
+| `/plan` | Toggle plan mode — research read-only, then approve the plan |
+| `/permissions` | List saved approval rules and which file each lives in |
 | `/models` | Switch model, provider (`tab`) and effort (`←→`) |
 | `/provider` | Pick a configured provider |
 | `/new` | Save this session and start fresh |
@@ -186,7 +225,8 @@ src/
  ├── agent/       # The core reasoning loop, and tool-call repair
  ├── tools/       # read/write/edit/bash/grep/glob/todos + output spill
  ├── prompt/      # System prompt and MIII.md project context
- ├── permissions/ # Approval rules and how they're scoped
+ ├── permissions/ # Approval rules, modes, and how they're scoped
+ ├── commands/    # User-defined slash commands (.miii/commands/*.md)
  ├── llm/         # Ollama and OpenAI-compatible backends
  ├── session/     # Saved conversations
  ├── ui/          # Ink terminal UI and input handling

@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import { Box, Text, useStdout } from 'ink'
 import { INPUT_PLACEHOLDER, INPUT_HINTS, BUSY_HINTS } from './constants.js'
+import { MODE_LABEL, type PermissionMode } from '../permissions/policy.js'
 
 interface Props {
   input: string
@@ -9,6 +10,20 @@ interface Props {
   processingLabel?: string
   /** Replaces the default key hints — used to surface a provider error. */
   hint?: string
+  /** Permission mode; anything but 'default' is shown, and colours the frame. */
+  mode?: PermissionMode
+}
+
+/**
+ * The frame colour carries the mode, so the state you are in is visible without
+ * reading anything. Red for bypass is the point: a session that never asks
+ * should not look like an ordinary one.
+ */
+const MODE_COLOR: Record<PermissionMode, string> = {
+  default: 'gray',
+  plan: 'cyan',
+  acceptEdits: 'green',
+  bypass: 'red',
 }
 
 const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
@@ -88,6 +103,7 @@ export const InputBar = memo(function InputBar({
   disabled,
   processingLabel,
   hint,
+  mode = 'default',
 }: Props) {
   const [frame, setFrame] = useState(0)
   useEffect(() => {
@@ -111,7 +127,7 @@ export const InputBar = memo(function InputBar({
       <Box
         width="100%"
         borderStyle="round"
-        borderColor={disabled ? 'yellow' : 'gray'}
+        borderColor={disabled ? 'yellow' : MODE_COLOR[mode]}
         paddingX={1}
       >
         {disabled ? (
@@ -145,7 +161,17 @@ export const InputBar = memo(function InputBar({
         )}
       </Box>
       <Box paddingX={1}>
-        <Text dimColor>{fitHint(hint ?? (disabled ? BUSY_HINTS : INPUT_HINTS), stdout?.columns ?? 80)}</Text>
+        {mode !== 'default' && (
+          <Text color={MODE_COLOR[mode]} bold>{MODE_LABEL[mode]}{' · '}</Text>
+        )}
+        <Text dimColor>
+          {fitHint(
+            hint ?? (disabled ? BUSY_HINTS : INPUT_HINTS),
+            // The mode chip eats into the same row, so the hints have to fit
+            // what's left of it or the bar wraps and pushes the frame.
+            (stdout?.columns ?? 80) - (mode === 'default' ? 0 : MODE_LABEL[mode].length + 3),
+          )}
+        </Text>
       </Box>
     </Box>
   )
