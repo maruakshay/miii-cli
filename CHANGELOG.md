@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.36...miii-agent-v0.1.37) (2026-09-05)
+
+
+### Bug Fixes
+
+* **ui:** swallow coalesced mouse reports so they can't reach the prompt ([#81](https://github.com/maruakshay/miii-cli/issues/81)) ([e3fd5f6](https://github.com/maruakshay/miii-cli/commit/e3fd5f6167ae195e166fcef73874585e04fa2465))
+
 ## [0.1.36](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.35...miii-agent-v0.1.36) (2026-09-05)
 
 
