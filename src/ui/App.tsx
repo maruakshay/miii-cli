@@ -224,7 +224,7 @@ export function App() {
           banner moves into ChatView's <Static> log (Ink prints Static above the
           live frame, so a dynamic banner here would sink below the scrollback). */}
       {state !== 'ready' && state !== 'sessions' && state !== 'models' && (
-        <WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} error={agent.error} updateAvailable={updateAvailable} updateStatus={updateStatus} />
+        <WelcomeBlock variant="compact" model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} provider={provName} error={agent.error} updateAvailable={updateAvailable} updateStatus={updateStatus} />
       )}
 
       {state === 'loading' && !agent.error && (
@@ -284,7 +284,7 @@ export function App() {
             permissionCursor={agent.permissionCursor}
             activeToolUses={agent.activeToolUses}
             activeToolResults={agent.activeToolResults}
-            header={<WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} />}
+            header={<WelcomeBlock model={cfg.model} activeCtx={activeCtx} effort={effort} cwd={cwd} provider={provName} />}
             logEpoch={logEpoch}
           />
 
@@ -309,7 +309,13 @@ export function App() {
           {/* Pickers have their own inline controls, so they drop the input bar
               entirely (avoids a stray "processing" prompt). */}
           {state === 'ready' && (
-            <InputBar input={input} caret={caret} disabled={agent.busy} processingLabel={agent.processingLabel} />
+            <InputBar
+              input={input}
+              caret={caret}
+              disabled={agent.busy}
+              processingLabel={agent.processingLabel}
+              hint={providerDown ? 'provider unavailable — /provider to switch · /models to pick a model' : undefined}
+            />
           )}
 
           {/* Pickers render below the input bar (like the command palette) so the
@@ -330,15 +336,6 @@ export function App() {
             />
           )}
 
-          {state === 'ready' && !agent.busy && (
-            <Box marginLeft={2} marginBottom={1}>
-              <Text dimColor>
-                {providerDown
-                  ? 'provider unavailable — /provider to switch · /models to pick a model'
-                  : 'type / to see commands'}
-              </Text>
-            </Box>
-          )}
           {updateAvailable && (
             <Box marginLeft={2} marginBottom={1}>
               <Text color={updateStatus === 'failed' ? 'red' : updateStatus === 'installed' ? 'green' : 'yellow'}>

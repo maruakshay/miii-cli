@@ -30,7 +30,7 @@ function markUpdateAttempt(): void {
   }
 }
 
-function currentVersion(): string {
+export function currentVersion(): string {
   try {
     return (require('../package.json') as { version: string }).version
   } catch {

@@ -51,6 +51,20 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     req.resolve(answers[cursor])
   }
 
+  /**
+   * Answer a pending prompt with 'no' without the user picking an option — used
+   * when they cancel the whole turn instead. Aborting the run alone would leave
+   * this promise unsettled, and the agent loop parks on it forever: the turn
+   * never finishes, `busy` never clears, and the input stays locked.
+   */
+  function cancelPermission() {
+    const req = pendingPermissionRef.current
+    if (!req) return
+    pendingPermissionRef.current = null
+    setPendingPermission(null)
+    req.resolve('no')
+  }
+
   async function sendMessage(text: string, images?: string[]) {
     if (busyRef.current || !model) return
     busyRef.current = true
@@ -245,5 +259,6 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     // actions
     sendMessage,
     resolvePermission,
+    cancelPermission,
   }
 }

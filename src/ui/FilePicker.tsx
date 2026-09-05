@@ -5,11 +5,16 @@ import { join, relative } from 'path'
 const IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '.miii'])
 const MAX_RESULTS = 10
 const MAX_SCAN = 2000
+const CACHE_TTL_MS = 2000
 
-let cache: { cwd: string; files: string[] } | null = null
+let cache: { cwd: string; files: string[]; at: number } | null = null
+
+export function invalidateFileCache(): void {
+  cache = null
+}
 
 function listFiles(cwd: string): string[] {
-  if (cache && cache.cwd === cwd) return cache.files
+  if (cache && cache.cwd === cwd && Date.now() - cache.at < CACHE_TTL_MS) return cache.files
   const out: string[] = []
   const stack: string[] = [cwd]
   while (stack.length && out.length < MAX_SCAN) {
@@ -24,7 +29,7 @@ function listFiles(cwd: string): string[] {
       if (out.length >= MAX_SCAN) break
     }
   }
-  cache = { cwd, files: out }
+  cache = { cwd, files: out, at: Date.now() }
   return out
 }
 
