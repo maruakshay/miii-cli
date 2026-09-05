@@ -14,7 +14,8 @@ interface Props {
   streaming: boolean
   streamingContent: string
   thinking: boolean
-  thinkingContent?: string
+  /** Just the line being thought right now — the whole thought lands in `messages`. */
+  thinkingTail?: string
   error?: string | null
   pendingPermission?: PermissionRequest | null
   permissionCursor?: number
@@ -37,7 +38,7 @@ export function ChatView({
   streaming,
   streamingContent,
   thinking,
-  thinkingContent,
+  thinkingTail,
   error,
   pendingPermission,
   permissionCursor = 0,
@@ -150,7 +151,7 @@ export function ChatView({
           ))}
 
           <Box flexDirection="column" marginLeft={1} flexShrink={0}>
-            {thinking && <ThinkingBlock content={thinkingContent} />}
+            {thinking && <ThinkingBlock tail={thinkingTail} />}
 
             {streamNode}
 

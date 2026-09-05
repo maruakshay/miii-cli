@@ -13,6 +13,13 @@ export interface ToolResultDisplay {
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  /**
+   * The model's reasoning for this turn, committed with it so it stays in the
+   * transcript instead of vanishing with the live spinner. Hidden until ctrl+t.
+   * Only set for turns streamed in this session — agent history doesn't carry
+   * thinking, so a resumed session has none.
+   */
+  thinking?: string
   tool_uses?: ToolUseDisplay[]
   tool_results?: ToolResultDisplay[]
   tokens?: { prompt_eval: number; eval: number }

@@ -2,9 +2,7 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "miii-agent",
-      "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true
+      "package-name": "miii-agent"
     }
   },
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
