@@ -13,6 +13,7 @@ import {
   blocksFromOllama,
   looksLikeLeakedToolCall,
 } from './adapter.js'
+import { resolveToolName, normalizeToolInput } from './normalize.js'
 import type {
   MiiMessage,
   AgentEvent,
@@ -53,21 +54,24 @@ function readGuard(name: string, input: unknown, seen: Set<string>): string | nu
 }
 
 /**
- * Some local models echo the full call envelope as the tool input, e.g.
- *   { name: "write_file", arguments: { path, content } }
- * instead of the bare { path, content }. Unwrap to the inner arguments so
- * validation/handlers see the real fields — otherwise the model loops,
- * re-emitting the same malformed call until the repeat-kill fires.
+ * Repair a turn's tool calls in place, before anything else looks at them.
+ *
+ * A small model usually gets the intent right and the spelling wrong: it calls
+ * `readFile`, passes `file_path`, sends `"20"` where a number is declared, or
+ * wraps the arguments in a `{name, arguments}` envelope. Left alone each of
+ * those burns a full round trip — a rejected call, an error, a retry — which on
+ * a small context window is the difference between finishing and running out of
+ * room. Repairing here means the corrected call is what the UI shows, what
+ * loop-detection compares, and what gets persisted to history, so the model
+ * never re-reads its own mistake and learns it back.
  */
-function unwrapEnvelope(name: string, input: Record<string, unknown>): Record<string, unknown> {
-  if (!('arguments' in input)) return input
-  if ('name' in input && input.name !== name) return input
-  let args = input.arguments
-  if (typeof args === 'string') {
-    try { args = JSON.parse(args) } catch { return input }
+function repairToolUses(tool_uses: ToolUse[], toolNames: string[]): void {
+  for (const use of tool_uses) {
+    const resolved = resolveToolName(use.name, toolNames)
+    if (resolved) use.name = resolved
+    const tool = getTool(use.name)
+    if (tool) use.input = normalizeToolInput(tool.input_schema, use.input).input
   }
-  if (args && typeof args === 'object' && !Array.isArray(args)) return args as Record<string, unknown>
-  return input
 }
 
 // Tools whose payload carries a large free-text field (file body / edit text).
@@ -140,7 +144,6 @@ export interface RunAgentOpts {
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
   const startTime = Date.now()
-  const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd))
   const ollamaTools = toOllamaTools(TOOLS)
   const toolNames = TOOLS.map((t) => t.name)
   const cfg = loadConfig()
@@ -153,6 +156,9 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   const ctxCap = cfg.numCtxCap && cfg.numCtxCap > 0 ? cfg.numCtxCap : DEFAULT_NUM_CTX_CAP
   const cappedCtx =
     typeof num_ctx === 'number' && num_ctx > 0 ? Math.min(num_ctx, ctxCap) : undefined
+  // Built after cappedCtx: the prompt sizes itself to the window we actually
+  // negotiated, dropping its optional layer when there is no room to spare.
+  const system = buildSystemPrompt(TOOLS, cwd, loadProjectContext(cwd), cappedCtx)
 
   const history: MiiMessage[] = [
     ...opts.history,
@@ -260,6 +266,11 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     const blocks: ContentBlock[] = blocksFromOllama(text, tool_calls, toolNames)
     const tool_uses = blocks.filter((b): b is ToolUse => b.type === 'tool_use')
 
+    // Repair names/arguments before anything downstream reads them — the blocks
+    // are mutated in place, so history, the UI and loop-detection all see the
+    // corrected call rather than the model's near-miss.
+    repairToolUses(tool_uses, toolNames)
+
     // Loop detection runs BEFORE the assistant message is committed to history.
     // If we push first and then bail on a detected repeat, the persisted history
     // ends on an assistant tool_use with no matching tool_result — which breaks
@@ -361,7 +372,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         const r: ToolResultBlock = {
           type: 'tool_result',
           tool_use_id: use.id,
-          content: `Unknown tool: ${use.name}. There's no tool by that name — check the spelling against the tools you were given.`,
+          content: `Unknown tool: ${use.name}. There's no tool by that name. Available tools: ${toolNames.join(', ')}. Pick the one that does what you meant and call it by its exact name.`,
           is_error: true,
         }
         results.push(r)
@@ -369,7 +380,22 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         continue
       }
 
-      use.input = unwrapEnvelope(use.name, use.input)
+      // Cancelled mid-turn (Esc). Don't prompt for or run what's left — but do
+      // emit a tool_result for every tool_use, or the persisted history ends on
+      // an unmatched tool_use and breaks the next request when the session
+      // resumes. Same invariant the truncation path above protects.
+      if (signal?.aborted) {
+        const r: ToolResultBlock = {
+          type: 'tool_result',
+          tool_use_id: use.id,
+          content: `Cancelled — the user stopped the turn before ${use.name} ran.`,
+          is_error: true,
+        }
+        results.push(r)
+        yield { type: 'tool-result', block: r }
+        continue
+      }
+
       const invalid = validateInput(tool.input_schema, use.input)
       if (invalid) {
         // Empty/garbled args on a big-write tool almost always means a

@@ -1,4 +1,5 @@
 import type { OllamaMessage } from '../llm/types.js'
+import { resolveToolName } from './normalize.js'
 import type { MiiMessage, ContentBlock, ToolUse, ToolResultBlock } from './types.js'
 
 export function mintToolUseId(): string {
@@ -102,17 +103,45 @@ export function parseTextToolCalls(
     return _m
   })
 
-  if (calls.length === 0) {
-    const candidate = extractFirstJsonObject(cleaned)
-    if (candidate) {
-      const c = tryParse(candidate.json, knownToolNames)
-      if (c) {
-        calls.push(c)
-        cleaned = (cleaned.slice(0, candidate.start) + cleaned.slice(candidate.end)).trim()
-      }
-    }
+  // Bare JSON objects printed straight into the prose. Scan the whole string,
+  // not just the first object: a model that emits one call as text usually
+  // emits the rest the same way, and dropping the tail silently loses work.
+  const bare = parseBareJsonCalls(cleaned, knownToolNames)
+  if (bare.calls.length > 0) {
+    calls.push(...bare.calls)
+    cleaned = bare.cleanedText
   }
 
+  return { calls, cleanedText: cleaned.trim() }
+}
+
+/** Pull every balanced top-level JSON object that reads as a tool call. */
+function parseBareJsonCalls(
+  text: string,
+  knownToolNames: string[],
+): { calls: RawToolCall[]; cleanedText: string } {
+  const calls: RawToolCall[] = []
+  let cleaned = ''
+  let rest = text
+  let offset = 0
+
+  while (offset < rest.length) {
+    const candidate = extractFirstJsonObject(rest.slice(offset))
+    if (!candidate) break
+    const start = offset + candidate.start
+    const end = offset + candidate.end
+    const c = tryParse(candidate.json, knownToolNames)
+    if (c) {
+      calls.push(c)
+      cleaned += rest.slice(0, start)
+      rest = rest.slice(end)
+      offset = 0
+    } else {
+      // Not a call — keep it in the text and resume scanning after it.
+      offset = end
+    }
+  }
+  cleaned += rest
   return { calls, cleanedText: cleaned.trim() }
 }
 
@@ -121,9 +150,13 @@ function tryParse(raw: string, knownToolNames: string[]): RawToolCall | null {
   if (!s.startsWith('{')) return null
   try {
     const obj = JSON.parse(s) as Record<string, unknown>
-    const name = typeof obj.name === 'string' ? obj.name : undefined
-    const args = (obj.arguments ?? obj.parameters ?? obj.input ?? {}) as Record<string, unknown>
-    if (!name || !knownToolNames.includes(name)) return null
+    const rawName = typeof obj.name === 'string' ? obj.name : typeof obj.tool === 'string' ? obj.tool : undefined
+    const args = (obj.arguments ?? obj.parameters ?? obj.input ?? obj.args ?? {}) as Record<string, unknown>
+    if (!rawName) return null
+    // Strict resolution (no edit-distance guessing) — this text came out of
+    // prose, so a loose match could turn an ordinary sentence into a real call.
+    const name = resolveToolName(rawName, knownToolNames, false)
+    if (!name) return null
     return { function: { name, arguments: args } }
   } catch {
     return null
@@ -150,14 +183,14 @@ function parseCallSyntax(
   let lastEnd = 0
 
   while ((m = headRe.exec(text)) !== null) {
-    const name = m[1]
     const body = parseCallBody(text, m.index + m[0].length)
     if (!body) continue
     // Skip past the whole body before the next exec, even for unknown tools, so
     // a `call:...{...}` embedded in an unknown call's value isn't rescanned and
     // mistaken for a real call.
     headRe.lastIndex = body.end
-    if (!knownToolNames.includes(name)) continue
+    const name = resolveToolName(m[1], knownToolNames, false)
+    if (!name) continue
     calls.push({ function: { name, arguments: body.args } })
     cleaned += text.slice(lastEnd, m.index)
     lastEnd = body.end
@@ -264,11 +297,11 @@ export function looksLikeLeakedToolCall(text: string, knownToolNames: string[]):
   // `call:NAME{` — but only when NAME is an actual tool, so prose like
   // "I'll call: someone {" can't trip the nudge.
   const callMatch = text.match(/\bcall:\s*(\w+)\s*\{/)
-  if (callMatch && knownToolNames.includes(callMatch[1])) return true
+  if (callMatch && resolveToolName(callMatch[1], knownToolNames, false)) return true
   // JSON object literal that names a known tool with an args/params field.
   if (/"name"\s*:\s*"([^"]+)"/.test(text) && /"(arguments|parameters|input)"\s*:/.test(text)) {
     const name = text.match(/"name"\s*:\s*"([^"]+)"/)?.[1]
-    if (name && knownToolNames.includes(name)) return true
+    if (name && resolveToolName(name, knownToolNames, false)) return true
   }
   return false
 }
