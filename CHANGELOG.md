@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.35...miii-agent-v0.1.36) (2026-09-05)
+
+
+### Features
+
+* **ui:** scrollback with mouse support, and a card for user messages ([#79](https://github.com/maruakshay/miii-cli/issues/79)) ([d4c5461](https://github.com/maruakshay/miii-cli/commit/d4c5461e5d6b930ede8beeb0bbbb7d9d84aeb9ad))
+
 ## [0.1.35](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.34...miii-agent-v0.1.35) (2026-09-05)
 
 
