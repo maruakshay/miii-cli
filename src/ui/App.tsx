@@ -18,12 +18,23 @@ import { SessionsView } from './SessionsView.js'
 import { CommandPalette } from './CommandPalette.js'
 import { persistSession, setSessionTitle, summarizeConversation, newSessionId, type SessionMeta } from '../session/store.js'
 import { setTerminalTitle, resetTerminalTitle } from './terminalTitle.js'
-import { enableMouse, disableMouse } from './mouse.js'
+import { enableMouse, disableMouse, isMouseEnabled, onMouseChange } from './mouse.js'
 import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 import { checkForUpdate, autoUpdate } from '../updateCheck.js'
+
+/** Warn the user once this share of the context window is in use. */
+const CONTEXT_WARN_AT = 0.7
+
+/**
+ * Compact automatically at this share. Deliberately below the hard limit: the
+ * summariser needs room to read the transcript and write the recap, and a turn
+ * that overflows mid-tool-call is a worse experience than one that pauses to
+ * compact itself.
+ */
+const AUTO_COMPACT_AT = 0.85
 
 type AppState = 'loading' | 'select-model' | 'ready' | 'models' | 'providers' | 'sessions'
 
@@ -92,6 +103,15 @@ export function App() {
   useEffect(() => {
     enableMouse()
     return disableMouse
+  }, [])
+
+  // ctrl+s hands the mouse back to the terminal so a drag selects text again;
+  // track it so the input bar can say the wheel has stopped scrolling. Synced on
+  // subscribe because the effect above has already switched reporting on by now.
+  const [mouseOn, setMouseOn] = useState(isMouseEnabled)
+  useEffect(() => {
+    setMouseOn(isMouseEnabled())
+    return onMouseChange(() => setMouseOn(isMouseEnabled()))
   }, [])
 
   // Ink recalculates its layout on resize but doesn't re-render the tree, so the
@@ -228,14 +248,23 @@ export function App() {
 
   const effort: Effort = cfg.effort ?? 'medium'
 
-  // Context usage warning threshold — warn when >= 70% of context window used.
-  const contextWarning = (() => {
-    if (!activeCtx) return null
-    const last = [...agent.messages].reverse().find((m) => m.role === 'assistant' && m.tokens)
-    const used = last?.tokens ? last.tokens.prompt_eval + last.tokens.eval : 0
-    if (used < activeCtx * 0.7) return null
-    return Math.round((used / activeCtx) * 100)
-  })()
+  // How full the context is, as a fraction. usedTokens is the runner's live
+  // reading — reported by the model after each turn, and corrected by
+  // compaction — so it drops the moment the history shrinks.
+  const contextPct = activeCtx && agent.usedTokens ? agent.usedTokens / activeCtx : 0
+  const contextWarning = contextPct >= CONTEXT_WARN_AT ? Math.round(contextPct * 100) : null
+
+  // Auto-compact when the window is nearly full, between turns. The ref latches
+  // so a compaction that fails (or one whose summary is still large) isn't
+  // retried on every render — it re-arms only once usage falls back under the
+  // threshold.
+  const autoCompacted = useRef(false)
+  useEffect(() => {
+    if (contextPct < AUTO_COMPACT_AT) { autoCompacted.current = false; return }
+    if (autoCompacted.current || agent.busy || state !== 'ready' || !cfg.model) return
+    autoCompacted.current = true
+    void agent.compact()
+  }, [contextPct, agent.busy, state, cfg.model])
 
   // Chat mode owns the whole screen: the root is pinned to the terminal height
   // (less one row, so writing the frame can't scroll it) and ChatView's viewport
@@ -326,7 +355,9 @@ export function App() {
           {state === 'ready' && contextWarning !== null && (
             <Box marginLeft={2} marginBottom={1} flexShrink={0}>
               <Text color="yellow">
-                {`⚠ context ${contextWarning}% full — run /clear and start fresh`}
+                {contextPct >= AUTO_COMPACT_AT
+                  ? `⚠ context ${contextWarning}% full — compacting automatically after this turn`
+                  : `⚠ context ${contextWarning}% full — /compact to summarize and keep going, /clear to start over`}
               </Text>
             </Box>
           )}
@@ -350,7 +381,13 @@ export function App() {
                 caret={caret}
                 disabled={agent.busy}
                 processingLabel={agent.processingLabel}
-                hint={providerDown ? 'provider unavailable — /provider to switch · /models to pick a model' : undefined}
+                hint={
+                  providerDown
+                    ? 'provider unavailable — /provider to switch · /models to pick a model'
+                    : mouseOn
+                      ? undefined
+                      : 'mouse off — drag to select and copy · ctrl+s to scroll with the wheel again'
+                }
               />
             </Box>
           )}

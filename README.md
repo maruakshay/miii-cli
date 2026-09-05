@@ -108,6 +108,8 @@ Saved rules live in `~/.miii/permissions.json`.
 | `Shift+↑` / `Shift+↓` | Scroll the transcript a row at a time |
 | `Ctrl+A` / `Ctrl+E` | Jump to start / end of line |
 | `Esc` | Stop generation or tool run |
+| `Ctrl+Y` | Copy the last reply to the clipboard |
+| `Ctrl+S` | Hand the mouse back to the terminal, so a drag selects text |
 | `Ctrl+C` | Quit |
 
 | Command | Action |
@@ -116,6 +118,8 @@ Saved rules live in `~/.miii/permissions.json`.
 | `/provider` | Pick a configured provider |
 | `/new` | Save this session and start fresh |
 | `/sessions` | List and resume a saved session |
+| `/copy` | Copy to the clipboard — `last` (default), `code`, `tool` or `all` |
+| `/compact` | Summarize the conversation to free context — `/compact <focus>` to steer it |
 | `/clear` | Reset conversation |
 | `/exit` | Quit |
 </details>
