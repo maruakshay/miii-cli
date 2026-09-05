@@ -14,7 +14,7 @@ import { filteredCommands } from '../CommandPalette.js'
 import { invalidateFileCache, parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
 import { toggleToolExpanded } from '../toolExpand.js'
-import { parseMouseEvent } from '../mouse.js'
+import { parseMouseEvents } from '../mouse.js'
 import { scrollBy, scrollToBottom, resetScroll } from '../scroll.js'
 import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
 import {
@@ -250,13 +250,19 @@ export function useKeyboard(opts: KeyboardOptions) {
     // --- mouse ---
     // The transcript lives in miii's own viewport, so wheel notches scroll it
     // (the terminal's scrollback isn't in play). Every report is swallowed here
-    // so an escape sequence can never land in the prompt. A left click toggles
-    // the collapsed tool output, same as ctrl+o.
-    const mouse = parseMouseEvent(char)
-    if (mouse) {
-      if (!mouse.press) return
-      if (mouse.wheel) scrollBy(mouse.up ? -WHEEL_ROWS : WHEEL_ROWS)
-      else if (mouse.button === 0) toggleToolExpanded()
+    // so an escape sequence can never land in the prompt — a spin of the wheel
+    // packs several into one chunk, so they're drained as a batch and the wheel
+    // rows summed into a single scroll. A left click toggles the collapsed tool
+    // output, same as ctrl+o.
+    const mouse = parseMouseEvents(char)
+    if (mouse.consumed) {
+      let rows = 0
+      for (const ev of mouse.events) {
+        if (!ev.press) continue
+        if (ev.wheel) rows += ev.up ? -WHEEL_ROWS : WHEEL_ROWS
+        else if (ev.button === 0) toggleToolExpanded()
+      }
+      if (rows !== 0) scrollBy(rows)
       return
     }
 
