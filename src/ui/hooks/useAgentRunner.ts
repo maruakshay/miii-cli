@@ -6,6 +6,7 @@
  */
 import { useState, useRef } from 'react'
 import { runAgent } from '../../agent/loop.js'
+import { compactHistory, estimateHistoryTokens } from '../../agent/compact.js'
 import type { ChatMessage, PermissionRequest, PermissionAnswer, ToolUseDisplay, ToolResultDisplay } from '../types.js'
 import type { MiiMessage } from '../../agent/types.js'
 import { tailLine } from '../layout.js'
@@ -27,6 +28,14 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
   const [permissionCursor, setPermissionCursor] = useState(0)
   const [activeToolUses, setActiveToolUses] = useState<ToolUseDisplay[]>([])
   const [activeToolResults, setActiveToolResults] = useState<ToolResultDisplay[]>([])
+  /**
+   * Prompt+eval tokens the model reported for the last turn — i.e. how full the
+   * context is right now. Kept as state rather than derived from the transcript
+   * so compaction can correct it immediately; a stale reading there would have
+   * the auto-compact trigger fire again the moment it finished.
+   */
+  const [usedTokens, setUsedTokens] = useState(0)
+  const [compacting, setCompacting] = useState(false)
 
   const busyRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -204,10 +213,12 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
           }
           case 'done': {
             finalTokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
+            setUsedTokens(ev.prompt_tokens + ev.eval_tokens)
             break
           }
           case 'aborted': {
             finalTokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
+            setUsedTokens(ev.prompt_tokens + ev.eval_tokens)
             setStreaming(false)
             setThinking(false)
             flushTurn(finalTokens)
@@ -239,6 +250,63 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     setProcessingLabel(undefined)
   }
 
+  /**
+   * Fold the conversation into a summary and keep going — the alternative to
+   * /clear when the window fills up. The visible transcript is left alone (it's
+   * the user's record of the session); what shrinks is the history the model is
+   * sent, so the summary lands in the transcript as its own entry.
+   *
+   * Resolves false when it couldn't run or the model failed to summarise; the
+   * original history is untouched in that case, since a full context is a far
+   * better problem than a lost one.
+   */
+  async function compact(instructions?: string): Promise<boolean> {
+    if (busyRef.current || !model) return false
+    if (!agentHistory.length) {
+      setError('nothing to compact yet — the conversation is empty')
+      return false
+    }
+    busyRef.current = true
+    setBusy(true)
+    setCompacting(true)
+    setProcessingLabel('compacting context…')
+    setError(null)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      const res = await compactHistory(model, agentHistory, {
+        instructions,
+        num_ctx: activeCtx ?? undefined,
+        signal: controller.signal,
+      })
+      setAgentHistory(res.history)
+      setUsedTokens(estimateHistoryTokens(res.history))
+      const kept = res.keptMessages ? `, last ${res.keptMessages} kept verbatim` : ''
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content:
+            `⧉ **context compacted** — ${res.droppedMessages} messages summarised${kept}. ` +
+            `~${res.beforeTokens} → ~${res.afterTokens} tokens.\n\n${res.summary}`,
+        },
+      ])
+      return true
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(controller.signal.aborted ? 'Compaction cancelled — context unchanged' : `Compaction failed: ${msg}`)
+      return false
+    } finally {
+      abortRef.current = null
+      busyRef.current = false
+      setBusy(false)
+      setCompacting(false)
+      setProcessingLabel(undefined)
+    }
+  }
+
   return {
     // state
     messages, setMessages,
@@ -254,6 +322,8 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     permissionCursor, setPermissionCursor,
     activeToolUses, setActiveToolUses,
     activeToolResults, setActiveToolResults,
+    usedTokens, setUsedTokens,
+    compacting,
     // refs (for keyboard handler)
     busyRef,
     abortRef,
@@ -262,5 +332,6 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     sendMessage,
     resolvePermission,
     cancelPermission,
+    compact,
   }
 }

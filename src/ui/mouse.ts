@@ -7,6 +7,10 @@
  * the terminal keeps as much native behaviour as it can — drag-to-select still
  * works with the usual override (option-drag on macOS, shift-drag elsewhere).
  *
+ * Reporting can be switched off from the app (ctrl+s), which hands the mouse
+ * back to the terminal so a plain drag selects text again — the one thing an
+ * app that owns the mouse takes away, and the reason /copy exists too.
+ *
  * Reports arrive on stdin as `ESC [ < b ; x ; y M|m`. Ink's parse-keypress
  * leaves them intact and strips only the leading ESC, so the keyboard handler
  * matches them with parseMouseEvents() and swallows them before they can reach
@@ -41,17 +45,39 @@ export type MouseEvent = {
 }
 
 let enabled = false
+// Notified whenever reporting is switched on or off, so the UI can say which
+// mode it's in without threading the flag through the component tree.
+const listeners = new Set<() => void>()
+
+export function isMouseEnabled(): boolean {
+  return enabled
+}
+
+function setMouse(on: boolean): void {
+  if (on === enabled || !process.stdout.isTTY) return
+  enabled = on
+  process.stdout.write(on ? ENABLE : DISABLE)
+  listeners.forEach((fn) => fn())
+}
 
 export function enableMouse(): void {
-  if (enabled || !process.stdout.isTTY) return
-  enabled = true
-  process.stdout.write(ENABLE)
+  setMouse(true)
 }
 
 export function disableMouse(): void {
-  if (!enabled) return
-  enabled = false
-  if (process.stdout.isTTY) process.stdout.write(DISABLE)
+  setMouse(false)
+}
+
+/** Flip reporting; returns the new state. */
+export function toggleMouse(): boolean {
+  setMouse(!enabled)
+  return enabled
+}
+
+/** Subscribe to reporting changes; returns the unsubscribe. */
+export function onMouseChange(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => { listeners.delete(fn) }
 }
 
 function toEvent(b: string, x: string, y: string, end: string): MouseEvent {

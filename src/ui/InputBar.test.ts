@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { viewport, fieldWidth } from './InputBar.js'
+import { viewport, fieldWidth, fitHint } from './InputBar.js'
 
 describe('fieldWidth', () => {
   it('leaves room for the border, padding, prompt and scroll indicators', () => {
@@ -85,5 +85,21 @@ describe('viewport', () => {
       // (or the empty cell past the end).
       expect(v.text[v.caretCol] ?? '').toBe(input[caret] ?? '')
     }
+  })
+})
+
+describe('fitHint', () => {
+  it('leaves a hint that already fits alone', () => {
+    expect(fitHint('a · b', 80)).toBe('a · b')
+  })
+
+  it('drops whole segments from the right rather than wrapping', () => {
+    // width = 20 - 4 = 16 columns.
+    expect(fitHint('send · copy · select · scroll', 20)).toBe('send · copy')
+  })
+
+  it('truncates when even the first segment is too long', () => {
+    // 16 columns less the two paddings leaves 12, ellipsis included.
+    expect(fitHint('an extremely long single hint', 16)).toBe('an extremel…')
   })
 })

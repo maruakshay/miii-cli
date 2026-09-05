@@ -33,6 +33,21 @@ export function fieldWidth(cols: number): number {
 }
 
 /**
+ * Fit the ` · `-separated hints into one row. A wrapped hint line grows the bar,
+ * which pushes the pinned frame past the terminal height — the same redraw the
+ * field's horizontal scrolling exists to avoid — so segments are dropped from
+ * the right until the line fits rather than being allowed to wrap.
+ */
+export function fitHint(hint: string, cols: number): string {
+  const width = Math.max(8, cols - 4) // outer padding (1 each side) + this box's (1 each side)
+  if (hint.length <= width) return hint
+  const parts = hint.split(' · ')
+  while (parts.length > 1 && parts.join(' · ').length > width) parts.pop()
+  const fitted = parts.join(' · ')
+  return fitted.length <= width ? fitted : `${fitted.slice(0, Math.max(1, width - 1))}…`
+}
+
+/**
  * A single-row window onto `input` that always contains the caret.
  *
  * The field must never wrap: this bar sits in Ink's live frame, and a bar that
@@ -130,7 +145,7 @@ export const InputBar = memo(function InputBar({
         )}
       </Box>
       <Box paddingX={1}>
-        <Text dimColor>{hint ?? (disabled ? BUSY_HINTS : INPUT_HINTS)}</Text>
+        <Text dimColor>{fitHint(hint ?? (disabled ? BUSY_HINTS : INPUT_HINTS), stdout?.columns ?? 80)}</Text>
       </Box>
     </Box>
   )

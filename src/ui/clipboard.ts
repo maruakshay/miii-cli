@@ -95,6 +95,57 @@ function readWindows(out: string): string | null {
   return null
 }
 
+/**
+ * Copy text to the OS clipboard. Returns false when no clipboard writer is
+ * available, so the caller can say so rather than silently doing nothing.
+ *
+ * A terminal app can't reach the clipboard on its own: the selection the user
+ * would normally drag over is owned by the terminal, and miii's mouse reporting
+ * takes the drag before it gets there. So we shell out to the platform's
+ * clipboard tool, and fall back to OSC 52 — the escape sequence that asks the
+ * *terminal* to set the clipboard, which is the only thing that works over SSH.
+ */
+export function writeClipboardText(text: string): boolean {
+  if (!text) return false
+
+  const candidates: Array<readonly [string, readonly string[]]> =
+    process.platform === 'darwin'
+      ? [['pbcopy', []]]
+      : process.platform === 'win32'
+        ? [['clip', []], ['powershell', ['-NoProfile', '-NonInteractive', '-Command', '$input | Set-Clipboard']]]
+        : [['wl-copy', []], ['xclip', ['-selection', 'clipboard']], ['xsel', ['--clipboard', '--input']]]
+
+  for (const [cmd, args] of candidates) {
+    try {
+      execFileSync(cmd, [...args], { input: text, stdio: ['pipe', 'ignore', 'ignore'] })
+      return true
+    } catch { /* tool missing or refused the write — try the next one */ }
+  }
+
+  return writeOsc52(text)
+}
+
+/**
+ * Ask the terminal itself to set the clipboard (OSC 52). Emits no visible
+ * characters and doesn't move the cursor, so it can't disturb the frame Ink is
+ * painting. Terminals that don't support it — or have it switched off, as many
+ * do by default — ignore the sequence, which is why this is the last resort:
+ * there is no reply to tell us whether it landed.
+ */
+function writeOsc52(text: string): boolean {
+  if (!process.stdout.isTTY) return false
+  // Most terminals cap the sequence around 100KB; a truncated clipboard is
+  // worse than an honest failure.
+  const b64 = Buffer.from(text, 'utf8').toString('base64')
+  if (b64.length > 74994) return false
+  try {
+    process.stdout.write(`\x1b]52;c;${b64}\x07`)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function readClipboardImage(): string | null {
   const out = join(tmpdir(), `miii-clip-${Date.now()}-${Math.random().toString(36).slice(2)}.png`)
   if (process.platform === 'darwin') return readMac(out)

@@ -8,13 +8,14 @@ import { existsSync, readFileSync } from 'fs'
 import { basename, join } from 'path'
 import { homedir } from 'os'
 import { useInput, useStdout } from 'ink'
-import { readClipboardImage } from '../clipboard.js'
+import { readClipboardImage, writeClipboardText } from '../clipboard.js'
+import { collectCopyText, describeSize, describeTarget, parseCopyTarget, type CopyTarget } from '../copy.js'
 import { setModel, setEffort, type NamedProvider, type Provider, type Effort } from '../../config.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { invalidateFileCache, parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
 import { toggleToolExpanded } from '../toolExpand.js'
-import { parseMouseEvents } from '../mouse.js'
+import { parseMouseEvents, toggleMouse } from '../mouse.js'
 import { scrollBy, scrollToBottom, resetScroll } from '../scroll.js'
 import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
 import {
@@ -26,6 +27,7 @@ import {
   newSessionId,
   type SessionMeta,
 } from '../../session/store.js'
+import { estimateHistoryTokens } from '../../agent/compact.js'
 import type { useAgentRunner } from './useAgentRunner.js'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high']
@@ -210,8 +212,8 @@ export function useKeyboard(opts: KeyboardOptions) {
   const {
     pendingPermissionRef, permissionCursor, setPermissionCursor, resolvePermission, cancelPermission,
     busyRef, abortRef,
-    sendMessage, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingTail,
-    setActiveToolUses, setActiveToolResults, setError,
+    sendMessage, compact, messages, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingTail,
+    setActiveToolUses, setActiveToolResults, setError, setUsedTokens,
   } = agent
 
   const { write } = useStdout()
@@ -231,6 +233,7 @@ export function useKeyboard(opts: KeyboardOptions) {
   function clearSession() {
     setMessages(() => [])
     setAgentHistory([])
+    setUsedTokens(0)
     setStreamingContent('')
     setThinkingTail('')
     setActiveToolUses([])
@@ -242,6 +245,24 @@ export function useKeyboard(opts: KeyboardOptions) {
     // Remount the transcript so its measured height restarts from the empty log
     // instead of the heights Ink last laid out.
     setLogEpoch((n) => n + 1)
+  }
+
+  /**
+   * Put part of the transcript on the system clipboard and report what happened.
+   * Reads the message log rather than the screen, so the copy is the real text —
+   * no wrapping, no gutter, no truncated tool output.
+   */
+  function copyToClipboard(target: CopyTarget) {
+    const text = collectCopyText(messages, target)
+    if (!text) {
+      setNotice(`nothing to copy — no ${describeTarget(target)} yet`)
+      return
+    }
+    setNotice(
+      writeClipboardText(text)
+        ? `copied ${describeTarget(target)} · ${describeSize(text)}`
+        : 'no clipboard tool found — install pbcopy/wl-copy/xclip, or ctrl+s to select with the mouse',
+    )
   }
 
   const effort: Effort = cfg.effort ?? 'medium'
@@ -280,6 +301,20 @@ export function useKeyboard(opts: KeyboardOptions) {
     if (key.ctrl && char === 't') { toggleThinkingVisible(); return }
     // Ctrl+O toggles full tool output (collapsed to a few lines by default)
     if (key.ctrl && char === 'o') { toggleToolExpanded(); return }
+    // Ctrl+Y yanks the last reply to the clipboard — /copy for anything else.
+    if (key.ctrl && char === 'y') { copyToClipboard('last'); return }
+    // Ctrl+S hands the mouse back to the terminal so a drag selects text again.
+    // The wheel stops scrolling the transcript while it's off (pgup/pgdn still
+    // do), which is the trade the notice spells out.
+    if (key.ctrl && char === 's') {
+      const on = toggleMouse()
+      setNotice(
+        on
+          ? 'mouse on — wheel scrolls the transcript'
+          : 'mouse off — drag to select and copy · ctrl+s to scroll again',
+      )
+      return
+    }
 
     if (key.escape && busyRef.current && abortRef.current) {
       // Settle a permission prompt that's waiting on the user before aborting.
@@ -384,6 +419,7 @@ export function useKeyboard(opts: KeyboardOptions) {
         const meta = sessions[cursor]
         const history = loadSession(meta.id)
         setAgentHistory(history)
+        setUsedTokens(estimateHistoryTokens(history))
         setMessages(toDisplayMessages(history))
         setStreamingContent('')
         setThinkingTail('')
@@ -505,6 +541,17 @@ export function useKeyboard(opts: KeyboardOptions) {
           setPickerQuery('')
           setCursor(() => Math.max(0, providers.findIndex((p) => p.name === cfg.provider)))
           setState('providers')
+        } else if (trimmed === '/copy' || trimmed.startsWith('/copy ')) {
+          const arg = trimmed.slice('/copy'.length).trim()
+          const target = parseCopyTarget(arg)
+          if (target) copyToClipboard(target)
+          else setNotice(`unknown /copy target "${arg}" — try last, code, tool or all`)
+        } else if (trimmed === '/compact' || trimmed.startsWith('/compact ')) {
+          // Summarise and carry on rather than starting over. The transcript is
+          // left on screen; only the history sent to the model shrinks.
+          const instructions = trimmed.slice('/compact'.length).trim()
+          setNotice(null)
+          void compact(instructions || undefined)
         } else if (trimmed === '/clear') {
           hardClear()
           clearSession()
