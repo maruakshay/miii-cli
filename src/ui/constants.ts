@@ -33,7 +33,7 @@ export const WELCOME_PROMPT = 'To get started, describe a task or try one of the
 export const INPUT_PLACEHOLDER = 'describe a task, or type / for commands'
 
 /** Key hints under the input bar. Kept short — they share one line. */
-export const INPUT_HINTS = '⏎ send · / commands · @ file · ctrl+v image · ctrl+t thinking'
+export const INPUT_HINTS = '⏎ send · / commands · @ file · ctrl+t thinking · scroll or pgup/pgdn to look back'
 
 /** Key hints under the input bar while a turn is running. */
-export const BUSY_HINTS = 'esc interrupt · ctrl+o expand tool output'
+export const BUSY_HINTS = 'esc interrupt · click or ctrl+o expand tool output · scroll to look back'

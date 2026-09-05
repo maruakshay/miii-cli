@@ -2,6 +2,7 @@
 import { render } from 'ink'
 import { createElement } from 'react'
 import { App } from './ui/App.js'
+import { DISABLE as MOUSE_OFF } from './ui/mouse.js'
 import { cleanupSpill } from './tools/spill.js'
 import { setProvider, listProviders, configError, type Provider } from './config.js'
 
@@ -43,6 +44,10 @@ if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
 
   // Restore the terminal tab title on any exit path (Ink's unmount cleanup
   // can be skipped on a hard signal).
-  process.on('exit', () => { if (process.stdout.isTTY) process.stdout.write('\x1b]2;\x07') })
+  // Mouse reporting gets the same treatment: a terminal left in click/wheel
+  // tracking mode swallows selection in whatever shell inherits it.
+  process.on('exit', () => {
+    if (process.stdout.isTTY) process.stdout.write(`\x1b]2;\x07${MOUSE_OFF}`)
+  })
   render(createElement(App))
 }

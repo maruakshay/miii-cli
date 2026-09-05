@@ -102,7 +102,10 @@ Saved rules live in `~/.miii/permissions.json`.
 | `@filename` | Attach file to context |
 | `Ctrl+V` | Paste clipboard image (needs a vision model) |
 | `Ctrl+T` | Toggle the model's thinking |
-| `Ctrl+O` | Toggle full tool output |
+| `Ctrl+O` / left click | Toggle full tool output |
+| Mouse wheel | Scroll the transcript |
+| `PgUp` / `PgDn` | Scroll the transcript a page at a time |
+| `Shift+↑` / `Shift+↓` | Scroll the transcript a row at a time |
 | `Ctrl+A` / `Ctrl+E` | Jump to start / end of line |
 | `Esc` | Stop generation or tool run |
 | `Ctrl+C` | Quit |
