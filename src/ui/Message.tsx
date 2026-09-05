@@ -5,6 +5,7 @@ import type { ChatMessage } from './types.js'
 import { ToolUseLine } from './ToolBlock.js'
 import { formatTokens, formatDuration, contentWidth, padLines, userTextWidth } from './layout.js'
 import { useTerminalWidth } from './hooks/useTerminalWidth.js'
+import { useThinkingVisible, CHALK } from './ThinkingBlock.js'
 
 /**
  * An echoed user message is drawn as a card: a coloured rule down the left edge
@@ -39,8 +40,21 @@ export const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage
 })
 
 export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: ChatMessage }) {
+  // Subscribing here is what lets ctrl+t reveal thoughts on turns that are long
+  // finished — they live in the transcript, not in the live frame. The
+  // subscription also defeats the memo on toggle, which is the point.
+  const showThoughts = useThinkingVisible()
+  const thoughts = msg.thinking?.trim()
   return (
     <Box flexDirection="column" marginBottom={1}>
+      {showThoughts && thoughts && (
+        <Box flexDirection="row" marginBottom={1}>
+          <Text color={CHALK}>{'✻ '}</Text>
+          <Box width={contentWidth()}>
+            <Text dimColor italic wrap="wrap">{thoughts}</Text>
+          </Box>
+        </Box>
+      )}
       {msg.content && (
         <Box flexDirection="row">
           <Text color="blue">● </Text>

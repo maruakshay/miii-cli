@@ -23,6 +23,18 @@ export function truncate(s: string, max: number): string {
   return s.slice(0, max - 1) + '…'
 }
 
+// Last non-blank line of a string, trimmed. The live thinking indicator shows
+// only this: the whole thought is committed to the transcript with the turn, so
+// the spinner block stays a fixed two rows and never needs clipping.
+export function tailLine(s: string): string {
+  const lines = s.split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim()
+    if (line) return line
+  }
+  return ''
+}
+
 // Clip rendered text to the last `max` lines. The live frame is redrawn in place
 // each streaming flush; if it grows taller than the terminal, Ink can't reach the
 // lines that scrolled off the top — causing flicker and orphaned blocks stuck in
@@ -44,9 +56,9 @@ export function stripAnsi(s: string): string {
 
 // Clip text to the last lines that fit `maxRows` of VISUAL rows at the given
 // wrap `width` — long lines occupy multiple rows, so a plain line count
-// under-estimates height. Used by the thinking block: clipping by logical lines
-// alone lets a wrapped block grow past the terminal, which breaks Ink's in-place
-// redraw and orphans stale frames in scrollback.
+// under-estimates height. Used by the streaming answer: clipping by logical
+// lines alone lets a wrapped block grow past the terminal, which breaks Ink's
+// in-place redraw and orphans stale frames in scrollback.
 export function clipTailVisual(
   content: string,
   maxRows: number,
@@ -65,13 +77,6 @@ export function clipTailVisual(
   }
   if (start === 0) return { text: content, clipped: 0 }
   return { text: lines.slice(start).join('\n'), clipped: start }
-}
-
-// Rows available to the live frame, leaving room for the input bar, hints and
-// margins. Floor keeps it usable on tiny terminals.
-export function liveFrameRows(): number {
-  const rows = process.stdout.rows ?? 24
-  return Math.max(6, rows - 8)
 }
 
 // Width for assistant prose: marked emits long unwrapped lines, and the content

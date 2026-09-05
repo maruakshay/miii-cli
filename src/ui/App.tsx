@@ -307,7 +307,7 @@ export function App() {
             streaming={agent.streaming}
             streamingContent={agent.streamingContent}
             thinking={agent.thinking}
-            thinkingContent={agent.thinkingContent}
+            thinkingTail={agent.thinkingTail}
             error={agent.error}
             pendingPermission={agent.pendingPermission}
             permissionCursor={agent.permissionCursor}

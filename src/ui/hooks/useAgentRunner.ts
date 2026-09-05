@@ -8,6 +8,7 @@ import { useState, useRef } from 'react'
 import { runAgent } from '../../agent/loop.js'
 import type { ChatMessage, PermissionRequest, PermissionAnswer, ToolUseDisplay, ToolResultDisplay } from '../types.js'
 import type { MiiMessage } from '../../agent/types.js'
+import { tailLine } from '../layout.js'
 
 // How often (ms) we flush streaming text to React state — avoids a re-render per token.
 const FLUSH_MS = 100
@@ -15,7 +16,7 @@ const FLUSH_MS = 100
 export function useAgentRunner(model: string | undefined, activeCtx: number | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [thinking, setThinking] = useState(false)
-  const [thinkingContent, setThinkingContent] = useState('')
+  const [thinkingTail, setThinkingTail] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -78,7 +79,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     let accumulated = ''
     let thinkingAcc = ''
     let firstToken = true
-    setThinkingContent('')
+    setThinkingTail('')
 
     // Throttled setters — batch token-level deltas into periodic React updates.
     let streamFlushAt = 0
@@ -94,7 +95,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
       const now = Date.now()
       if (force || now - thinkFlushAt >= FLUSH_MS) {
         thinkFlushAt = now
-        setThinkingContent(thinkingAcc)
+        setThinkingTail(tailLine(thinkingAcc))
       }
     }
 
@@ -107,6 +108,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
       const msg: ChatMessage = {
         role: 'assistant',
         content: accumulated,
+        thinking: thinkingAcc.trim() ? thinkingAcc : undefined,
         tool_uses: turnUses.length ? turnUses : undefined,
         tool_results: turnResults.length ? turnResults : undefined,
       }
@@ -116,9 +118,11 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
       }
       setMessages((prev) => [...prev, msg])
       accumulated = ''
+      thinkingAcc = ''
       turnUses = []
       turnResults = []
       setStreamingContent('')
+      setThinkingTail('')
       setActiveToolUses([])
       setActiveToolResults([])
     }
@@ -187,8 +191,6 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
               setStreaming(false)
               flushTurn(null)
               setThinking(true)
-              thinkingAcc = ''
-              setThinkingContent('')
               firstToken = true
             }
             // Final turn (non-tool stop): DON'T drop `streaming` here. The commit
@@ -241,7 +243,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     // state
     messages, setMessages,
     thinking,
-    thinkingContent, setThinkingContent,
+    thinkingTail, setThinkingTail,
     streaming,
     streamingContent, setStreamingContent,
     error, setError,

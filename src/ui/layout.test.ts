@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { padLines, userTextWidth } from './layout.js'
+import { padLines, userTextWidth, tailLine } from './layout.js'
 
 describe('padLines', () => {
   it('pads a short line out to the full width', () => {
@@ -38,5 +38,20 @@ describe('userTextWidth', () => {
   it('floors on a narrow terminal rather than going negative', () => {
     expect(userTextWidth(6)).toBe(8)
     expect(userTextWidth(0)).toBe(8)
+  })
+})
+
+describe('tailLine', () => {
+  it('returns the last line with content', () => {
+    expect(tailLine('first\nsecond\nthird')).toBe('third')
+  })
+
+  it('skips trailing blank and whitespace-only lines', () => {
+    expect(tailLine('the thought\n   \n\n')).toBe('the thought')
+  })
+
+  it('is empty for empty or whitespace-only input, so the row collapses', () => {
+    expect(tailLine('')).toBe('')
+    expect(tailLine('\n  \n')).toBe('')
   })
 })

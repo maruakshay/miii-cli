@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.37...miii-agent-v2.0.0) (2026-09-05)
+
+
+### Features
+
+* **ui:** thinking is committed to the transcript instead of the live frame — the spinner block is a fixed two rows (spinner + the line being thought), the whole thought rides along with the turn it belongs to, and ctrl+t expands thoughts on any turn, including ones that finished long ago
+
 ## [0.1.37](https://github.com/maruakshay/miii-cli/compare/miii-agent-v0.1.36...miii-agent-v0.1.37) (2026-09-05)
 
 

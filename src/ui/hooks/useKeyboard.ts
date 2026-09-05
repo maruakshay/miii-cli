@@ -210,7 +210,7 @@ export function useKeyboard(opts: KeyboardOptions) {
   const {
     pendingPermissionRef, permissionCursor, setPermissionCursor, resolvePermission, cancelPermission,
     busyRef, abortRef,
-    sendMessage, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingContent,
+    sendMessage, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingTail,
     setActiveToolUses, setActiveToolResults, setError,
   } = agent
 
@@ -232,7 +232,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     setMessages(() => [])
     setAgentHistory([])
     setStreamingContent('')
-    setThinkingContent('')
+    setThinkingTail('')
     setActiveToolUses([])
     setActiveToolResults([])
     setError(null)
@@ -386,7 +386,7 @@ export function useKeyboard(opts: KeyboardOptions) {
         setAgentHistory(history)
         setMessages(toDisplayMessages(history))
         setStreamingContent('')
-        setThinkingContent('')
+        setThinkingTail('')
         setActiveToolUses([])
         setActiveToolResults([])
         setError(null)
