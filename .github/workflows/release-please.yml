@@ -3,6 +3,13 @@ name: release-please
 on:
   push:
     branches: [main]
+  # Manual recovery: publish an already-tagged release that failed to reach npm.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish to npm (e.g. miii-agent-v0.1.35). Leave empty to just run release-please."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -11,6 +18,7 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event_name == 'push' || inputs.tag == ''
     runs-on: ubuntu-latest
     outputs:
       released: ${{ steps.rp.outputs.release_created }}
@@ -24,19 +32,24 @@ jobs:
 
   publish:
     needs: release-please
-    if: needs.release-please.outputs.released == 'true'
+    if: always() && (needs.release-please.outputs.released == 'true' || inputs.tag != '')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
+      # Publish the tagged commit, not whatever main has drifted to.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run build
+      # NPM_TOKEN is a granular automation token; npm caps their lifetime at
+      # 90 days, so it has to be regenerated before it expires or this fails.
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
