@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { parseMouseEvent } from './mouse.js'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { parseMouseEvent, parseMouseEvents, resetMouseParser } from './mouse.js'
 
 describe('parseMouseEvent', () => {
   it('parses a left-button press', () => {
@@ -28,5 +28,33 @@ describe('parseMouseEvent', () => {
     expect(parseMouseEvent('a')).toBeNull()
     expect(parseMouseEvent('[A')).toBeNull()
     expect(parseMouseEvent('[<0;1M')).toBeNull()
+  })
+})
+
+describe('parseMouseEvents', () => {
+  beforeEach(resetMouseParser)
+
+  it('drains a chunk holding several coalesced reports', () => {
+    const chunk = '[<65;79;23M\x1b[<65;79;23M\x1b[<64;80;24M'
+    const { events, rest, consumed } = parseMouseEvents(chunk)
+    expect(consumed).toBe(true)
+    expect(rest).toBe('')
+    expect(events.map((e) => e.up)).toEqual([false, false, true])
+  })
+
+  it('swallows a report torn across two chunks', () => {
+    const first = parseMouseEvents('[<65;79;23M\x1b[<65;79')
+    expect(first.events).toHaveLength(1)
+    expect(first.rest).toBe('')
+    const second = parseMouseEvents(';23M\x1b[<64;1;1M')
+    expect(second.rest).toBe('')
+    expect(second.events).toHaveLength(1)
+  })
+
+  it('leaves ordinary typing alone', () => {
+    const { events, rest, consumed } = parseMouseEvents('[<')
+    expect(events).toEqual([])
+    expect(consumed).toBe(false)
+    expect(rest).toBe('[<')
   })
 })
