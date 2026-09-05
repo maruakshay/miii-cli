@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.0.0...miii-agent-v3.1.0) (2026-09-05)
+
+
+### Features
+
+* **ui:** compact a full context, and copy text out of the transcript ([#85](https://github.com/maruakshay/miii-cli/issues/85)) ([58c2339](https://github.com/maruakshay/miii-cli/commit/58c23394d696377d4930e263037076b3f7b6d64e))
+
 ## [3.0.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v2.0.0...miii-agent-v3.0.0) (2026-09-05)
 
 
