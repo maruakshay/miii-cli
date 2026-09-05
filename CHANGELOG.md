@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.1.0...miii-agent-v3.2.0) (2026-09-05)
+
+
+### Features
+
+* plan mode, custom slash commands, project-scoped permissions ([#87](https://github.com/maruakshay/miii-cli/issues/87)) ([a8a1912](https://github.com/maruakshay/miii-cli/commit/a8a19121f5fb868fbb161bb51a1aad00e22cb29e))
+
 ## [3.1.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.0.0...miii-agent-v3.1.0) (2026-09-05)
 
 
