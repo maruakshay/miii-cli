@@ -37,14 +37,6 @@ Your code never leaves your disk. There's nothing to log in to. Pull a model, ty
 
 ```bash
 ollama pull qwen2.5-coder:14b   # any coding model works
-```
-
-**Which model should I use?**
-- **Low VRAM (8GB):** `qwen2.5-coder:7b` (Fast, capable)
-- **Mid VRAM (16-24GB):** `qwen2.5-coder:14b` (Sweet spot)
-- **High VRAM (48GB+):** `qwen2.5-coder:32b` (Powerhouse)
-
-```bash
 curl -fsSL https://raw.githubusercontent.com/maruakshay/miii-cli/main/install.sh | sh
 miii
 ```
@@ -57,6 +49,15 @@ ollama pull qwen2.5-coder:14b
 irm https://raw.githubusercontent.com/maruakshay/miii-cli/main/install.ps1 | iex
 miii
 ```
+
+**Which model should I use?**
+- **Low VRAM (8GB):** `qwen2.5-coder:7b` (fast, capable)
+- **Mid VRAM (16–24GB):** `qwen2.5-coder:14b` (sweet spot)
+- **High VRAM (48GB+):** `qwen2.5-coder:32b` (powerhouse)
+
+Smaller models work too — miii repairs the malformed tool calls they tend to
+emit rather than burning a turn on each one. Run `miii doctor` to see how yours
+actually score.
 
 Prefer npm? `npm install -g miii-agent` works on every platform.
 
@@ -124,7 +125,7 @@ It doesn't just chat, either — it follows a **Plan $\rightarrow$ Act $\rightar
   ollama pull llava            # or llama3.2-vision
   ```
 - **💧 Lossless output spill** — that 50K-line test log won't get truncated and leave the model guessing. miii spills the full output to disk and lets the model page through it. Nothing is ever lost.
-- **🔒 Permission-gated tools** — you approve what the agent can touch; "always" approvals persist. File tools are confined to your working directory.
+- **🔒 Permission-gated tools** — you approve what the agent can touch; "always" approvals persist, and the prompt shows you the exact rule it will save. A saved wildcard never stretches across a command boundary, so approving `npm test` can't quietly authorize `npm test && rm -rf ~`. File tools are confined to your working directory.
 - **📄 `MIII.md`** — drop one in your repo to teach miii your conventions, build/test commands, and do's & don'ts. Same idea as `CLAUDE.md`, read every turn.
 
 ## Going deeper
@@ -140,8 +141,11 @@ It doesn't just chat, either — it follows a **Plan $\rightarrow$ Act $\rightar
 | `glob` | Pattern-match files across the project |
 | `grep` | Regex search across files |
 | `run_bash` | Execute shell commands |
+| `write_todos` | Track multi-step work as a live checklist |
 
-File tools (`read_file`, `write_file`, `edit_file`) reject `../` traversal and absolute paths outside the workspace. `run_bash` is **not** path-confined — its only boundary is the permission prompt, so review commands before approving (especially "always"). Saved rules live in `~/.miii/permissions.json`.
+File tools (`read_file`, `write_file`, `edit_file`) reject `../` traversal and absolute paths outside the workspace. `run_bash` is **not** path-confined — its only boundary is the permission prompt, so review commands before approving.
+
+Answering "always" saves both the exact command and a generalized glob (`npm run build` → `npm run *`), and the prompt shows you the widest rule before you choose. Two things are never widened: destructive programs (`rm`, `dd`, `sudo`, `git reset`, …) and compound commands, whose first token says nothing about what the rest of the line does. A saved glob also refuses to match any command containing an unquoted `;` `&&` `||` `|` `>` or `$(…)`, so an approval can't be extended past the command you actually read. Saved rules live in `~/.miii/permissions.json`.
 </details>
 
 <details>
@@ -150,13 +154,23 @@ File tools (`read_file`, `write_file`, `edit_file`) reject `../` traversal and a
 | Key | Action |
 |-----|--------|
 | `Enter` | Send prompt |
+| `/` | Open the command palette |
 | `@filename` | Attach file to context |
 | `Ctrl+V` | Paste clipboard image (needs a vision model) |
-| `/models` | Switch active model |
-| `/clear` | Reset conversation |
-| `Esc` | Stop generation or tool run |
+| `Ctrl+T` | Toggle the model's thinking |
 | `Ctrl+O` | Toggle full tool output |
+| `Ctrl+A` / `Ctrl+E` | Jump to start / end of line |
+| `Esc` | Stop generation or tool run |
 | `Ctrl+C` | Quit |
+
+| Command | Action |
+|---------|--------|
+| `/models` | Switch model, provider (`tab`) and effort (`←→`) |
+| `/provider` | Pick a configured provider |
+| `/new` | Save this session and start fresh |
+| `/sessions` | List and resume a saved session |
+| `/clear` | Reset conversation |
+| `/exit` | Quit |
 </details>
 
 <details>
@@ -167,12 +181,18 @@ Settings live in `~/.miii/config.json`, created on first run:
 ```json
 {
   "model": "qwen2.5-coder:14b",
-  "ollamaHost": "http://localhost:11434",
-  "effort": "medium"
+  "effort": "medium",
+  "providers": {
+    "ollama": { "type": "ollama", "baseUrl": "http://localhost:11434" }
+  }
 }
 ```
 
-`effort` (`low` \| `medium` \| `high`) controls temperature and limits.
+`effort` (`low` \| `medium` \| `high`) controls temperature and the output token
+cap. `numCtxCap` (default `16384`) bounds the context window miii asks for, so a
+model advertising a 131k window can't make Ollama size a KV cache that eats your
+RAM — it only ever lowers, never raises. A top-level `ollamaHost` still works and
+is folded into the `ollama` provider on load.
 
 miii talks to any **OpenAI-compatible** local server too. Start `llama-server`, then point a named provider at it:
 
@@ -195,9 +215,9 @@ Switch at launch with `miii --provider llamacpp`. Any `openai`-type provider on 
 When a tool result exceeds the inline budget (~10K bytes), the full output is written to `~/.miii/output/<id>.txt`. Only a head + tail preview is inlined, with a pointer:
 
 ```
-[command output truncated: 5184 lines / 412900 bytes.
- Full output at ~/.miii/output/9f3a1c.txt — read it with
- read_file offset/limit to see the elided middle.]
+[This command output was long (412900 bytes), so I'm showing the start and
+ end. The full text is saved at ~/.miii/output/9f3a1c.txt — read it with
+ read_file offset/limit to see the middle.]
 ```
 
 The model pages through the middle with ranged `read_file` reads. Spill files are garbage-collected after 24 hours.
@@ -209,10 +229,14 @@ The model pages through the middle with ranged `read_file` reads. Spill files ar
 **Project Architecture:**
 ```text
 src/
- ├── agent/    # The core reasoning loop
- ├── tools/    # Implementation of read/write/bash
- ├── terminal/ # UI and input handling
- └── config/   # Settings and provider logic
+ ├── agent/       # The core reasoning loop, and tool-call repair
+ ├── tools/       # read/write/edit/bash/grep/glob/todos + output spill
+ ├── prompt/      # System prompt and MIII.md project context
+ ├── permissions/ # Approval rules and how they're scoped
+ ├── llm/         # Ollama and OpenAI-compatible backends
+ ├── session/     # Saved conversations
+ ├── ui/          # Ink terminal UI and input handling
+ └── config.ts    # Settings and provider resolution
 ```
 
 ```bash
