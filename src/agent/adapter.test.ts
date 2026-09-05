@@ -35,6 +35,34 @@ describe('parseTextToolCalls', () => {
     expect(calls[0].function.arguments).toEqual({ path: 'x' })
   })
 
+  it('resolves a mis-spelled tool name to the real one', () => {
+    const { calls } = parseTextToolCalls('{"name":"readFile","arguments":{"path":"a.ts"}}', KNOWN)
+    expect(calls[0].function.name).toBe('read_file')
+  })
+
+  it('resolves an alias borrowed from another harness', () => {
+    const { calls } = parseTextToolCalls('<tool_call>{"tool":"bash","args":{"command":"ls"}}</tool_call>', KNOWN)
+    expect(calls[0].function).toEqual({ name: 'run_bash', arguments: { command: 'ls' } })
+  })
+
+  it('pulls every bare JSON call, not just the first', () => {
+    const { calls, cleanedText } = parseTextToolCalls(
+      'reading both:\n{"name":"read_file","arguments":{"path":"a.ts"}}\n{"name":"read_file","arguments":{"path":"b.ts"}}',
+      KNOWN,
+    )
+    expect(calls.map((c) => c.function.arguments.path)).toEqual(['a.ts', 'b.ts'])
+    expect(cleanedText).toBe('reading both:')
+  })
+
+  it('keeps scanning past a JSON object that is not a call', () => {
+    const { calls, cleanedText } = parseTextToolCalls(
+      'config is {"debug":true} — now {"name":"read_file","arguments":{"path":"a.ts"}}',
+      KNOWN,
+    )
+    expect(calls).toHaveLength(1)
+    expect(cleanedText).toContain('{"debug":true}')
+  })
+
   it('rejects an object whose name is not a known tool', () => {
     const { calls, cleanedText } = parseTextToolCalls('{"name":"frobnicate","arguments":{}}', KNOWN)
     expect(calls).toHaveLength(0)

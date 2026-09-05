@@ -14,6 +14,10 @@ const h = vi.hoisted(() => ({
   toolHandlers: {} as Record<string, (input: unknown) => unknown>,
   // permission decision for every call.
   decision: 'allow' as 'allow' | 'deny',
+  // How many times check() was consulted — proves we stop asking after a cancel.
+  checkCalls: 0,
+  // Runs inside check(); lets a test cancel the turn mid-permission-prompt.
+  onCheck: undefined as undefined | (() => void),
   // validateInput result: null = valid.
   validateResult: null as string | null,
 }))
@@ -68,7 +72,13 @@ vi.mock('../tools/validate.js', () => ({
 
 vi.mock('../prompt/system.js', () => ({ buildSystemPrompt: () => 'SYS' }))
 vi.mock('../prompt/context.js', () => ({ loadProjectContext: () => '' }))
-vi.mock('../permissions/policy.js', () => ({ check: async () => h.decision }))
+vi.mock('../permissions/policy.js', () => ({
+  check: async () => {
+    h.checkCalls++
+    h.onCheck?.()
+    return h.decision
+  },
+}))
 vi.mock('../config.js', () => ({
   loadConfig: () => ({ effort: 'medium' }),
   EFFORT_OPTIONS: { medium: { num_predict: -1, temperature: 0.5 } },
@@ -161,6 +171,8 @@ beforeEach(() => {
   h.alwaysTool = false
   h.toolHandlers = {}
   h.decision = 'allow'
+  h.checkCalls = 0
+  h.onCheck = undefined
   h.validateResult = null
 })
 
@@ -257,6 +269,71 @@ describe('runAgent abort', () => {
     const aborted = events.find((e) => e.type === 'aborted')!
     expect(aborted).toMatchObject({ type: 'aborted' })
     expect(typeof (aborted as { duration_ms: number }).duration_ms).toBe('number')
+  })
+
+  // Esc at a permission prompt cancels the turn. The remaining tools in that
+  // turn must not be prompted for or run — but each still needs a tool_result,
+  // or the persisted history ends on an unmatched tool_use and the next request
+  // breaks when the session resumes.
+  describe('cancelled at a permission prompt', () => {
+    const ac = { current: null as AbortController | null }
+
+    async function driveCancelledMidTurn() {
+      ac.current = new AbortController()
+      h.script = [toolThenDone([call('run_bash', { command: 'a' }), call('run_bash', { command: 'b' })])]
+      // The user hits Esc while the first prompt is up: the pending prompt
+      // resolves 'no' and the run is aborted.
+      h.decision = 'deny'
+      h.onCheck = () => ac.current!.abort()
+      return drive({ signal: ac.current.signal })
+    }
+
+    it('stops asking for permission once the turn is cancelled', async () => {
+      await driveCancelledMidTurn()
+      expect(h.checkCalls).toBe(1)
+    })
+
+    it('still emits one tool_result per tool_use', async () => {
+      const { history } = await driveCancelledMidTurn()
+      assertBlockOrdering(history)
+      const results = firstResults(history)
+      expect(results).toHaveLength(2)
+      expect(results.every((r) => r.is_error)).toBe(true)
+      expect(results[1].content).toMatch(/[Cc]ancelled/)
+    })
+
+    it('ends the run as aborted, not as a completed turn', async () => {
+      const { events } = await driveCancelledMidTurn()
+      const t = types(events)
+      expect(t).toContain('aborted')
+      expect(t).not.toContain('done')
+    })
+
+    // The other order: the cancel lands after the first tool was already
+    // approved and run. That one keeps its real result; the rest are skipped.
+    it('does not run the tools left after the cancel', async () => {
+      let ran = 0
+      ac.current = new AbortController()
+      h.script = [
+        toolThenDone([
+          call('run_bash', { command: 'a' }),
+          call('run_bash', { command: 'b' }),
+          call('run_bash', { command: 'c' }),
+        ]),
+      ]
+      h.decision = 'allow'
+      h.toolHandlers = { run_bash: () => { ran++; ac.current!.abort(); return { content: 'ran' } } }
+      const { history } = await drive({ signal: ac.current.signal })
+
+      expect(ran).toBe(1)
+      assertBlockOrdering(history)
+      const results = firstResults(history)
+      expect(results).toHaveLength(3)
+      expect(results[0]).toMatchObject({ content: 'ran' })
+      expect(results[0].is_error).toBeFalsy()
+      expect(results[1].content).toMatch(/[Cc]ancelled/)
+      expect(results[2].content).toMatch(/[Cc]ancelled/)
+    })
   })
 })
 
@@ -361,5 +438,34 @@ describe('runAgent leaked-tool-call nudge', () => {
     expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
     expect(t).toContain('done')
     expect(t).not.toContain('error')
+  })
+})
+
+describe('near-miss tool calls', () => {
+  it('runs a call whose tool name is mis-spelled, under the real name', async () => {
+    h.script = [toolThenDone([call('runBash', { command: 'ls' })]), textThenDone('done')]
+    const { events, history } = await drive()
+    const use = events.find((e) => e.type === 'tool-use') as { block: ToolUse }
+    expect(use.block.name).toBe('run_bash')
+    expect(firstResults(history)[0].is_error).toBeFalsy()
+  })
+
+  it('unwraps a call envelope before the tool sees it', async () => {
+    let seen: unknown
+    h.toolHandlers.run_bash = (input) => { seen = input; return { content: 'ok' } }
+    h.script = [
+      toolThenDone([call('run_bash', { name: 'run_bash', arguments: { command: 'ls' } })]),
+      textThenDone('done'),
+    ]
+    await drive()
+    expect(seen).toEqual({ command: 'ls' })
+  })
+
+  it('still reports a name that resolves to nothing', async () => {
+    h.script = [toolThenDone([call('frobnicate', {})]), textThenDone('done')]
+    const { history } = await drive()
+    const r = firstResults(history)[0]
+    expect(r.is_error).toBe(true)
+    expect(r.content).toContain('Unknown tool')
   })
 })
