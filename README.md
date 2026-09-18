@@ -55,8 +55,9 @@ miii reads your files, writes the code, runs your tests, and fixes what breaks �
 
 ## Features
 
-- **🧠 Works with small models** — miii repairs the malformed tool calls a 7B model emits instead of burning a turn on each one, and sizes its own prompt to your context window so the room goes to your code.
-- **🧪 `miii doctor`** — not every local model can drive an agent. Grades your installed models on real engineering tasks.
+- **🧠 Works with small models** — miii repairs malformed tool calls a 7B model emits instead of burning a turn on each one, and sizes its own prompt to your context window so the room goes to your code.
+- **🧪 `miii doctor`** — not every local model can drive an agent. Grades your installed models on real engineering tasks, now with detailed repair tracking to show exactly where a model struggles.
+- **🔌 Flexible providers** — switch between local (Ollama, llama.cpp) and hosted (Claude, OpenAI, Groq, DeepSeek, etc.) backends instantly via `/provider` or the CLI.
 - **🖼️ Paste images** — `Ctrl+V` a screenshot to ask why a UI looks broken. Needs a vision model (`llava`, `llama3.2-vision`, …).
 - **💧 Lossless output spill** — a 50K-line test log is never truncated. The full text goes to disk and the model pages through it.
 - **📋 Plan mode** — `shift+tab` (or `/plan`) makes the session read-only. miii researches your code, proposes a plan, and touches nothing until you approve it. The block is enforced by the harness, not asked for in the prompt: with no write tools and only reporting commands, a model that tries `sed -i` or `cat > file` anyway gets refused.
@@ -154,7 +155,7 @@ Review the staged diff for bugs and unhandled errors. Focus on $ARGUMENTS.
 | `/plan` | Toggle plan mode — research read-only, then approve the plan |
 | `/permissions` | List saved approval rules and which file each lives in |
 | `/models` | Switch model, provider (`tab`) and effort (`←→`) |
-| `/provider` | Pick a backend — `add <name> [apiKey]` / `remove <name>` to manage them |
+| `/provider` | switch backend · `/provider add <name> [apiKey]` · `/provider remove <name>` |
 | `/new` | Save this session and start fresh |
 | `/sessions` | List and resume a saved session |
 | `/copy` | Copy to the clipboard — `last` (default), `code`, `tool` or `all` |

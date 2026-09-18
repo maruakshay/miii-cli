@@ -182,6 +182,7 @@ export function toDisplayMessages(history: MiiMessage[]): ChatMessage[] {
             tool_use_id: r.tool_use_id,
             content: r.content,
             is_error: r.is_error,
+            diff: r.diff,
           })),
         ]
       }

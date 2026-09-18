@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import type { PermissionRequest } from './types.js'
-import { TOOL_LABEL } from './ToolBlock.js'
+import { describeTool } from './toolLabel.js'
 import { subjectFor, widestPattern } from '../permissions/policy.js'
 
 function summarizeInput(input: unknown): string {
@@ -58,7 +58,7 @@ function PlanApproval({ cursor }: { cursor: number }) {
 
 export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; cursor: number }) {
   if (req.toolName === 'exit_plan_mode') return <PlanApproval cursor={cursor} />
-  const label = TOOL_LABEL[req.toolName] ?? req.toolName
+  const { text: label } = describeTool(req.toolName, req.input as Record<string, unknown>)
   // The widest glob an "always" choice would persist. Showing it makes the blast
   // radius explicit — e.g. "npm run *" auto-allows every npm script, while a
   // destructive or compound command persists exact so it can't blanket-authorize
@@ -80,7 +80,7 @@ export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; curs
       <Text color="blue" bold>Tool use</Text>
       <Box marginTop={1}>
         <Text>
-          Allow <Text bold>{label}</Text>?
+          <Text bold>{label}</Text> — allow?
         </Text>
       </Box>
       {summary && (

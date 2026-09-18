@@ -1,3 +1,4 @@
+import type { FileDiff } from '../diff.js'
 import type { PermissionMode } from '../permissions/policy.js'
 
 export interface TextBlock {
@@ -19,6 +20,8 @@ export interface ToolResultBlock {
   is_error?: boolean
   /** Base64 images produced by the tool; surfaced to the model as a user message. */
   images?: string[]
+  /** File change to render. Display-only; the provider adapters ignore it. */
+  diff?: FileDiff
 }
 
 export type ContentBlock = TextBlock | ToolUse | ToolResultBlock

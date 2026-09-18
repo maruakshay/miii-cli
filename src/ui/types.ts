@@ -1,3 +1,5 @@
+import type { FileDiff } from '../diff.js'
+
 export interface ToolUseDisplay {
   id: string
   name: string
@@ -8,6 +10,8 @@ export interface ToolResultDisplay {
   tool_use_id: string
   content: string
   is_error?: boolean
+  /** The before/after of a file the tool touched, rendered as a diff block. */
+  diff?: FileDiff
 }
 
 export interface ChatMessage {

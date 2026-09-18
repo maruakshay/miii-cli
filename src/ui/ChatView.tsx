@@ -3,7 +3,7 @@ import { Box, Text, measureElement, type DOMElement } from 'ink'
 import { renderMarkdownStreaming } from './markdown.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import type { ChatMessage, ToolUseDisplay, ToolResultDisplay, PermissionRequest } from './types.js'
-import { UserMessage, AssistantMessage } from './Message.js'
+import { UserMessage, AssistantMessage, ASST_ACCENT, ASST_RULE } from './Message.js'
 import { ToolUseLine } from './ToolBlock.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
 import { clipTail, clipTailVisual, contentWidth } from './layout.js'
@@ -106,7 +106,7 @@ export function ChatView({
           <Text dimColor>{`↑ ${clipped} more line${clipped === 1 ? '' : 's'} above — streaming…`}</Text>
         )}
         <Box flexDirection="row">
-          <Text color="blue">{'● '}</Text>
+          <Text color={ASST_ACCENT}>{ASST_RULE}</Text>
           <Box width={width}>
             <Text wrap="wrap">{rendered.text}</Text>
           </Box>

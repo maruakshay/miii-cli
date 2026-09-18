@@ -1,23 +1,53 @@
 import { useState, useEffect } from 'react'
 
-// Tool output is collapsed to a few lines by default; a click or ctrl+o toggles
-// full view.
-// Global flag + subscriber set so the input handler can flip every mounted
-// tool block at once without threading state through the component tree.
-let globalToolExpanded = false
-const toolExpandListeners = new Set<() => void>()
+/**
+ * toolExpand — which tool blocks are showing their full detail.
+ *
+ * Two levels, because there are two gestures. Clicking a block is about *that*
+ * block, so it records an override for its id; ctrl+o is "show me everything",
+ * so it flips a baseline every block follows and drops the per-block overrides
+ * — otherwise a block clicked open earlier would read as closed the moment the
+ * baseline agreed with it.
+ *
+ * Module-level store + subscriber set (mirroring scroll.ts) so the input
+ * handler can flip a block without threading state through the tree.
+ */
+let allExpanded = false
+const overrides = new Map<string, boolean>()
+const listeners = new Set<() => void>()
 
-export function toggleToolExpanded() {
-  globalToolExpanded = !globalToolExpanded
-  toolExpandListeners.forEach((fn) => fn())
+function emit() {
+  listeners.forEach((fn) => fn())
 }
 
-export function useToolExpanded() {
-  const [expanded, setExpanded] = useState(globalToolExpanded)
+export function isToolExpanded(id?: string): boolean {
+  if (id !== undefined) {
+    const own = overrides.get(id)
+    if (own !== undefined) return own
+  }
+  return allExpanded
+}
+
+/** Toggle one block — what a click on it does. */
+export function toggleToolExpanded(id: string): void {
+  overrides.set(id, !isToolExpanded(id))
+  emit()
+}
+
+/** Toggle every block at once — what ctrl+o does. */
+export function toggleAllToolExpanded(): void {
+  allExpanded = !allExpanded
+  overrides.clear()
+  emit()
+}
+
+export function useToolExpanded(id?: string): boolean {
+  const [expanded, setExpanded] = useState(() => isToolExpanded(id))
   useEffect(() => {
-    const handler = () => setExpanded(globalToolExpanded)
-    toolExpandListeners.add(handler)
-    return () => { toolExpandListeners.delete(handler) }
-  }, [])
+    const handler = () => setExpanded(isToolExpanded(id))
+    handler()
+    listeners.add(handler)
+    return () => { listeners.delete(handler) }
+  }, [id])
   return expanded
 }

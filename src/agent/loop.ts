@@ -705,6 +705,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           content: out.content,
           is_error: out.is_error,
           ...(out.images && out.images.length > 0 ? { images: out.images } : {}),
+          ...(out.diff ? { diff: out.diff } : {}),
         }
       } catch (err) {
         r = {

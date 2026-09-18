@@ -20,6 +20,16 @@ const USER_BG = 'gray'
 const USER_ACCENT = 'blue'
 const USER_RULE = '\u258c'
 
+/**
+ * The assistant gutter, shared with the streaming frame in ChatView. Both must
+ * be the SAME visible width: the live answer and the committed message occupy
+ * the same column, and a gutter that changes width at commit re-wraps every row
+ * of the reply on that one frame — a whole-block twitch at the end of each turn.
+ * Two columns, matching the offset contentWidth() reserves.
+ */
+export const ASST_ACCENT = 'cyan'
+export const ASST_RULE = '\u258c '
+
 export const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage }) {
   // Read through the hook, not process.stdout: this component is memoised, so a
   // resize would otherwise leave the block padded to the old width.
@@ -45,6 +55,7 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
   // subscription also defeats the memo on toggle, which is the point.
   const showThoughts = useThinkingVisible()
   const thoughts = msg.thinking?.trim()
+
   return (
     <Box flexDirection="column" marginBottom={1}>
       {showThoughts && thoughts && (
@@ -57,7 +68,7 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
       )}
       {msg.content && (
         <Box flexDirection="row">
-          <Text color="blue">● </Text>
+          <Text color={ASST_ACCENT}>{ASST_RULE}</Text>
           <Box width={contentWidth()}>
             <Text wrap="wrap">{renderMarkdown(msg.content)}</Text>
           </Box>

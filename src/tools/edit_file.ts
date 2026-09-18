@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs'
 import { confinePath } from './paths.js'
 import { verifyHint } from './verifyHint.js'
+import { buildFileDiff } from '../diff.js'
 import type { Tool } from './types.js'
 
 interface EditSpec {
@@ -182,7 +183,10 @@ export const edit_file: Tool<Input> = {
         const res = applyBatch(src, edits)
         if ('error' in res) return { content: `${res.error} (in ${path})`, is_error: true }
         writeFileSync(abs, res.out, 'utf-8')
-        return { content: `Edited ${path} (${res.count} edits).${verifyHint(path)}` }
+        return {
+          content: `Edited ${path} (${res.count} edits).${verifyHint(path)}`,
+          diff: buildFileDiff(path, src, res.out),
+        }
       }
       if (typeof old_str !== 'string' || typeof new_str !== 'string') {
         return { content: `To edit ${path} I need either an old_str/new_str pair or an edits[] array — neither came through.`, is_error: true }
@@ -204,7 +208,10 @@ export const edit_file: Tool<Input> = {
             const [s, e] = fuzzy
             const out = src.slice(0, s) + new_str + src.slice(e)
             writeFileSync(abs, out, 'utf-8')
-            return { content: `Edited ${path} (whitespace-tolerant match).${verifyHint(path)}` }
+            return {
+              content: `Edited ${path} (whitespace-tolerant match).${verifyHint(path)}`,
+              diff: buildFileDiff(path, src, out),
+            }
           }
         }
         return { content: `I couldn't find that text in ${path} — it may differ by whitespace or a stray character.${nearMiss(src, old_str)}`, is_error: true }
@@ -219,7 +226,10 @@ export const edit_file: Tool<Input> = {
       const out = all ? src.split(old_str).join(new_str) : src.slice(0, first) + new_str + src.slice(first + old_str.length)
       const n = all ? src.split(old_str).length - 1 : 1
       writeFileSync(abs, out, 'utf-8')
-      return { content: `Edited ${path}${all ? ` (${n} occurrences)` : ''}.${verifyHint(path)}` }
+      return {
+        content: `Edited ${path}${all ? ` (${n} occurrences)` : ''}.${verifyHint(path)}`,
+        diff: buildFileDiff(path, src, out),
+      }
     } catch (err) {
       return { content: err instanceof Error ? err.message : String(err), is_error: true }
     }

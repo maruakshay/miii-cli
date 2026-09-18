@@ -1,7 +1,8 @@
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs'
 import { dirname } from 'path'
 import { confinePath } from './paths.js'
 import { verifyHint } from './verifyHint.js'
+import { buildFileDiff } from '../diff.js'
 import type { Tool } from './types.js'
 
 interface Input {
@@ -23,9 +24,20 @@ export const write_file: Tool<Input> = {
   handler: ({ path, content }) => {
     try {
       const abs = confinePath(path)
+      // Read before writing: overwriting an existing file is an edit, and the
+      // user should see which lines it actually changed, not a wall of green.
+      let before = ''
+      try {
+        if (existsSync(abs)) before = readFileSync(abs, 'utf-8')
+      } catch {
+        before = ''
+      }
       mkdirSync(dirname(abs), { recursive: true })
       writeFileSync(abs, content, 'utf-8')
-      return { content: `Wrote ${path} (${content.length} bytes).${verifyHint(path)}` }
+      return {
+        content: `Wrote ${path} (${content.length} bytes).${verifyHint(path)}`,
+        diff: buildFileDiff(path, before, content),
+      }
     } catch (err) {
       return { content: err instanceof Error ? err.message : String(err), is_error: true }
     }

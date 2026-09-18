@@ -1,23 +1,21 @@
-import { Box, Text } from 'ink'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Box, Text, type DOMElement } from 'ink'
 import { highlight, supportsLanguage } from 'cli-highlight'
 import type { ToolUseDisplay, ToolResultDisplay } from './types.js'
+import type { DiffLine, FileDiff } from '../diff.js'
 import { useToolExpanded } from './toolExpand.js'
+import { registerToolBlock, unregisterToolBlock } from './toolHit.js'
+import { describeTool, TOOL_LABEL } from './toolLabel.js'
 import { countLines, truncate } from './layout.js'
 import { renderMarkdown } from './markdown.js'
 
 // Tool output is collapsed to a few lines by default; a click or ctrl+o toggles full view.
 const COLLAPSED_LINES = 3
+// A diff carries context lines around each change, so it needs a bigger budget
+// than a flat output block before collapsing tells the reader nothing.
+const COLLAPSED_DIFF_LINES = 12
 
-export const TOOL_LABEL: Record<string, string> = {
-  write_file: 'Write',
-  edit_file: 'Update',
-  read_file: 'Read',
-  run_bash: 'Bash',
-  glob: 'Glob',
-  grep: 'Grep',
-  write_todos: 'Todos',
-  exit_plan_mode: 'Plan',
-}
+export { TOOL_LABEL }
 
 // hljs language name keyed by file extension; undefined = render plain (no highlight).
 const EXT_LANG: Record<string, string> = {
@@ -46,32 +44,165 @@ function highlightLine(text: string, lang: string | undefined): string {
   }
 }
 
+/**
+ * Wraps one tool block and publishes its node, so a click on any of its rows
+ * can be traced back to this block and expand only it.
+ */
+function ToolBlockFrame({ id, children }: { id: string; children: ReactNode }) {
+  const ref = useRef<DOMElement | null>(null)
+  useEffect(() => {
+    if (ref.current) registerToolBlock(id, ref.current)
+    return () => unregisterToolBlock(id)
+  }, [id])
+  return (
+    <Box ref={ref} flexDirection="column" flexShrink={0}>
+      {children}
+    </Box>
+  )
+}
+
+/**
+ * The one line every tool block leads with: what the call does, in English.
+ *
+ * "Running the tests" is what a reader skimming the transcript needs; the exact
+ * call — Bash(npm test -- --run) — is a detail they want only when something
+ * looks wrong, so it appears under the headline once the block is expanded
+ * (click anywhere, or ctrl+o).
+ */
+function ToolHeader({ use }: { use: ToolUseDisplay }) {
+  const expanded = useToolExpanded(use.id)
+  const { text, technical } = describeTool(use.name, use.input)
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text color="green">● </Text>
+        <Text color="white">{text}</Text>
+      </Box>
+      {expanded && (
+        <Box marginLeft={2}>
+          <Text dimColor>{technical}</Text>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+/**
+ * A file change, rendered the way a reviewer reads one: a line-number gutter,
+ * unchanged context around each hunk, removed lines on red and added lines on
+ * green. The tool computes the real before/after diff (src/diff.ts) — the UI
+ * only paints it, so a one-word change shows as one line, not as the whole
+ * block deleted and re-added.
+ */
+function DiffBlock({ use, label, diff }: { use: ToolUseDisplay; label: string; diff: FileDiff }) {
+  const expanded = useToolExpanded(use.id)
+  const lang = langFromPath(diff.path)
+
+  // Flatten hunks into rows, with a marker for each stretch of skipped lines.
+  type Row = { gap: true } | { gap: false; line: DiffLine }
+  const rows: Row[] = []
+  diff.hunks.forEach((h, i) => {
+    if (i > 0) rows.push({ gap: true })
+    for (const line of h.lines) rows.push({ gap: false, line })
+  })
+
+  const shown = expanded ? rows : rows.slice(0, COLLAPSED_DIFF_LINES)
+  const extra = rows.filter((r) => !r.gap).length - shown.filter((r) => !r.gap).length
+
+  // Gutter width from the largest number in the whole diff, not just the
+  // visible slice, so expanding doesn't shift every row sideways.
+  const maxNo = rows.reduce((m, r) => {
+    if (r.gap) return m
+    return Math.max(m, r.line.newNo ?? 0, r.line.oldNo ?? 0)
+  }, 0)
+  const numWidth = Math.max(2, String(maxNo).length)
+
+  // left indent is 6 (marginLeft 2 + 4); leave a right margin so the painted
+  // background doesn't run into the terminal edge.
+  const width = Math.max(20, (process.stdout.columns ?? 80) - 6 - 20)
+  const textWidth = Math.max(0, width - numWidth - 2)
+
+  const verb = label === 'Write' ? 'Wrote' : 'Updated'
+  const counts = `+${diff.added}${diff.removed > 0 ? ` −${diff.removed}` : ''}`
+
+  return (
+    <Box flexDirection="column" marginLeft={2}>
+      <ToolHeader use={use} />
+      <Box marginLeft={2}>
+        <Text dimColor>
+          {'⎿  '}
+          {diff.hunks.length === 0 ? `${verb} ${diff.path} (no changes)` : `${verb} ${diff.path} (${counts})`}
+        </Text>
+      </Box>
+      {shown.map((row, i) => {
+        if (row.gap) {
+          return (
+            <Box key={i} marginLeft={4}>
+              <Text dimColor>{'⋮'.padStart(numWidth)}</Text>
+            </Box>
+          )
+        }
+        const { sign, oldNo, newNo, text } = row.line
+        // A removed line is numbered in the OLD file, everything else in the new.
+        const no = sign === '-' ? oldNo : newNo
+        const gutter = String(no ?? '').padStart(numWidth)
+        // Truncate/pad on plain text so the painted rectangle stays rectangular,
+        // then colour it — ANSI escapes would break the column arithmetic.
+        const plain = text.length > textWidth ? text.slice(0, textWidth) : text.padEnd(textWidth)
+        const code = sign === ' ' ? plain : highlightLine(plain, lang)
+        return (
+          <Box key={i} marginLeft={4}>
+            <Text
+              wrap="truncate"
+              backgroundColor={sign === '-' ? '#3b1414' : sign === '+' ? '#13351f' : undefined}
+              dimColor={sign === ' '}
+            >
+              {gutter}{sign === ' ' ? '  ' : ` ${sign}`}{code}
+            </Text>
+          </Box>
+        )
+      })}
+      {extra > 0 && (
+        <Box marginLeft={4}>
+          <Text dimColor>… {extra} more lines · click or ctrl+o to expand</Text>
+        </Box>
+      )}
+      {diff.truncated ? (
+        <Box marginLeft={4}>
+          <Text dimColor>… {diff.truncated} further changed lines not shown</Text>
+        </Box>
+      ) : null}
+    </Box>
+  )
+}
+
+/**
+ * The diff before the tool has run — built from old_str/new_str alone, so it
+ * has no line numbers and no context. Shown while the call is in flight, and
+ * for transcripts written before tools carried a diff.
+ */
 function FileEditBlock({
+  use,
   label,
   path,
   added,
   removed,
   previewLines,
 }: {
+  use: ToolUseDisplay
   label: string
   path: string
   added: number
   removed: number
   previewLines: Array<{ sign: '+' | '-' | ' '; text: string }>
 }) {
-  const expanded = useToolExpanded()
+  const expanded = useToolExpanded(use.id)
   const shown = expanded ? previewLines : previewLines.slice(0, COLLAPSED_LINES)
   const extra = previewLines.length - shown.length
   const lang = langFromPath(path)
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Box>
-        <Text color="green">● </Text>
-        <Text color="white">{label} </Text>
-        <Text>(</Text>
-        <Text bold>{path}</Text>
-        <Text>)</Text>
-      </Box>
+      <ToolHeader use={use} />
       <Box marginLeft={2}>
         <Text dimColor>
           {'⎿  '}
@@ -128,7 +259,7 @@ function TodoBlock({ todos }: { todos: TodoItem[] }) {
     <Box flexDirection="column" marginLeft={2}>
       <Box>
         <Text color="green">● </Text>
-        <Text color="white">Todos </Text>
+        <Text color="white">Updating the task list </Text>
         <Text dimColor>
           ({done}/{todos.length} done{doing > 0 ? `, ${doing} in progress` : ''})
         </Text>
@@ -148,32 +279,6 @@ function TodoBlock({ todos }: { todos: TodoItem[] }) {
       ))}
     </Box>
   )
-}
-
-function toolHeader(use: ToolUseDisplay): { label: string; arg: string } {
-  const label = TOOL_LABEL[use.name] ?? use.name
-  const input = (use.input ?? {}) as Record<string, unknown>
-  let arg = ''
-  switch (use.name) {
-    case 'write_file':
-    case 'edit_file':
-    case 'read_file':
-      arg = String(input.path ?? input.file_path ?? '')
-      break
-    case 'run_bash': {
-      const cmd = String(input.command ?? '').replace(/\s+/g, ' ')
-      arg = truncate(cmd, 120)
-      break
-    }
-    case 'glob':
-    case 'grep':
-      arg = truncate(String(input.pattern ?? ''), 120)
-      break
-    default: {
-      arg = truncate(JSON.stringify(input), 80)
-    }
-  }
-  return { label, arg }
 }
 
 function summarizeResult(res: ToolResultDisplay, toolName?: string): string {
@@ -201,8 +306,8 @@ function summarizeResult(res: ToolResultDisplay, toolName?: string): string {
   return extra > 0 ? `${head} (+${extra} lines)` : head
 }
 
-function ToolResultBlock({ result, toolName }: { result: ToolResultDisplay; toolName: string }) {
-  const expanded = useToolExpanded()
+function ToolResultBlock({ id, result, toolName }: { id: string; result: ToolResultDisplay; toolName: string }) {
+  const expanded = useToolExpanded(id)
   const content = result.content ?? ''
   const lines = content.split('\n')
   const showMulti =
@@ -273,6 +378,14 @@ function PlanBlock({ plan, result }: { plan: string; result?: ToolResultDisplay 
 }
 
 export function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: ToolResultDisplay }) {
+  return (
+    <ToolBlockFrame id={use.id}>
+      <ToolUseBody use={use} result={result} />
+    </ToolBlockFrame>
+  )
+}
+
+function ToolUseBody({ use, result }: { use: ToolUseDisplay; result?: ToolResultDisplay }) {
   if (use.name === 'exit_plan_mode') {
     const plan = (use.input as { plan?: string }).plan
     if (typeof plan === 'string' && plan.trim()) return <PlanBlock plan={plan} result={result} />
@@ -281,12 +394,15 @@ export function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: Too
     const todos = (use.input as { todos?: TodoItem[] }).todos
     if (Array.isArray(todos) && todos.length > 0) return <TodoBlock todos={todos} />
   }
+  if ((use.name === 'write_file' || use.name === 'edit_file') && result?.diff && !result.is_error) {
+    return <DiffBlock use={use} label={use.name === 'write_file' ? 'Write' : 'Update'} diff={result.diff} />
+  }
   if (use.name === 'write_file' && !result?.is_error) {
     const input = use.input as { path?: string; content?: string }
     const content = input.content ?? ''
     const added = countLines(content)
     const preview = content.split('\n').map((t) => ({ sign: '+' as const, text: t }))
-    return <FileEditBlock label="Write" path={input.path ?? ''} added={added} removed={0} previewLines={preview} />
+    return <FileEditBlock use={use} label="Write" path={input.path ?? ''} added={added} removed={0} previewLines={preview} />
   }
   if (use.name === 'edit_file' && !result?.is_error) {
     const input = use.input as {
@@ -310,19 +426,12 @@ export function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: Too
       preview.push(...oldS.split('\n').map((t) => ({ sign: '-' as const, text: t })))
       preview.push(...newS.split('\n').map((t) => ({ sign: '+' as const, text: t })))
     }
-    return <FileEditBlock label="Update" path={input.path ?? ''} added={added} removed={removed} previewLines={preview} />
+    return <FileEditBlock use={use} label="Update" path={input.path ?? ''} added={added} removed={removed} previewLines={preview} />
   }
-  const { label, arg } = toolHeader(use)
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Box>
-        <Text color="green">● </Text>
-        <Text color="white">{label} </Text>
-        <Text>(</Text>
-        <Text bold>{arg}</Text>
-        <Text>)</Text>
-      </Box>
-      {result && <ToolResultBlock result={result} toolName={use.name} />}
+      <ToolHeader use={use} />
+      {result && <ToolResultBlock id={use.id} result={result} toolName={use.name} />}
     </Box>
   )
 }

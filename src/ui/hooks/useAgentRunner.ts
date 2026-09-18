@@ -11,6 +11,7 @@ import type { ChatMessage, PermissionRequest, PermissionAnswer, ToolUseDisplay, 
 import type { MiiMessage } from '../../agent/types.js'
 import { MODE_HINT, MODE_LABEL, nextMode, type PermissionMode } from '../../permissions/policy.js'
 import { tailLine } from '../layout.js'
+import { describeTool } from '../toolLabel.js'
 
 // How often (ms) we flush streaming text to React state — avoids a re-render per token.
 const FLUSH_MS = 100
@@ -207,7 +208,9 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
           case 'tool-use': {
             turnUses.push({ id: ev.block.id, name: ev.block.name, input: ev.block.input })
             setActiveToolUses([...turnUses])
-            setProcessingLabel(`running ${ev.block.name}…`)
+            // The spinner says what the call does, not which tool it is —
+            // "Running the tests…" reads like a status, "running run_bash…" doesn't.
+            setProcessingLabel(`${describeTool(ev.block.name, ev.block.input).text}…`)
             break
           }
           case 'tool-result': {
@@ -215,6 +218,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
               tool_use_id: ev.block.tool_use_id,
               content: ev.block.content,
               is_error: ev.block.is_error,
+              diff: ev.block.diff,
             })
             setActiveToolResults([...turnResults])
             setProcessingLabel('crunching…')

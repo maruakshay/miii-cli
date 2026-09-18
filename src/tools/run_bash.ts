@@ -5,6 +5,8 @@ import type { Tool } from './types.js'
 interface Input {
   command: string
   timeout_ms?: number
+  /** Display-only: the plain-English headline the UI shows instead of the raw command. */
+  description?: string
 }
 
 /**
@@ -34,6 +36,11 @@ export const run_bash: Tool<Input> = {
     type: 'object',
     properties: {
       command:    { type: 'string', description: 'Shell command to run' },
+      description: {
+        type: 'string',
+        description:
+          'What this command does, in 3-6 plain words, present participle — "Running the unit tests", "Staging the changed files". Shown to the user in place of the raw command.',
+      },
       timeout_ms: { type: 'number', description: 'Timeout in ms (default 120000). Raise it for long builds/test suites.' },
     },
     required: ['command'],

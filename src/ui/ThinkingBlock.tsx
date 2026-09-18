@@ -50,21 +50,27 @@ export function ThinkingBlock({ tail }: { tail?: string }) {
   }, [])
 
   // Truncate to the content column and forbid wrapping: two guards for the same
-  // invariant, because a second row here is a row Ink has to redraw in place.
-  const line = tail ? truncate(tail, Math.max(20, contentWidth() - 2)) : ''
+  // invariant, because a third row here is a row Ink has to redraw in place.
+  // The fallback is a SPACE, not an empty string — Ink collapses an empty Text
+  // to zero rows, so dropping the row whenever the model pauses between thoughts
+  // makes the block breathe 1↔2 rows and reflows everything under it on every
+  // flush. Reserving the row unconditionally is what holds the layout still.
+  const line = (tail ? truncate(tail, Math.max(20, contentWidth() - 2)) : '') || ' '
 
   return (
     <Box flexDirection="column" marginLeft={2} marginBottom={1}>
       <Box>
         <Text color={CHALK}>{FRAMES[frame]} </Text>
-        <Text color={CHALK} italic>thinking</Text>
+        <Text dimColor italic>thinking</Text>
         <Text dimColor> · ctrl+t for full thoughts</Text>
       </Box>
-      {line ? (
-        <Box marginLeft={2}>
-          <Text dimColor italic wrap="truncate">{line}</Text>
-        </Box>
-      ) : null}
+      <Box marginLeft={2}>
+        {/* One tone, not two: `dimColor` over an explicit truecolor fg renders
+            inconsistently across terminals, and this row is repainted every
+            100ms tick — an fg the terminal resolves differently each repaint is
+            the shimmer itself. The spinner above carries the CHALK accent. */}
+        <Text dimColor italic wrap="truncate">{line}</Text>
+      </Box>
     </Box>
   )
 }

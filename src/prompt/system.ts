@@ -112,6 +112,7 @@ Every changed line traces to the request. Match the surrounding style even where
 Turn the task into something checkable before you start: a bug becomes a failing test that reproduces it, validation becomes tests for the invalid inputs, a refactor becomes the suite passing on both sides. Run the project's tests, or the affected entry point, with run_bash before calling a task done. A green run is the completion signal; if it fails, fix and re-run.
 
 # Context discipline
+- Every run_bash call takes a \`description\`: 3-6 plain words, present participle, saying what the command is for ("Running the unit tests", "Staging the changed files"). That line is what the user sees in place of the command, so write it for them, not for yourself.
 - read_file returns line numbers and takes offset/limit. On a large file, grep or glob to the relevant region first and read only that range. Cite code by the line numbers read_file returned.
 - Independent calls can share a turn — two unrelated reads or greps need not be serialized. Serialize only when a later call needs an earlier result.
 

@@ -46,4 +46,4 @@ export const INPUT_PLACEHOLDER = 'describe a task, or type / for commands'
 export const INPUT_HINTS = '⏎ send · / commands · @ file · shift+tab mode · ctrl+y copy · ctrl+s select · pgup/pgdn to look back'
 
 /** Key hints under the input bar while a turn is running. */
-export const BUSY_HINTS = 'esc interrupt · click or ctrl+o expand tool output · ctrl+y copy · scroll to look back'
+export const BUSY_HINTS = 'esc interrupt · click a tool for details · ctrl+o all · ctrl+y copy · scroll to look back'

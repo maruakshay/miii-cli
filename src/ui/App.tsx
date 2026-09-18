@@ -5,11 +5,12 @@
  * delegates streaming logic to useAgentRunner and key handling to useKeyboard.
  */
 import { useState, useEffect, useRef } from 'react'
-import { Box, Text, useApp, useStdout } from 'ink'
+import { Box, Text, measureElement, useApp, useStdout, type DOMElement } from 'ink'
 import { homedir } from 'os'
 import { sep } from 'path'
 import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
 import { loadConfig, setProvider, setModelContexts, providerEntries, resolveProvider, autoUpdateEnabled, type Effort, type Provider } from '../config.js'
+import { setFrameHeight } from './toolHit.js'
 import { WelcomeBlock, updateBannerText, type UpdateStatus } from './WelcomeBlock.js'
 import { InputBar } from './InputBar.js'
 import { ModelsView } from './ModelsView.js'
@@ -53,6 +54,7 @@ export function App() {
   )
   // Mirrors `contexts` for the async resolvers below, which would otherwise
   // close over a stale map and re-request numbers already in hand.
+  const rootRef = useRef<DOMElement | null>(null)
   const contextsRef = useRef(contexts)
   contextsRef.current = contexts
   // Names with a lookup already in flight. Both resolvers below can want the
@@ -333,6 +335,13 @@ export function App() {
     void agent.compact()
   }, [contextPct, agent.busy, state, cfg.model])
 
+  // Ink draws this frame in place at the bottom of the terminal, so a mouse
+  // report's row only means something once the frame's height is known — that's
+  // what turns a click into the tool block under it (toolHit.ts).
+  useEffect(() => {
+    if (rootRef.current) setFrameHeight(measureElement(rootRef.current).height)
+  })
+
   // Chat mode owns the whole screen: the root is pinned to the terminal height
   // (less one row, so writing the frame can't scroll it) and ChatView's viewport
   // flex-grows into whatever the input bar and pickers leave. Pre-ready screens
@@ -341,7 +350,7 @@ export function App() {
   const fullScreen = state === 'ready' || state === 'sessions' || state === 'models'
 
   return (
-    <Box flexDirection="column" paddingX={1} height={fullScreen ? Math.max(8, termRows - 1) : undefined}>
+    <Box ref={rootRef} flexDirection="column" paddingX={1} height={fullScreen ? Math.max(8, termRows - 1) : undefined}>
       {/* Pre-ready screens render the banner dynamically. In ready/chat mode it
           moves inside the scrolling transcript, as its first row, so it scrolls
           away with the rest of the history. */}

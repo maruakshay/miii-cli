@@ -15,7 +15,8 @@ import { addByName, removeByName } from '../../llm/manage.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { invalidateFileCache, parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
-import { toggleToolExpanded } from '../toolExpand.js'
+import { toggleToolExpanded, toggleAllToolExpanded } from '../toolExpand.js'
+import { toolBlockAtRow } from '../toolHit.js'
 import { parseMouseEvents, toggleMouse } from '../mouse.js'
 import { scrollBy, scrollToBottom, resetScroll } from '../scroll.js'
 import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
@@ -319,15 +320,18 @@ export function useKeyboard(opts: KeyboardOptions) {
     // (the terminal's scrollback isn't in play). Every report is swallowed here
     // so an escape sequence can never land in the prompt — a spin of the wheel
     // packs several into one chunk, so they're drained as a batch and the wheel
-    // rows summed into a single scroll. A left click toggles the collapsed tool
-    // output, same as ctrl+o.
+    // rows summed into a single scroll. A left click expands the one tool block
+    // it landed on — ctrl+o is the everything-at-once version.
     const mouse = parseMouseEvents(char)
     if (mouse.consumed) {
       let rows = 0
       for (const ev of mouse.events) {
         if (!ev.press) continue
         if (ev.wheel) rows += ev.up ? -WHEEL_ROWS : WHEEL_ROWS
-        else if (ev.button === 0) toggleToolExpanded()
+        else if (ev.button === 0) {
+          const id = toolBlockAtRow(ev.y, process.stdout.rows ?? 24)
+          if (id) toggleToolExpanded(id)
+        }
       }
       if (rows !== 0) scrollBy(rows)
       return
@@ -346,7 +350,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     // Ctrl+T toggles thinking block content visibility
     if (key.ctrl && char === 't') { toggleThinkingVisible(); return }
     // Ctrl+O toggles full tool output (collapsed to a few lines by default)
-    if (key.ctrl && char === 'o') { toggleToolExpanded(); return }
+    if (key.ctrl && char === 'o') { toggleAllToolExpanded(); return }
     // Ctrl+Y yanks the last reply to the clipboard — /copy for anything else.
     if (key.ctrl && char === 'y') { copyToClipboard('last'); return }
     // Ctrl+S hands the mouse back to the terminal so a drag selects text again.

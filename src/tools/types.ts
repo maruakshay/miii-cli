@@ -1,3 +1,5 @@
+import type { FileDiff } from '../diff.js'
+
 /** A single property spec in a tool's JSON schema. */
 export interface PropSpec {
   type: string
@@ -22,6 +24,11 @@ export interface ToolResult {
   is_error?: boolean
   /** Base64-encoded images the tool wants shown to a vision model (e.g. read_file on a PNG). */
   images?: string[]
+  /**
+   * What this call changed on disk, for the renderer. Display-only — it never
+   * reaches the model (providers copy `content`/`images` and nothing else).
+   */
+  diff?: FileDiff
 }
 
 /**
