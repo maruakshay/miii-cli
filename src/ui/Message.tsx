@@ -2,7 +2,7 @@ import { memo } from 'react'
 import { Box, Text } from 'ink'
 import { renderMarkdown } from './markdown.js'
 import type { ChatMessage } from './types.js'
-import { ToolUseLine } from './ToolBlock.js'
+import { ToolUseList } from './ToolBlock.js'
 import { formatTokens, formatDuration, contentWidth, padLines, userTextWidth } from './layout.js'
 import { useTerminalWidth } from './hooks/useTerminalWidth.js'
 import { useThinkingVisible, CHALK } from './ThinkingBlock.js'
@@ -74,10 +74,9 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
           </Box>
         </Box>
       )}
-      {msg.tool_uses?.map((u) => {
-        const r = msg.tool_results?.find((x) => x.tool_use_id === u.id)
-        return <ToolUseLine key={u.id} use={u} result={r} />
-      })}
+      {msg.tool_uses && msg.tool_uses.length > 0 && (
+        <ToolUseList uses={msg.tool_uses} results={msg.tool_results} />
+      )}
       {msg.tokens && (
         <Box marginLeft={2}>
           <Text dimColor>

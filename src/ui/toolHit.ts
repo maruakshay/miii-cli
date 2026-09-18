@@ -61,10 +61,17 @@ export function frameTop(node: DOMElement): number {
 export function toolBlockAtRow(row: number, terminalRows: number): string | undefined {
   if (frameHeight <= 0) return undefined
   const y = row - (terminalRows - frameHeight)
+  let nearest: { id: string; gap: number } | undefined
   for (const [id, node] of blocks) {
     const height = node.yogaNode?.getComputedHeight() ?? 0
+    if (height <= 0) continue
     const top = frameTop(node)
-    if (height > 0 && y >= top && y < top + height) return id
+    if (y >= top && y < top + height) return id
+    // A click one row off still means the block beside it: the offset above
+    // depends on the terminal not having reflowed the frame under us, and being
+    // a row out beats a click that does nothing.
+    const gap = y < top ? top - y : y - (top + height - 1)
+    if (gap <= 1 && (!nearest || gap < nearest.gap)) nearest = { id, gap }
   }
-  return undefined
+  return nearest?.id
 }

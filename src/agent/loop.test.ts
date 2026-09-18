@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { AgentEvent, MiiMessage, ToolResultBlock, ToolUse } from './types.js'
@@ -858,5 +858,75 @@ describe('read-before-write guard', () => {
     const { history } = await drive()
     assertBlockOrdering(history)
     expect(ran).toEqual(['write_file', 'edit_file'])
+  })
+
+  // The same guard has to cover run_bash, or the model routes around it with a
+  // heredoc and clobbers a file it never read.
+  it('refuses a shell redirect over a file the model has never read', async () => {
+    h.script = [
+      toolThenDone([call('run_bash', { command: `cat > ${file} <<'EOF'\nrewritten\nEOF` })]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    const r = firstResults(history)[0]
+    expect(r.is_error).toBe(true)
+    expect(r.content).toContain('would overwrite')
+    expect(ran).not.toContain('run_bash')
+    expect(readFileSync(join(dir, file), 'utf-8')).toBe('alpha\nbeta\n')
+  })
+
+  it('refuses an in-place sed over an unread file', async () => {
+    h.script = [
+      toolThenDone([call('run_bash', { command: `sed -i '' 's/alpha/ALPHA/' ${file}` })]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    expect(firstResults(history)[0].is_error).toBe(true)
+    expect(ran).not.toContain('run_bash')
+  })
+
+  it('allows the shell write once the file has been read', async () => {
+    h.script = [
+      toolThenDone([call('read_file', { path: file })]),
+      toolThenDone([call('run_bash', { command: `cat > ${file} <<'EOF'\nrewritten\nEOF` })]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    expect(ran).toEqual(['read_file', 'run_bash'])
+  })
+
+  it('allows a shell write that creates a new file', async () => {
+    h.script = [
+      toolThenDone([call('run_bash', { command: `cat > brand-new.txt <<'EOF'\nhi\nEOF` })]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    expect(ran).toEqual(['run_bash'])
+  })
+
+  it('leaves ordinary read-only commands alone', async () => {
+    h.script = [
+      toolThenDone([call('run_bash', { command: `grep -n "a > b" ${file} || true` })]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    expect(ran).toEqual(['run_bash'])
+  })
+
+  it('refuses an edit built on a copy that a shell write made stale', async () => {
+    h.script = [
+      toolThenDone([call('read_file', { path: file })]),
+      // Allowed: the file has been read. It also re-stamps, so the model is not
+      // blocked on its own write...
+      toolThenDone([call('run_bash', { command: `cat > ${file} <<'EOF'\nrewritten\nEOF` })]),
+      toolThenDone([call('run_bash', { command: `cat > ${file} <<'EOF'\nagain\nEOF` })]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    expect(ran).toEqual(['read_file', 'run_bash', 'run_bash'])
   })
 })

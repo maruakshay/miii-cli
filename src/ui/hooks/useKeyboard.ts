@@ -32,6 +32,15 @@ import {
 import { estimateHistoryTokens } from '../../agent/compact.js'
 import { loadScopedRules, MODE_HINT, MODE_LABEL, type PermissionMode } from '../../permissions/policy.js'
 import { expandCommand, findCustomCommand, invalidateCustomCommands } from '../../commands/custom.js'
+import { appendMemory, userContextPath, findContextFile, CONTEXT_FILENAME } from '../../prompt/context.js'
+import { clearCheckpoints, listCheckpoints, restoreTo } from '../../session/checkpoint.js'
+import { invalidateSettings, loadSettings } from '../../settings.js'
+import { applyVimKey, type VimMode, type VimPending } from '../vim.js'
+import {
+  INIT_PROMPT, agentsReport, contextReport, costReport, exportTranscript, mcpReport,
+  reviewPrompt, settingsReport,
+} from '../reports.js'
+import type { McpServerStatus } from '../../mcp/registry.js'
 import type { useAgentRunner } from './useAgentRunner.js'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high']
@@ -95,6 +104,20 @@ function tryImagePaste(cleaned: string): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Vim state, module-level for the same reason the input history is: it has to
+ * survive re-renders, and it is a property of the session rather than of any
+ * component. Off unless the user asks — `vimMode` in settings.json, or `/vim`.
+ */
+let vimEnabled = loadSettings().vimMode === true
+let vimMode: VimMode = 'insert'
+let vimPending: VimPending = null
+
+/** Current mode for the input bar's indicator; null when vim is off. */
+export function vimIndicator(): VimMode | null {
+  return vimEnabled ? vimMode : null
 }
 
 // Submitted-input history for up/down recall (Claude Code-style). Module-level
@@ -201,6 +224,11 @@ interface KeyboardOptions {
 
   // provider switching
   switchProvider: (p: Provider) => void
+
+  /** Connected MCP servers, for `/mcp`. */
+  mcpServers: McpServerStatus[]
+  /** The active model's context window, for `/context`. Null when unreported. */
+  activeCtx: number | null
 }
 
 export function useKeyboard(opts: KeyboardOptions) {
@@ -211,7 +239,7 @@ export function useKeyboard(opts: KeyboardOptions) {
     agent,
     input, setInput, caret, setCaret, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
     sessionId, setSessionId, onResumeSession, sessions, setSessions, setNotice, setLogEpoch,
-    switchProvider,
+    switchProvider, mcpServers, activeCtx,
   } = opts
 
   const {
@@ -219,8 +247,13 @@ export function useKeyboard(opts: KeyboardOptions) {
     busyRef, abortRef,
     sendMessage, compact, messages, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingTail,
     setActiveToolUses, setActiveToolResults, setError, setUsedTokens,
-    setMode, cycleMode, modeRef,
+    setMode, cycleMode, modeRef, totals,
   } = agent
+
+  /** Drop a Markdown block into the transcript — how the report commands answer. */
+  function report(content: string) {
+    setMessages((prev) => [...prev, { role: 'assistant', content }])
+  }
 
   const { write } = useStdout()
 
@@ -312,6 +345,65 @@ export function useKeyboard(opts: KeyboardOptions) {
           'Delete a rule by editing the file. "Yes, don\'t ask again" writes to the project file.',
       },
     ])
+  }
+
+  /**
+   * Undo the agent's file changes, and the conversation along with them.
+   *
+   * Both halves matter. Restoring only the files leaves the model certain it
+   * made edits that are no longer there, and it will build its next turn on
+   * that; restoring only the transcript leaves the edits in place. So the
+   * history is truncated to the same turn the files are rolled back to, and the
+   * session on disk is rewritten to match.
+   */
+  function rewind(arg: string) {
+    const points = listCheckpoints(sessionId)
+    if (!points.length) {
+      setNotice('nothing to rewind — no files have been changed this session')
+      return
+    }
+    if (!arg) {
+      const lines = points.map((p) => {
+        const shown = p.files.slice(0, 3).join(', ')
+        const more = p.files.length > 3 ? ` +${p.files.length - 3} more` : ''
+        return `- \`${p.turn}\` · ${new Date(p.ts).toLocaleTimeString()} · ${shown}${more}`
+      })
+      report(
+        `⟲ **rewind**\n\n${lines.join('\n')}\n\n` +
+        '`/rewind <n>` puts those files back as they were before that point and drops the ' +
+        'conversation back to it. `/rewind last` takes the most recent.',
+      )
+      return
+    }
+    if (busyRef.current) {
+      setNotice('finish or stop the current turn before rewinding')
+      return
+    }
+    const turn = arg === 'last' ? points[points.length - 1].turn : Number(arg)
+    if (!Number.isFinite(turn) || !points.some((p) => p.turn === turn)) {
+      setNotice(`no checkpoint "${arg}" — /rewind on its own lists them`)
+      return
+    }
+
+    const result = restoreTo(sessionId, turn)
+    const history = agentHistory.slice(0, turn)
+    setAgentHistory(history)
+    setMessages(() => toDisplayMessages(history))
+    setUsedTokens(estimateHistoryTokens(history))
+    setStreamingContent('')
+    setThinkingTail('')
+    setActiveToolUses([])
+    setActiveToolResults([])
+    setError(null)
+    setLogEpoch((n) => n + 1)
+    if (history.length) persistSession(sessionId, history)
+
+    const parts = [
+      result.restored.length ? `${result.restored.length} file(s) restored` : '',
+      result.removed.length ? `${result.removed.length} removed` : '',
+      result.failed.length ? `${result.failed.length} failed` : '',
+    ].filter(Boolean)
+    setNotice(`rewound to turn ${turn} — ${parts.join(', ') || 'no files to change'}`)
   }
 
   useInput((char, key) => {
@@ -461,6 +553,9 @@ export function useKeyboard(opts: KeyboardOptions) {
       if ((char === 'd' || char === 'x' || key.delete || key.backspace) && sessions[cursor]) {
         const meta = sessions[cursor]
         deleteSession(meta.id)
+        // The checkpoints are only meaningful against that session's history —
+        // orphaned, they are a directory of file copies nothing can restore.
+        clearCheckpoints(meta.id)
         const next = listSessions()
         setSessions(next)
         setCursor((i) => Math.max(0, Math.min(i, next.length - 1)))
@@ -644,6 +739,53 @@ export function useKeyboard(opts: KeyboardOptions) {
           noticeMode(next)
         } else if (trimmed === '/permissions') {
           showPermissions()
+        } else if (trimmed === '/settings') {
+          invalidateSettings()
+          report(`⚙ **settings**\n\n${settingsReport(process.cwd())}`)
+        } else if (trimmed === '/context') {
+          report(contextReport(agentHistory, modeRef.current, activeCtx, process.cwd()))
+        } else if (trimmed === '/cost') {
+          const active = providers.find((pr) => pr.name === resolveProvider().name)
+          report(costReport(totals, cfg.model, active?.name ?? 'unknown', active?.kind === 'local'))
+        } else if (trimmed === '/mcp') {
+          report(mcpReport(mcpServers))
+        } else if (trimmed === '/agents') {
+          report(agentsReport(process.cwd()))
+        } else if (trimmed === '/init') {
+          setNotice(null)
+          sendMessage(INIT_PROMPT)
+        } else if (trimmed === '/review' || trimmed.startsWith('/review ')) {
+          setNotice(null)
+          sendMessage(reviewPrompt(trimmed.slice('/review'.length)))
+        } else if (trimmed === '/export' || trimmed.startsWith('/export ')) {
+          if (!messages.length) setNotice('nothing to export yet')
+          else {
+            try {
+              const file = exportTranscript(messages, process.cwd(), trimmed.slice('/export'.length).trim())
+              setNotice(`exported to ${file}`)
+            } catch (err) {
+              setNotice(`export failed — ${err instanceof Error ? err.message : String(err)}`)
+            }
+          }
+        } else if (trimmed === '/memory') {
+          const project = findContextFile(process.cwd())
+          report(
+            `🧠 **memory**\n\n` +
+            `- project: ${project ? `\`${project}\`` : `none yet — \`#\` a line to create ${CONTEXT_FILENAME}`}\n` +
+            `- yours everywhere: \`${userContextPath()}\`\n\n` +
+            `Start a line with \`#\` to append to the project file, or \`##\` for your own.`,
+          )
+        } else if (trimmed === '/rewind' || trimmed.startsWith('/rewind ')) {
+          rewind(trimmed.slice('/rewind'.length).trim())
+        } else if (trimmed === '/vim') {
+          vimEnabled = !vimEnabled
+          vimMode = 'insert'
+          vimPending = null
+          setNotice(
+            vimEnabled
+              ? 'vim keys on — esc for normal mode · hjkl w b 0 $ x dd dw cw D C i a A o'
+              : 'vim keys off',
+          )
         } else if (trimmed === '/exit') {
           exit()
         } else if (trimmed.startsWith('/provider ')) {
@@ -680,6 +822,21 @@ export function useKeyboard(opts: KeyboardOptions) {
           // custom command is a saved message, not a new kind of thing.
           setNotice(null)
           sendMessage(expandCommand(custom.command.body, custom.args))
+        } else if (trimmed.startsWith('#')) {
+          // `# fact` appends to the project's MIII.md, `## fact` to yours. It is
+          // a write, not a message: nothing is sent to the model, because the
+          // point is that the next turn — and every turn after it — reads it.
+          const user = trimmed.startsWith('##')
+          const body = trimmed.replace(/^#+/, '').trim()
+          if (!body) setNotice('nothing to remember — write `# the fact` after the #')
+          else {
+            try {
+              const file = appendMemory(body, user ? 'user' : 'project', process.cwd())
+              setNotice(`remembered in ${file}`)
+            } catch (err) {
+              setNotice(`couldn't write memory — ${err instanceof Error ? err.message : String(err)}`)
+            }
+          }
         } else if (trimmed) {
           setNotice(null)
           // Pull any image chips out of the text, gathering their base64 bytes
@@ -702,7 +859,27 @@ export function useKeyboard(opts: KeyboardOptions) {
         setInput(() => '')
         setCaret(() => 0)
         setPaletteCursor(() => 0)
+        // A fresh prompt starts in insert mode — vim's own command line does the
+        // same, and landing in normal mode after every send is a papercut.
+        vimMode = 'insert'
+        vimPending = null
         return
+      }
+
+      // --- vim keys ---
+      // Placed after submit, history recall and the pickers so those keep their
+      // keys: vim owns editing, not navigation. Everything it declines falls
+      // straight through to the ordinary handling below.
+      if (vimEnabled) {
+        const before = { input, caret, mode: vimMode, pending: vimPending }
+        const next = applyVimKey(before, char, key)
+        if (next.handled) {
+          vimMode = next.mode
+          vimPending = next.pending
+          if (next.input !== input) setInput(() => next.input)
+          setCaret(() => next.caret)
+          return
+        }
       }
 
       // --- caret movement (left/right, home/end, ctrl+a/ctrl+e) ---

@@ -5,7 +5,7 @@ import { getTool, toOllamaTools, toolsForMode } from '../tools/registry.js'
 import { validateInput, exampleInput } from '../tools/validate.js'
 import { buildSystemPrompt } from '../prompt/system.js'
 import { loadProjectContext } from '../prompt/context.js'
-import { check, isReadOnlyCommand, type PermissionContext, type PermissionMode } from '../permissions/policy.js'
+import { check, deniedBySettings, isReadOnlyCommand, type PermissionContext, type PermissionMode } from '../permissions/policy.js'
 import { loadConfig, EFFORT_OPTIONS, DEFAULT_NUM_CTX_CAP } from '../config.js'
 import { HookBus } from '../hooks/bus.js'
 import {
@@ -14,6 +14,8 @@ import {
   looksLikeLeakedToolCall,
 } from './adapter.js'
 import { resolveToolName, normalizeToolInput } from './normalize.js'
+import { bashWriteTargets } from './bashWrites.js'
+import type { Tool } from '../tools/types.js'
 import type {
   MiiMessage,
   AgentEvent,
@@ -33,6 +35,9 @@ const MAX_LEAK_NUDGES = 2
 // running it. 1st failure: the plain error. 2nd: the error plus an escalation
 // that names a different action. 3rd: refused without ever reaching the tool.
 const MAX_IDENTICAL_FAILURES = 2
+// How many times a Stop hook may send the model back to work before the turn
+// ends anyway. A gate the model cannot satisfy must not cost the whole run.
+const MAX_STOP_NUDGES = 2
 
 /**
  * Fingerprint of a file's state on disk — mtime and size. Cheap enough to take
@@ -67,6 +72,7 @@ function fileStamp(abs: string): string | null {
  * Path/confinement problems are left to the tool handler to report.
  */
 function readGuard(name: string, input: unknown, seen: Map<string, string>): string | null {
+  if (name === 'run_bash') return bashGuard(input, seen)
   if (name !== 'edit_file' && name !== 'write_file') return null
   const p = (input as { path?: unknown }).path
   if (typeof p !== 'string' || !p) return null
@@ -91,8 +97,59 @@ function readGuard(name: string, input: unknown, seen: Map<string, string>): str
   )
 }
 
-/** The tools plan mode advertises — the set planGuard holds the model to. */
-const PLAN_TOOLS = new Set(toolsForMode('plan').map((t) => t.name))
+/**
+ * The same guard for run_bash. A heredoc or `sed -i` writes the file just as
+ * edit_file would, but names no `path` argument, so without this the model can
+ * clobber a file it never read by routing around the tool that checks.
+ *
+ * Only paths the command plainly truncates are considered, and only when they
+ * already exist inside the project — creating a file is allowed here exactly as
+ * it is for write_file. Anything unparseable is waved through: this narrows the
+ * hole, it does not seal it, and blocking a legitimate command would cost more
+ * than the writes it still misses.
+ */
+function bashGuard(input: unknown, seen: Map<string, string>): string | null {
+  const cmd = (input as { command?: unknown }).command
+  if (typeof cmd !== 'string' || !cmd) return null
+  for (const raw of bashWriteTargets(cmd)) {
+    let abs: string
+    try {
+      abs = confinePath(raw)
+    } catch {
+      continue // outside the project, or not a path at all — not this guard's business
+    }
+    if (!existsSync(abs)) continue
+
+    const stamp = seen.get(abs)
+    if (stamp === undefined) {
+      return (
+        `This command would overwrite ${raw}, and you haven't read it — I don't want to clobber ` +
+        `something unseen. Nothing ran. Read it with read_file first, or make the change with ` +
+        `edit_file, which matches on the existing text instead of replacing the whole file.`
+      )
+    }
+    const now = fileStamp(abs)
+    if (now !== null && now !== stamp) {
+      return (
+        `${raw} changed on disk after you read it, so this command would overwrite it from a ` +
+        `stale copy and revert whatever landed in between. Nothing ran. Read it again, then redo ` +
+        `the change against what's actually there now.`
+      )
+    }
+  }
+  return null
+}
+
+/**
+ * The tools plan mode advertises — the set planGuard holds the model to.
+ *
+ * Computed per call rather than once at import: MCP servers connect after this
+ * module loads, so a set frozen here would refuse every server tool in plan
+ * mode, including the ones whose server declared itself read-only.
+ */
+function planTools(): Set<string> {
+  return new Set(toolsForMode('plan').map((t) => t.name))
+}
 
 /**
  * Harness-enforced plan mode, the mechanical twin of the prompt's "READ-ONLY".
@@ -108,7 +165,7 @@ const PLAN_TOOLS = new Set(toolsForMode('plan').map((t) => t.name))
  */
 function planGuard(name: string, input: unknown, mode: PermissionMode): string | null {
   if (mode !== 'plan') return null
-  if (!PLAN_TOOLS.has(name)) {
+  if (!planTools().has(name)) {
     return (
       `You're in plan mode, which is read-only, so ${name} did not run and nothing changed. ` +
       `Finish researching with read_file, grep, glob and read-only run_bash commands, then ` +
@@ -249,6 +306,21 @@ function looksTruncatedWrite(name: string, input: Record<string, unknown>): bool
  * as having seen the file.
  */
 function markSeen(name: string, input: unknown, seen: Map<string, string>): void {
+  // A shell write the guard let through leaves the model knowing that file's
+  // contents, and moves its stamp — without recording it, the next write to the
+  // same file reads as stale and blocks on work the model itself just did.
+  if (name === 'run_bash') {
+    const cmd = (input as { command?: unknown }).command
+    if (typeof cmd !== 'string' || !cmd) return
+    for (const raw of bashWriteTargets(cmd)) {
+      try {
+        const abs = confinePath(raw)
+        const stamp = fileStamp(abs)
+        if (stamp !== null) seen.set(abs, stamp)
+      } catch { /* not a path we can resolve; nothing to record */ }
+    }
+    return
+  }
   if (name !== 'read_file' && name !== 'edit_file' && name !== 'write_file') return
   const p = (input as { path?: unknown }).path
   if (typeof p !== 'string' || !p) return
@@ -272,6 +344,18 @@ export interface RunAgentOpts {
   hooks?: HookBus
   signal?: AbortSignal
   num_ctx?: number
+  /**
+   * Narrow the advertised tools further than the mode already does. Used by
+   * subagents, which get a task-shaped subset rather than everything.
+   */
+  toolFilter?: (name: string) => boolean
+  /**
+   * Replace the system prompt. The tools for the turn are passed in because the
+   * prompt lists them and the set can change mid-run (approving a plan).
+   */
+  buildSystem?: (tools: Tool[], mode: PermissionMode) => string
+  /** Tool-use turns before the run is cut off. Defaults to MAX_TURNS. */
+  maxTurns?: number
 }
 
 /**
@@ -287,6 +371,7 @@ export interface RunAgentOpts {
  */
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
+  const maxTurns = opts.maxTurns ?? MAX_TURNS
   const startTime = Date.now()
   const cfg = loadConfig()
   /**
@@ -308,11 +393,30 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   // would let an edit land mid-task and silently change the rules underfoot.
   const projectContext = loadProjectContext(cwd)
 
+  // UserPromptSubmit sees the message before the model does. A block drops the
+  // turn entirely — nothing is appended to history, so a refused prompt leaves
+  // no trace for the next turn to be confused by. stdout from a hook that
+  // allowed it rides along as extra context, which is how a project injects
+  // "current sprint is X" or a ticket number without the user retyping it.
+  let promptContext = ''
+  if (hooks) {
+    try {
+      const gate = await hooks.firePrompt(opts.userText)
+      for (const w of gate.warnings) yield { type: 'hook-notice', message: w }
+      if (gate.blocked) {
+        yield { type: 'error', message: `Prompt blocked by a UserPromptSubmit hook: ${gate.reason}` }
+        yield { type: 'done', prompt_tokens: 0, eval_tokens: 0 }
+        return opts.history
+      }
+      if (gate.context) promptContext = gate.context
+    } catch { /* hook machinery failure never blocks a turn */ }
+  }
+
   const history: MiiMessage[] = [
     ...opts.history,
     {
       role: 'user',
-      content: opts.userText,
+      content: promptContext ? `${opts.userText}\n\n<hook-context>\n${promptContext}\n</hook-context>` : opts.userText,
       ...(opts.images && opts.images.length > 0 ? { images: opts.images } : {}),
     },
   ]
@@ -325,6 +429,8 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   // the native interface this run. Bounded so a model that can't comply ends the
   // turn instead of looping forever.
   let leakNudges = 0
+  // How many times a Stop hook has sent the model back to work this run.
+  let stopNudges = 0
   // Canonical path -> file stamp when the model last saw it. Gates edit/write,
   // and catches a file that moved underneath the model between read and edit.
   const seenPaths = new Map<string, string>()
@@ -337,16 +443,20 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   // of yielding a bare `done`, which reads as "completed successfully".
   let endedCleanly = false
 
-  for (let turn = 0; turn < MAX_TURNS; turn++) {
+  for (let turn = 0; turn < maxTurns; turn++) {
     // Derived from `mode`, which the user can change mid-run by approving a
     // plan. The model must see the tools it actually has this turn, and a
     // near-miss name must only ever resolve to one of them.
-    const activeTools = toolsForMode(mode)
+    const activeTools = opts.toolFilter
+      ? toolsForMode(mode).filter((t) => opts.toolFilter!(t.name))
+      : toolsForMode(mode)
     const ollamaTools = toOllamaTools(activeTools)
     const toolNames = activeTools.map((t) => t.name)
     // Built after cappedCtx: the prompt sizes itself to the window we actually
     // negotiated, dropping its optional layer when there is no room to spare.
-    const system = buildSystemPrompt(activeTools, cwd, projectContext, cappedCtx, mode)
+    const system = opts.buildSystem
+      ? opts.buildSystem(activeTools, mode)
+      : buildSystemPrompt(activeTools, cwd, projectContext, cappedCtx, mode)
 
     let text = ''
     let tool_calls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> | undefined
@@ -522,6 +632,29 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens }
         return history
       }
+      // A Stop hook gets a veto on "I'm done". The use is a completion gate —
+      // "the tests have to pass before you stop" — so a block sends the model
+      // back to work with the reason. Bounded: a gate the model cannot satisfy
+      // must end the turn rather than loop until MAX_TURNS.
+      if (hooks && stopNudges < MAX_STOP_NUDGES) {
+        let stopReason: string | null = null
+        try {
+          const gate = await hooks.fireStop()
+          for (const w of gate.warnings) yield { type: 'hook-notice', message: w }
+          if (gate.blocked) stopReason = gate.reason ?? 'A Stop hook is not satisfied yet.'
+        } catch { /* see firePre */ }
+        if (stopReason) {
+          stopNudges++
+          history.push({
+            role: 'user',
+            content:
+              `You're not done yet — this project's Stop hook refused the turn: ${stopReason}\n\n` +
+              `Address that and continue. If you genuinely cannot, say so plainly and stop.`,
+          })
+          yield { type: 'turn-end', stop_reason: 'tool_use' }
+          continue
+        }
+      }
       endedCleanly = true
       yield { type: 'turn-end', stop_reason: 'end_turn' }
       break
@@ -668,10 +801,16 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
 
       const decision = await check(use.name, use.input, { ...permissions, mode })
       if (decision === 'deny') {
+        // A standing deny rule and a user pressing "no" are both refusals, but
+        // they call for different next moves: one is a rule that will refuse
+        // every identical call forever, the other is a person who might say yes
+        // to something else. Saying which is which saves a wasted retry.
         const r: ToolResultBlock = {
           type: 'tool_result',
           tool_use_id: use.id,
-          content: `Permission denied — the user chose not to run ${use.name}. Try a different approach, or ask them what they'd prefer.`,
+          content: deniedBySettings(use.name, use.input)
+            ? `This project's permission settings forbid ${use.name} here, so it did not run. That rule is not going to change mid-run — find another way, or tell the user what it's blocking.`
+            : `Permission denied — the user chose not to run ${use.name}. Try a different approach, or ask them what they'd prefer.`,
           is_error: true,
         }
         results.push(note(r))
@@ -693,12 +832,46 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         continue
       }
 
-      // Hooks are best-effort: a throwing hook must never break the
-      // tool_use → tool_result block invariant the model relies on.
-      try { await hooks?.firePre(use) } catch { /* hook error ignored */ }
+      // A PreToolUse hook that exits 2 refuses the call. That refusal reaches
+      // the model as an ordinary failed tool_result, so it can adapt, and the
+      // block invariant (one result per use) is preserved either way — an
+      // exception in the hook machinery is swallowed rather than allowed to
+      // strand a tool_use.
+      let preBlocked: string | null = null
+      try {
+        const pre = await hooks?.firePre(use)
+        for (const w of pre?.warnings ?? []) yield { type: 'hook-notice', message: w }
+        if (pre?.blocked) preBlocked = pre.reason ?? 'A PreToolUse hook refused this call.'
+      } catch { /* hook machinery failure is never the turn's problem */ }
+      if (preBlocked) {
+        const r: ToolResultBlock = {
+          type: 'tool_result',
+          tool_use_id: use.id,
+          content:
+            `Blocked by this project's ${use.name} hook, so it did not run and nothing changed: ` +
+            `${preBlocked}\n\nThis is a rule the project enforces, not a transient failure — ` +
+            `retrying the same call will be refused again. Work within it, or tell the user why you can't.`,
+          is_error: true,
+        }
+        results.push(note(r))
+        yield { type: 'tool-result', block: r }
+        continue
+      }
+
       let r: ToolResultBlock
       try {
-        const out = await tool.handler(use.input, { signal })
+        const out = await tool.handler(use.input, {
+          ...(signal ? { signal } : {}),
+          // The run environment, for the one tool that starts another agent.
+          run: {
+            model,
+            cwd,
+            permissions: { ...permissions, mode },
+            mode,
+            ...(hooks ? { hooks } : {}),
+            ...(cappedCtx !== undefined ? { num_ctx: cappedCtx } : {}),
+          },
+        })
         r = {
           type: 'tool_result',
           tool_use_id: use.id,
@@ -716,7 +889,20 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         }
       }
       if (!r.is_error) markSeen(use.name, use.input, seenPaths)
-      try { await hooks?.firePost(use, r) } catch { /* hook error ignored */ }
+      // PostToolUse runs after the call has already landed, so a block here
+      // cannot undo it — what it can do is tell the model the result is not
+      // acceptable (a formatter rewrote the file, a test gate failed) before it
+      // moves on believing the step is done.
+      try {
+        const post = await hooks?.firePost(use, r)
+        for (const w of post?.warnings ?? []) yield { type: 'hook-notice', message: w }
+        if (post?.blocked) {
+          r.content += `\n\n[This project's post-${use.name} hook rejected the result: ${post.reason}]`
+          r.is_error = true
+        } else if (post?.context) {
+          r.content += `\n\n[post-${use.name} hook: ${post.context}]`
+        }
+      } catch { /* see firePre */ }
       results.push(note(r))
       yield { type: 'tool-result', block: r }
     }
@@ -728,7 +914,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   if (!endedCleanly) {
     yield {
       type: 'error',
-      message: `Stopped after ${MAX_TURNS} tool-use turns — the task may be incomplete. Send another message to continue where it left off.`,
+      message: `Stopped after ${maxTurns} tool-use turns — the task may be incomplete. Send another message to continue where it left off.`,
     }
   }
   yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens }

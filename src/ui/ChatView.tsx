@@ -4,7 +4,7 @@ import { renderMarkdownStreaming } from './markdown.js'
 import { ThinkingBlock } from './ThinkingBlock.js'
 import type { ChatMessage, ToolUseDisplay, ToolResultDisplay, PermissionRequest } from './types.js'
 import { UserMessage, AssistantMessage, ASST_ACCENT, ASST_RULE } from './Message.js'
-import { ToolUseLine } from './ToolBlock.js'
+import { ToolUseList } from './ToolBlock.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
 import { clipTail, clipTailVisual, contentWidth } from './layout.js'
 import { setScrollMetrics, useScroll } from './scroll.js'
@@ -117,8 +117,6 @@ export function ChatView({
 
   // Every active tool block renders — the viewport clips what doesn't fit and the
   // user can scroll back to the rest, so there's no row budget to keep here.
-  const resultById = new Map(activeToolResults?.map((r) => [r.tool_use_id, r]))
-
   return (
     <Box flexDirection="column" flexGrow={1}>
       {/* Bottom-aligned while following the tail — which also puts a transcript
@@ -155,9 +153,9 @@ export function ChatView({
 
             {streamNode}
 
-            {activeToolUses?.map((u) => (
-              <ToolUseLine key={u.id} use={u} result={resultById.get(u.id)} />
-            ))}
+            {activeToolUses && activeToolUses.length > 0 && (
+              <ToolUseList uses={activeToolUses} results={activeToolResults} />
+            )}
 
             {pendingPermission && <PermissionPrompt req={pendingPermission} cursor={permissionCursor} />}
 

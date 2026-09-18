@@ -57,6 +57,12 @@ export type AgentEvent =
   | ({ type: 'tool-repair' } & ToolRepair)
   | { type: 'permission-denied'; toolName: string; tool_use_id: string }
   /**
+   * A configured hook had something to say to the USER — it failed, or it
+   * refused a call. Never routed to the model: the model gets the refusal as a
+   * tool_result, and a broken hook is not its problem to solve.
+   */
+  | { type: 'hook-notice'; message: string }
+  /**
    * The permission mode changed mid-run — the user approved a plan. The UI
    * mirrors it so the indicator and the next turn agree with the loop.
    */

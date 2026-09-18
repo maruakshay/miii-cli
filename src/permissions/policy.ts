@@ -33,6 +33,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { settingsAllowRules, settingsDenyRules } from '../settings.js'
 
 export type Decision = 'allow' | 'deny'
 export type AskAnswer = 'yes' | 'no' | 'always'
@@ -124,11 +125,16 @@ export function loadScopedRules(scope: RuleScope): Rule[] {
 }
 
 /**
- * Every rule in force here: the project's own, then the user-wide ones. Order
- * is presentation-only — a call is allowed if any rule matches.
+ * Every rule in force here: the project's own, then the user-wide ones, then
+ * whatever `permissions.allow` in the settings files declares. Order is
+ * presentation-only — a call is allowed if any rule matches.
+ *
+ * Settings rules are read-only from the store's point of view: "always" never
+ * writes into settings.json, because that file is checked in and an approval is
+ * a record of what *you* agreed to on *this* machine.
  */
 export function loadRules(): Rule[] {
-  return [...loadScopedRules('project'), ...loadScopedRules('user')]
+  return [...loadScopedRules('project'), ...loadScopedRules('user'), ...settingsAllowRules()]
 }
 
 function saveRules(scope: RuleScope, rules: Rule[]): void {
@@ -359,8 +365,29 @@ export function ruleAllows(rule: Rule, toolName: string, subject: string): boole
   }
 }
 
-/** Read-only tools are always allowed — never prompt for these. */
-const ALWAYS_ALLOW = new Set(['read_file', 'grep', 'glob'])
+/**
+ * Does a `permissions.deny` rule in the settings files refuse this call?
+ *
+ * Exported so the caller can say *why* it was refused: "the user declined" and
+ * "your settings forbid this" call for different next moves from the model, and
+ * a bare `deny` cannot tell them apart.
+ */
+export function deniedBySettings(toolName: string, input: unknown): boolean {
+  const subject = subjectFor(toolName, input)
+  return settingsDenyRules().some((r) => ruleAllows(r, toolName, subject))
+}
+
+/**
+ * Never prompt for these.
+ *
+ * The read-only three are obvious. `task` is here for a different reason: it
+ * does nothing itself. Every tool the subagent reaches for passes through this
+ * same gate with the same context, so a prompt on the delegation is a prompt for
+ * a decision that has not been made yet — and then you get asked again for the
+ * call that actually does something. In headless it was worse than noise: it
+ * refused delegation outright while leaving the subagent's tools ungated anyway.
+ */
+const ALWAYS_ALLOW = new Set(['read_file', 'grep', 'glob', 'task'])
 
 /** Tools that write to the workspace — what `acceptEdits` stops asking about. */
 export const EDIT_TOOLS = new Set(['write_file', 'edit_file'])
@@ -444,13 +471,18 @@ export async function check(
   ctx: PermissionContext,
 ): Promise<Decision> {
   const mode = ctx.mode ?? 'default'
+  // Deny is checked before everything, bypass included. A project that writes
+  // `"deny": ["run_bash(git push *)"]` means it in the sandbox too — otherwise
+  // the rule would be one shift+tab away from doing nothing, which is worse
+  // than not having it.
+  const subject = subjectFor(toolName, input)
+  if (deniedBySettings(toolName, input)) return 'deny'
   if (mode === 'bypass') return 'allow'
   if (ALWAYS_ALLOW.has(toolName)) return 'allow'
   // Edits are already confined to the workspace by the file tools, so
   // auto-accepting them is bounded in a way auto-accepting a command is not.
   if (mode === 'acceptEdits' && EDIT_TOOLS.has(toolName)) return 'allow'
 
-  const subject = subjectFor(toolName, input)
   const rules = loadRules()
   if (rules.some((r) => ruleAllows(r, toolName, subject))) return 'allow'
 

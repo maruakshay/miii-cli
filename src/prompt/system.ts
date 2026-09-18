@@ -38,9 +38,10 @@ function projectSection(project?: ProjectContext): string {
   const truncNote = project.truncated
     ? `\n(Truncated at ${MAX_CONTEXT_BYTES / 1024}KB.)`
     : ''
+  const where = [project.userSource, project.source].filter(Boolean).join(' and ')
   return `
 # ${CONTEXT_FILENAME} — project instructions (authoritative)
-The user maintains ${CONTEXT_FILENAME} at ${project.source} to steer how you work here. Treat it as direct instruction from them: it outranks the defaults below wherever the two conflict, except on permissions and safety, which you never override.${truncNote}
+The user maintains ${CONTEXT_FILENAME} at ${where} to steer how you work here. Treat it as direct instruction from them: it outranks the defaults below wherever the two conflict, except on permissions and safety, which you never override.${truncNote}
 
 --- BEGIN ${CONTEXT_FILENAME} ---
 ${project.content.trim()}
@@ -49,15 +50,13 @@ ${project.content.trim()}
 }
 
 /**
- * Always sent. Ordered by what breaks without it: the tool-call contract comes
- * first because a model that gets that wrong accomplishes nothing at all.
+ * The part that is true of any agent loop miii runs, main or subagent: how to
+ * emit a call, what the tools are, and the rules that keep an edit from
+ * destroying something. Shared so a subagent cannot quietly drift from the
+ * read-before-write contract the harness enforces on it anyway.
  */
-function core(tools: Tool[], cwd: string, project?: ProjectContext): string {
-  return `You are miii, a senior software engineer running in a terminal.
-
-Working directory: ${cwd}
-${projectSection(project)}
-# Tool calls
+function toolContract(tools: Tool[]): string {
+  return `# Tool calls
 - Emit tool calls through the native function-calling interface only. A call printed as text — JSON, a fenced block, \`call:name{...}\`, any tagged syntax — does NOT run: it leaks to the user and nothing happens. If you cannot emit a real function call, say so in prose rather than faking one.
 - Every call carries a complete arguments object: all required fields, correct types, no placeholders.
 - No preamble and no narration around a call. Emit it, read the result, move on. Never restate what a tool just did.
@@ -73,7 +72,19 @@ ${tools.map((t) => t.name).join(', ')}
 - Do only what was asked. No unrequested refactors, renames or reformatting. If you spot an unrelated problem, mention it at the end instead of fixing it.
 - Do not commit, push, or create branches unless the user asks. When asked: never commit on main, and stage only the files you changed.
 - Never print, log, or write secrets, keys, tokens, or \`.env\` values.
+`
+}
 
+/**
+ * Always sent. Ordered by what breaks without it: the tool-call contract comes
+ * first because a model that gets that wrong accomplishes nothing at all.
+ */
+function core(tools: Tool[], cwd: string, project?: ProjectContext): string {
+  return `You are miii, a senior software engineer running in a terminal.
+
+Working directory: ${cwd}
+${projectSection(project)}
+${toolContract(tools)}
 # Answering
 - Terminal Markdown: backticks for paths, commands and identifiers, fenced blocks with a language tag for code, plain prose otherwise. Reasoning stays plain text.
 - Be terse and concrete. Say what you did and what it means; skip filler, apologies, and pleasantries.
@@ -171,4 +182,34 @@ export function buildSystemPrompt(
   const base = core(tools, cwd, project) + (mode === 'plan' ? planning() : '')
   const roomy = num_ctx === undefined || num_ctx >= EXTENDED_MIN_CTX
   return roomy ? base + extended() : base
+}
+
+/**
+ * The system prompt for a subagent.
+ *
+ * The agent definition's own prompt leads, because that is the whole reason
+ * this agent exists and it should not be reading three screens of miii's house
+ * style before it gets to its job. Under it goes the machinery that is true
+ * regardless: where it is, what the project asked for, and the tool contract —
+ * which is not optional, since the harness enforces read-before-write on a
+ * subagent exactly as it does on the main loop.
+ *
+ * The extended layer is deliberately never sent. A subagent is given one task
+ * and reports once; task tracking, tone and working method are the caller's
+ * concern, and on a small window they would crowd out the work.
+ */
+export function buildSubagentPrompt(
+  agentPrompt: string,
+  tools: Tool[],
+  cwd: string,
+  project?: ProjectContext,
+): string {
+  return `${agentPrompt.trim()}
+
+Working directory: ${cwd}
+${projectSection(project)}
+${toolContract(tools)}
+# Reporting back
+Your final message is the only thing that reaches whoever asked. Write it for someone who saw none of your tool calls: the answer or the outcome first, then the specifics with \`path:line\` references. Do not describe your search.
+`
 }

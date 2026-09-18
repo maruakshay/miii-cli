@@ -6,6 +6,8 @@
  */
 import { useState, useRef } from 'react'
 import { runAgent } from '../../agent/loop.js'
+import { HookBus } from '../../hooks/bus.js'
+import { checkpointPreToolHook, snapshotForTurn } from '../../session/checkpoint.js'
 import { compactHistory, estimateHistoryTokens } from '../../agent/compact.js'
 import type { ChatMessage, PermissionRequest, PermissionAnswer, ToolUseDisplay, ToolResultDisplay } from '../types.js'
 import type { MiiMessage } from '../../agent/types.js'
@@ -16,7 +18,20 @@ import { describeTool } from '../toolLabel.js'
 // How often (ms) we flush streaming text to React state — avoids a re-render per token.
 const FLUSH_MS = 100
 
-export function useAgentRunner(model: string | undefined, activeCtx: number | null) {
+export interface SessionTotals {
+  /** Prompt tokens billed across every turn this session — not the live window. */
+  input: number
+  output: number
+  turns: number
+  /** Wall-clock ms spent inside the agent loop, excluding your thinking time. */
+  ms: number
+}
+
+export function useAgentRunner(
+  model: string | undefined,
+  activeCtx: number | null,
+  sessionId: string,
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [thinking, setThinking] = useState(false)
   const [thinkingTail, setThinkingTail] = useState('')
@@ -43,6 +58,27 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
    * it mid-run (the user approving a plan), and this is where that event lands.
    */
   const [mode, setModeState] = useState<PermissionMode>('default')
+  /**
+   * Cumulative cost of the session, which `usedTokens` deliberately is not:
+   * that one is "how full is the window right now" and drops when the history
+   * is compacted. This only ever goes up, because the tokens were spent.
+   */
+  const [totals, setTotals] = useState<SessionTotals>({ input: 0, output: 0, turns: 0, ms: 0 })
+
+  /**
+   * One hook bus per session. Shell hooks are read from settings on every fire,
+   * so this does not need rebuilding when settings change — but the checkpoint
+   * listener must be registered exactly once, which a ref guarantees and a
+   * render-time construction would not.
+   */
+  const hooksRef = useRef<HookBus | null>(null)
+  const hookSessionRef = useRef<string | null>(null)
+  if (hooksRef.current === null || hookSessionRef.current !== sessionId) {
+    const bus = new HookBus({ id: sessionId, cwd: process.cwd() })
+    bus.onPreTool((use) => checkpointPreToolHook(use))
+    hooksRef.current = bus
+    hookSessionRef.current = sessionId
+  }
 
   const busyRef = useRef(false)
   /**
@@ -168,6 +204,10 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     const controller = new AbortController()
     abortRef.current = controller
 
+    // Open a checkpoint boundary for this turn before any tool can run, so the
+    // files a tool is about to change are filed under the right turn.
+    snapshotForTurn(sessionId, agentHistory.length)
+
     try {
       const gen = runAgent({
         model,
@@ -177,6 +217,7 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
         images,
         permissions: { ask: askPermission },
         mode: modeRef.current,
+        hooks: hooksRef.current ?? undefined,
         signal: controller.signal,
         num_ctx: activeCtx ?? undefined,
       })
@@ -238,6 +279,14 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
             ])
             break
           }
+          case 'hook-notice': {
+            // A hook the user configured has something wrong with it. It goes
+            // in the transcript rather than a toast: it will keep happening on
+            // every turn until they fix the file, and a notice that vanishes is
+            // one they never see.
+            setMessages((prev) => [...prev, { role: 'assistant', content: `⚠ ${ev.message}` }])
+            break
+          }
           case 'turn-end': {
             flushStream(true)
             flushThink(true)
@@ -261,6 +310,12 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
           case 'done': {
             finalTokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
             setUsedTokens(ev.prompt_tokens + ev.eval_tokens)
+            setTotals((t) => ({
+              input: t.input + ev.prompt_tokens,
+              output: t.output + ev.eval_tokens,
+              turns: t.turns + 1,
+              ms: t.ms + (Date.now() - startTime),
+            }))
             break
           }
           case 'aborted': {
@@ -370,6 +425,8 @@ export function useAgentRunner(model: string | undefined, activeCtx: number | nu
     activeToolUses, setActiveToolUses,
     activeToolResults, setActiveToolResults,
     usedTokens, setUsedTokens,
+    totals,
+    hooks: hooksRef.current,
     compacting,
     mode, setMode, cycleMode,
     // refs (for keyboard handler)

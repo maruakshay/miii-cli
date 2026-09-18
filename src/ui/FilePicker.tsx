@@ -9,6 +9,13 @@ const CACHE_TTL_MS = 2000
 
 let cache: { cwd: string; files: string[]; at: number } | null = null
 
+/**
+ * Directories are listed alongside files, with a trailing slash. `@src/tools/`
+ * is a perfectly good thing to point the agent at — "the parsers live in here,
+ * go look" — and typing it out was the one thing the picker could not help with.
+ */
+const DIR_SUFFIX = '/'
+
 export function invalidateFileCache(): void {
   cache = null
 }
@@ -24,8 +31,12 @@ function listFiles(cwd: string): string[] {
     for (const e of entries) {
       if (IGNORE.has(e.name) || e.name.startsWith('.')) continue
       const full = join(dir, e.name)
-      if (e.isDirectory()) stack.push(full)
-      else if (e.isFile()) out.push(relative(cwd, full))
+      if (e.isDirectory()) {
+        stack.push(full)
+        out.push(relative(cwd, full) + DIR_SUFFIX)
+      } else if (e.isFile()) {
+        out.push(relative(cwd, full))
+      }
       if (out.length >= MAX_SCAN) break
     }
   }
@@ -48,7 +59,8 @@ export function searchFiles(cwd: string, query: string): string[] {
     const lf = f.toLowerCase()
     const idx = lf.indexOf(q)
     if (idx === -1) continue
-    const base = lf.split('/').pop() ?? lf
+    // A directory's basename is the segment before its trailing slash.
+    const base = (lf.endsWith(DIR_SUFFIX) ? lf.slice(0, -1) : lf).split('/').pop() ?? lf
     const baseIdx = base.indexOf(q)
     const score = baseIdx === 0 ? 0 : baseIdx > -1 ? 1 : 2 + idx
     scored.push([score, f])

@@ -1,5 +1,6 @@
 import { execa } from 'execa'
 import { spillIfLarge } from './spill.js'
+import { settingsEnv } from '../settings.js'
 import type { Tool } from './types.js'
 
 interface Input {
@@ -58,6 +59,9 @@ export const run_bash: Tool<Input> = {
       reject: false,
       all: true,
       detached: !isWin, // POSIX: new process group so killTree(-pid) hits the whole tree
+      // `env` from settings.json, so a project can pin NODE_ENV or a PATH entry
+      // for every command the agent runs without saying it in the prompt each time.
+      env: { ...process.env, ...settingsEnv() },
     })
 
     let timedOut = false

@@ -12,6 +12,8 @@ interface Props {
   hint?: string
   /** Permission mode; anything but 'default' is shown, and colours the frame. */
   mode?: PermissionMode
+  /** Vim mode, or null when vim keys are off. Shown as a chip on the hint row. */
+  vim?: 'insert' | 'normal' | null
 }
 
 /**
@@ -104,6 +106,7 @@ export const InputBar = memo(function InputBar({
   processingLabel,
   hint,
   mode = 'default',
+  vim = null,
 }: Props) {
   const [frame, setFrame] = useState(0)
   useEffect(() => {
@@ -164,12 +167,20 @@ export const InputBar = memo(function InputBar({
         {mode !== 'default' && (
           <Text color={MODE_COLOR[mode]} bold>{MODE_LABEL[mode]}{' · '}</Text>
         )}
+        {/* Normal mode is the one worth shouting about: it is the state where a
+            letter is a command, and not knowing you are in it is how you lose a
+            prompt. Insert mode is the default behaviour, so it stays quiet. */}
+        {vim === 'normal' && (
+          <Text color="magenta" bold>NORMAL{' · '}</Text>
+        )}
         <Text dimColor>
           {fitHint(
             hint ?? (disabled ? BUSY_HINTS : INPUT_HINTS),
             // The mode chip eats into the same row, so the hints have to fit
             // what's left of it or the bar wraps and pushes the frame.
-            (stdout?.columns ?? 80) - (mode === 'default' ? 0 : MODE_LABEL[mode].length + 3),
+            (stdout?.columns ?? 80)
+              - (mode === 'default' ? 0 : MODE_LABEL[mode].length + 3)
+              - (vim === 'normal' ? 9 : 0),
           )}
         </Text>
       </Box>

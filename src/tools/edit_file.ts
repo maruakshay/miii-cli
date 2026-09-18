@@ -70,6 +70,83 @@ export function fuzzyRange(src: string, old_str: string): [number, number] | nul
   return matches.length === 1 ? matches[0] : null
 }
 
+/** The leading whitespace of a line, as a string. */
+function leadingWs(line: string): string {
+  return line.slice(0, line.length - line.trimStart().length)
+}
+
+/**
+ * A whitespace-tolerant match means the model's indentation disagrees with the
+ * file's. Splicing new_str in verbatim would write that disagreement into the
+ * file — in Python, YAML or a Makefile that's a silent semantic break reported
+ * back as a success, which the model then never revisits. So: work out the one
+ * indent shift that maps old_str onto the source it actually matched, and apply
+ * that same shift to new_str. Returns null when no single shift explains the
+ * difference, or when new_str doesn't carry the prefix being stripped — in
+ * either case the caller must not auto-apply.
+ */
+export function realignIndent(matched: string, old_str: string, new_str: string): string | null {
+  const srcLines = matched.split('\n')
+  const oldLines = old_str.split('\n')
+  if (srcLines.length !== oldLines.length) return null
+
+  // Only non-blank lines carry an indent worth learning from.
+  const pairs: Array<[string, string]> = []
+  for (let i = 0; i < oldLines.length; i++) {
+    if (!oldLines[i].trim()) continue
+    pairs.push([leadingWs(srcLines[i]), leadingWs(oldLines[i])])
+  }
+  if (pairs.length === 0) return null
+
+  // The model may have got old_str's indentation wrong while still writing
+  // new_str at the file's real indentation — the tabs-vs-spaces case, where no
+  // shift maps one onto the other but the replacement is already correct. This
+  // check comes first: shifting an already-correct new_str would double it.
+  const firstSrc = srcLines.find((l) => l.trim())
+  const firstNew = new_str.split('\n').find((l) => l.trim())
+  if (firstSrc !== undefined && firstNew !== undefined && leadingWs(firstSrc) === leadingWs(firstNew)) {
+    return new_str
+  }
+
+  // Learn the shift from the first pair: either the source carries a prefix the
+  // model dropped, or the model added one the source doesn't have.
+  const [s0, o0] = pairs[0]
+  let mode: 'add' | 'strip'
+  let prefix: string
+  if (s0.endsWith(o0)) {
+    mode = 'add'
+    prefix = s0.slice(0, s0.length - o0.length)
+  } else if (o0.endsWith(s0)) {
+    mode = 'strip'
+    prefix = o0.slice(0, o0.length - s0.length)
+  } else {
+    // Tabs against spaces, or a reindent that isn't a uniform shift.
+    return null
+  }
+
+  // Every other line must agree, or the mismatch is structural rather than a
+  // shift, and re-indenting would be guessing at what the model meant.
+  for (const [s, o] of pairs) {
+    if (mode === 'add' ? s !== prefix + o : o !== prefix + s) return null
+  }
+  if (prefix === '') return new_str
+
+  const out: string[] = []
+  for (const line of new_str.split('\n')) {
+    if (!line.trim()) {
+      out.push(line)
+      continue
+    }
+    if (mode === 'add') {
+      out.push(prefix + line)
+      continue
+    }
+    if (!line.startsWith(prefix)) return null
+    out.push(line.slice(prefix.length))
+  }
+  return out.join('\n')
+}
+
 /**
  * old_str didn't match. Find the source region most like it and show it back
  * with line numbers, so the model can see the real whitespace/text instead of
@@ -100,20 +177,25 @@ function nearMiss(src: string, old_str: string): string {
 
 /**
  * Find the unique char range of `old_str` in `src`: exact match first, then a
- * whitespace-tolerant fuzzy match. Used by batch mode, which has no replace_all
- * — every edit must resolve to exactly one location. Returns the range or a
- * reason string explaining why it couldn't (with the closest text on no match).
+ * whitespace-tolerant fuzzy match, whose new_str is re-indented onto the region
+ * it matched. Used by batch mode, which has no replace_all — every edit must
+ * resolve to exactly one location. Returns the range and the text to splice in,
+ * or a reason it couldn't (with the closest text on no match).
  */
-function locate(src: string, old_str: string): [number, number] | { error: string } {
+function locate(src: string, old_str: string, new_str: string): { start: number; end: number; text: string } | { error: string } {
   const first = src.indexOf(old_str)
   if (first !== -1) {
     if (src.indexOf(old_str, first + 1) !== -1) {
       return { error: `That text shows up in more than one place, so I can't tell which one you mean. Add a line or two around it to make it unique.` }
     }
-    return [first, first + old_str.length]
+    return { start: first, end: first + old_str.length, text: new_str }
   }
   const fuzzy = fuzzyRange(src, old_str)
-  if (fuzzy) return fuzzy
+  if (fuzzy) {
+    const text = realignIndent(src.slice(fuzzy[0], fuzzy[1]), old_str, new_str)
+    if (text === null) return { error: `I could only find that text by ignoring indentation, and the replacement doesn't line up with it in any one consistent way — writing it could silently break the file. Retry with old_str and new_str at the file's real indentation.${nearMiss(src, old_str)}` }
+    return { start: fuzzy[0], end: fuzzy[1], text }
+  }
   return { error: `I couldn't find that text — it may differ by whitespace or a stray character.${nearMiss(src, old_str)}` }
 }
 
@@ -131,9 +213,9 @@ export function applyBatch(src: string, edits: EditSpec[]): { out: string; count
     }
     if (old_str === '') return { error: `Edit #${i + 1} has an empty old_str, so there's nothing to look for. Give it the exact text you want to replace.` }
     if (old_str === new_str) return { error: `Edit #${i + 1} has the same old_str and new_str, so it wouldn't change anything.` }
-    const r = locate(src, old_str)
-    if (!Array.isArray(r)) return { error: `Edit #${i + 1}: ${r.error}` }
-    ranges.push({ start: r[0], end: r[1], new_str })
+    const r = locate(src, old_str, new_str)
+    if ('error' in r) return { error: `Edit #${i + 1}: ${r.error}` }
+    ranges.push({ start: r.start, end: r.end, new_str: r.text })
   }
   const sorted = [...ranges].sort((a, b) => a.start - b.start)
   for (let i = 1; i < sorted.length; i++) {
@@ -151,22 +233,22 @@ export function applyBatch(src: string, edits: EditSpec[]): { out: string; count
 export const edit_file: Tool<Input> = {
   name: 'edit_file',
   description:
-    'Replace an exact string in a file. old_str must be unique unless replace_all is set. On no match, returns the closest text in the file. To make several edits to one file at once, pass an `edits` array of {old_str,new_str} — they apply atomically (all or nothing).',
+    'Replace exact strings in a file. To change several places, pass `edits` — one atomic call beats several round trips. old_str must be unique unless replace_all. On no match, returns the closest text found.',
   input_schema: {
     type: 'object',
     properties: {
       path:        { type: 'string', description: 'File path' },
-      old_str:     { type: 'string', description: 'Exact text to replace (whitespace-sensitive). Omit when using edits[].' },
-      new_str:     { type: 'string', description: 'Replacement text. Omit when using edits[].' },
-      replace_all: { type: 'boolean', description: 'Replace every occurrence instead of requiring uniqueness' },
+      old_str:     { type: 'string', description: 'Exact text to replace. Omit when using edits.' },
+      new_str:     { type: 'string', description: 'Replacement. Omit when using edits.' },
+      replace_all: { type: 'boolean', description: 'Replace every occurrence' },
       edits: {
         type: 'array',
-        description: 'Batch mode: several edits applied atomically. Each old_str must be unique in the file. Alternative to old_str/new_str.',
+        description: 'Several edits, applied atomically (all or nothing). Preferred over old_str/new_str.',
         items: {
           type: 'object',
           properties: {
-            old_str: { type: 'string', description: 'Exact text to replace (whitespace-sensitive)' },
-            new_str: { type: 'string', description: 'Replacement text' },
+            old_str: { type: 'string', description: 'Exact text to replace, unique in the file' },
+            new_str: { type: 'string', description: 'Replacement' },
           },
           required: ['old_str', 'new_str'],
         },
@@ -206,10 +288,20 @@ export const edit_file: Tool<Input> = {
           const fuzzy = fuzzyRange(src, old_str)
           if (fuzzy) {
             const [s, e] = fuzzy
-            const out = src.slice(0, s) + new_str + src.slice(e)
+            // The match ignored indentation, so new_str's indentation can't be
+            // trusted either — shift it onto the region before writing.
+            const text = realignIndent(src.slice(s, e), old_str, new_str)
+            if (text === null) {
+              return {
+                content: `I could only find that text in ${path} by ignoring indentation, and the replacement doesn't line up with it in any one consistent way — writing it could silently break the file. Retry with old_str and new_str at the file's real indentation.${nearMiss(src, old_str)}`,
+                is_error: true,
+              }
+            }
+            const out = src.slice(0, s) + text + src.slice(e)
             writeFileSync(abs, out, 'utf-8')
+            const how = text === new_str ? 'whitespace-tolerant match' : 'whitespace-tolerant match, re-indented to match the file'
             return {
-              content: `Edited ${path} (whitespace-tolerant match).${verifyHint(path)}`,
+              content: `Edited ${path} (${how}).${verifyHint(path)}`,
               diff: buildFileDiff(path, src, out),
             }
           }

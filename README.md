@@ -63,7 +63,12 @@ miii reads your files, writes the code, runs your tests, and fixes what breaks �
 - **📋 Plan mode** — `shift+tab` (or `/plan`) makes the session read-only. miii researches your code, proposes a plan, and touches nothing until you approve it. The block is enforced by the harness, not asked for in the prompt: with no write tools and only reporting commands, a model that tries `sed -i` or `cat > file` anyway gets refused.
 - **🔒 Permission-gated tools** — you approve what the agent touches, and see the exact rule before you save it. A saved wildcard never stretches across a command boundary, so approving `npm test` can't quietly authorize `npm test && rm -rf ~`.
 - **⌨️ Your own slash commands** — drop `review.md` in `.miii/commands/` and `/review` is a command, in the palette, checked into the repo with everything else.
-- **📄 `MIII.md`** — drop one in your repo to teach miii your conventions and commands. Same idea as `CLAUDE.md`, read every turn.
+- **📄 `MIII.md`** — drop one in your repo to teach miii your conventions and commands. Same idea as `CLAUDE.md`, read every turn. `# a fact` from the input bar appends to it.
+- **🖥️ Headless** — `miii -p "fix the failing test"`, `git diff | miii -p "review this"`, `--output-format json`. The same agent loop with nothing to watch it, so it approves nothing by default and tells you what it refused.
+- **🔌 MCP servers** — point it at GitHub, Sentry, Postgres, your internal service. Their tools join the registry as `mcp__<server>__<tool>`, permission-gated like everything else.
+- **🪝 Hooks** — shell commands the harness runs before or after a tool, on submit, or when the agent tries to stop. Exit 2 blocks the call and the reason goes to the model. Prose in a prompt is a request; this is a rule.
+- **🧩 Subagents** — `task` hands a search or a self-contained job to a second loop with its own context window, and keeps only the answer. On a 16k window that is the difference between finding something and having room left to use it.
+- **⟲ `/rewind`** — every file the agent is about to change is copied first. Rewind puts the files *and* the conversation back to any earlier turn, without touching your own uncommitted work.
 
 **Picking a model:** 8GB VRAM → `qwen2.5-coder:7b` · 16–24GB → `qwen2.5-coder:14b` (sweet spot) · 48GB+ → `qwen2.5-coder:32b`.
 
@@ -81,6 +86,7 @@ miii reads your files, writes the code, runs your tests, and fixes what breaks �
 | `grep` | Regex search across files |
 | `run_bash` | Execute shell commands |
 | `write_todos` | Track multi-step work as a live checklist |
+| `task` | Delegate a search or a self-contained job to a subagent |
 
 File tools (`read_file`, `write_file`, `edit_file`) reject `../` traversal and absolute paths outside the workspace. `run_bash` is **not** path-confined — its only boundary is the permission prompt, so review commands before approving.
 </details>
@@ -110,6 +116,160 @@ Gitignore `.miii/permissions.json` — it is a record of what *you* approved. `.
 | **bypass permissions** | runs everything without asking (red frame — for a sandbox or a throwaway tree) |
 
 In **plan mode** the write tools are not offered at all and `run_bash` runs only commands that report — `ls`, `cat`, `grep`, `find`, `git status/log/diff`, one at a time, no pipes or `&&`. A compound command is refused however harmless its first word, because `ls` tells you nothing about what comes after the `&&`. When the research is done miii calls `exit_plan_mode` with the plan and you get three choices: start work, start work and stop asking about the edits, or send it back for another pass.
+</details>
+
+<details>
+<summary><strong>Scripting it — headless mode</strong></summary>
+
+`-p` runs one turn and prints the answer. No TUI, no screen to take over, so it composes:
+
+```bash
+miii -p "what does the retry budget default to"
+git diff | miii -p "review this for correctness bugs"
+miii -p "fix the failing test" --permission-mode acceptEdits
+miii -p "summarise today's commits" --output-format json | jq -r .result
+```
+
+Piped stdin is prepended to the prompt rather than replacing it, so the diff and the instruction both arrive. With no prompt argument at all, the piped text *is* the prompt.
+
+**Nobody is watching, so nothing is approved.** A headless run refuses any call not already covered by a saved rule, and says on stderr what it refused and how many times — a run that did half the job because six calls were denied must not exit looking like a run that finished. Scripts that mean yes say so:
+
+| Flag | |
+|---|---|
+| `--permission-mode acceptEdits` | file writes stop asking; commands still refuse |
+| `--permission-mode bypass` | runs everything (alias: `--dangerously-skip-permissions`) |
+| `--allowed-tools read_file,grep,glob` | restrict the agent to these tools |
+| `--max-turns <n>` | stop after n tool-use turns |
+| `--output-format text\|json\|stream-json` | `text` prints the final answer and nothing else; `json` is one result object; `stream-json` is one event per line, for watching a long run |
+| `-c` / `--resume <id>` | continue the last session, or a named one |
+
+Exit codes: `0` finished, `1` the agent errored, `2` miii is misconfigured (no model, bad flags) — so a script can tell "the agent says no" from "this was never going to work".
+
+</details>
+
+<details>
+<summary><strong>Settings — <code>.miii/settings.json</code></strong></summary>
+
+Config (`~/.miii/config.json`) is your machine: which model, which provider. Settings are the project: what it does and what it may do here. Three files, later ones winning:
+
+```text
+~/.miii/settings.json            yours, in every project
+<cwd>/.miii/settings.json        the project's — check this in
+<cwd>/.miii/settings.local.json  yours, this project only — gitignore it
+```
+
+The merge is not a blind overwrite. Hook lists are appended to and permission rules concatenated, so a project adding a lint gate cannot silently delete the one in your user settings.
+
+```json
+{
+  "permissions": {
+    "allow": ["run_bash(npm test *)", "run_bash(git status)"],
+    "deny": ["run_bash(git push *)", "edit_file(prisma/migrations/*)"],
+    "defaultMode": "plan"
+  },
+  "env": { "NODE_ENV": "test" },
+  "checkpoints": true,
+  "vimMode": false
+}
+```
+
+`deny` is checked before everything, **bypass mode included** — a rule that a single `shift+tab` disarms is worse than no rule. `allow` is read-only from miii's side: answering "always" at a prompt writes to `.miii/permissions.json`, never into a file you check in. `/settings` says which files are actually in force.
+
+</details>
+
+<details>
+<summary><strong>Hooks</strong></summary>
+
+A hook is a shell command the harness runs at a fixed point in a turn. It exists because some things should not be requests. "Run prettier after every edit" in the system prompt is followed most of the time by a 7B model, which is the same as not having it; as a hook it is mechanical.
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "edit_file|write_file",
+        "hooks": [{ "command": "npx prettier --write \"$MIII_TOOL_PATH\"" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "write_file|edit_file",
+        "hooks": [{ "command": "case \"$MIII_TOOL_PATH\" in *.lock) echo 'lockfiles are generated' >&2; exit 2;; esac" }] }
+    ]
+  }
+}
+```
+
+| Event | Fires | A block (exit 2) means |
+|---|---|---|
+| `PreToolUse` | before a tool runs | the call never happens; stderr goes to the model as the reason |
+| `PostToolUse` | after it returns | the result is marked failed with your reason attached |
+| `UserPromptSubmit` | before your message is sent | the turn is dropped |
+| `Stop` | when the agent means to stop | it goes back to work with your reason (bounded to twice) |
+| `SessionStart` | once, when a session opens | — |
+
+The exit code is the whole contract: **0** fine (stdout becomes context for `UserPromptSubmit`, a notice elsewhere), **2** block, **anything else** your hook is broken — shown to you, never to the model, and the turn carries on. A typo in a hook must not brick the session.
+
+The event arrives as JSON on stdin. `$MIII_TOOL_NAME`, `$MIII_TOOL_PATH`, `$MIII_TOOL_COMMAND` and `$MIII_PROJECT_DIR` are set for the common one-liner. `matcher` is an anchored regex over the tool name.
+
+</details>
+
+<details>
+<summary><strong>MCP servers</strong></summary>
+
+Everything that is not a file — issues, errors, databases, designs — reaches miii through MCP. Servers are declared in settings and connected at launch; a server that fails to start is reported and skipped rather than holding the session closed.
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+    },
+    "docs": { "type": "http", "url": "https://mcp.internal/api", "readOnly": true }
+  }
+}
+```
+
+`${VAR}` is expanded from your environment, so a token stays in your shell profile rather than in a file you might commit. stdio and streamable-HTTP transports are both supported.
+
+Server tools are registered as `mcp__<server>__<tool>`. That prefix is not decoration: it namespaces two servers that both call something `search`, it tells you at the permission prompt where a call is about to go, and it is what a rule like `mcp__github__*` matches. `/mcp` lists what connected.
+
+**Plan mode withholds MCP tools** unless the server is declared `"readOnly": true`. miii cannot tell whether a server's `create_issue` writes something, and a read-only claim is the server author's to make, not ours to guess.
+
+</details>
+
+<details>
+<summary><strong>Subagents</strong></summary>
+
+The `task` tool runs a second agent loop with its own context window and hands back only its final message.
+
+The point is context, not parallelism. "Where does this project handle retries" costs a dozen greps and half a dozen partial reads, and on a 16k window that search *is* the budget — the model finds the answer and has no room left to act on it. Delegated, the main conversation gains three lines.
+
+Two agents ship: **explore** (read-only search, the default) and **general** (a self-contained job, end to end). Define your own as Markdown:
+
+```markdown
+---
+name: reviewer
+description: Reviews a diff for correctness bugs. Use after writing code.
+tools: read_file, grep, glob, run_bash
+---
+You are a code reviewer. Read the diff and report only real defects…
+```
+
+`.miii/agents/*.md` is the project's, `~/.miii/agents/*.md` is yours everywhere, and either shadows a built-in of the same name. `description` is what the main model reads when choosing, so write it as *when to use this*. A subagent inherits the session's permission mode — it is not a way around plan mode — and never gets `task` itself. `/agents` lists them.
+
+</details>
+
+<details>
+<summary><strong>Undo — <code>/rewind</code></strong></summary>
+
+Small models are wrong more often, and wrong here means four files edited in a direction you did not want. `git checkout` is the usual answer and it is wrong twice over: the work is rarely committed at the point you want back, and it discards your own uncommitted edits along with the agent's.
+
+So every file the agent is about to change is copied first, tagged with the turn it belonged to. `/rewind` lists those points; `/rewind 6` puts the files back as they were and truncates the conversation to match.
+
+Both halves matter. Restore only the files and the model stays certain it made edits that are no longer there, then builds its next turn on that. Restore only the transcript and the edits are still on disk.
+
+Checkpoints live in `~/.miii/projects/<project>/checkpoints/`, are deleted with their session, and skip files over 2MB. Turn them off with `"checkpoints": false`.
+
 </details>
 
 <details>
@@ -149,6 +309,8 @@ Review the staged diff for bugs and unhandled errors. Focus on $ARGUMENTS.
 | `Ctrl+Y` | Copy the last reply to the clipboard |
 | `Ctrl+S` | Hand the mouse back to the terminal, so a drag selects text |
 | `Ctrl+C` | Quit |
+| `#` … | Append the line to the project's `MIII.md` — `##` for your own |
+| `Esc` (vim on) | Leave insert mode — `hjkl w b 0 $ x dd dw cw D C i a A o` |
 
 | Command | Action |
 |---------|--------|
@@ -160,6 +322,17 @@ Review the staged diff for bugs and unhandled errors. Focus on $ARGUMENTS.
 | `/sessions` | List and resume a saved session |
 | `/copy` | Copy to the clipboard — `last` (default), `code`, `tool` or `all` |
 | `/compact` | Summarize the conversation to free context — `/compact <focus>` to steer it |
+| `/init` | Survey the repo and write a `MIII.md` for it |
+| `/review` | Review the uncommitted changes — `/review <branch\|path>` for something else |
+| `/rewind` | Undo the agent's file changes and rewind the conversation to match |
+| `/context` | Show what is actually filling the context window |
+| `/cost` | Tokens and time spent this session |
+| `/export` | Write the transcript to a Markdown file |
+| `/memory` | Where `MIII.md` lives — `#` a line to append to it, `##` for your own |
+| `/agents` | Subagents the `task` tool can call |
+| `/mcp` | Connected MCP servers and their tools |
+| `/settings` | Which settings files are in force |
+| `/vim` | Toggle vim keys in the input bar |
 | `/clear` | Reset conversation |
 | `/exit` | Quit |
 </details>
@@ -251,9 +424,13 @@ src/
  ├── permissions/ # Approval rules, modes, and how they're scoped
  ├── commands/    # User-defined slash commands (.miii/commands/*.md)
  ├── llm/         # Ollama and OpenAI-compatible backends
- ├── session/     # Saved conversations
+ ├── mcp/         # MCP client (stdio + HTTP) and its tool registry
+ ├── hooks/       # The hook bus and the shell hooks settings.json declares
+ ├── session/     # Saved conversations and file checkpoints
  ├── ui/          # Ink terminal UI and input handling
- └── config.ts    # Settings and provider resolution
+ ├── settings.ts  # .miii/settings.json — hooks, MCP, standing permissions
+ ├── headless.ts  # miii -p, for scripts and CI
+ └── config.ts    # Model/provider settings and resolution
 ```
 
 ```bash

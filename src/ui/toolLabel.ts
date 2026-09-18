@@ -1,4 +1,5 @@
 import { truncate } from './layout.js'
+import type { ToolUseDisplay } from './types.js'
 
 /**
  * The technical name of each tool, for the dim `Bash(npm test)` line that only
@@ -87,7 +88,7 @@ function describeCommand(raw: string): string {
 export function describeTool(
   name: string,
   input: Record<string, unknown> | undefined,
-): { text: string; technical: string } {
+): { text: string; technical: string; subject: string } {
   const inp = (input ?? {}) as Record<string, unknown>
   const str = (k: string): string => (typeof inp[k] === 'string' ? (inp[k] as string) : '')
   const label = TOOL_LABEL[name] ?? name
@@ -154,5 +155,60 @@ export function describeTool(
       text = `Running ${label}`
     }
   }
-  return { text, technical: arg ? `${label}(${arg})` : label }
+  return { text, technical: arg ? `${label}(${arg})` : label, subject: arg || text }
+}
+
+/**
+ * Calls the transcript counts rather than lists.
+ *
+ * A turn that reads six files is one action to the person watching — "Read 6
+ * files", not six near-identical rows to scroll past. Reads, searches and shell
+ * commands collapse that way; edits never do, because each one is a change to
+ * the code and deserves its own diff.
+ */
+const GROUP_NOUN: Record<string, [one: string, many: string]> = {
+  run_bash: ['shell command', 'shell commands'],
+  read_file: ['file', 'files'],
+  grep: ['search', 'searches'],
+  glob: ['file search', 'file searches'],
+}
+
+const GROUP_VERB: Record<string, [running: string, done: string]> = {
+  run_bash: ['Running', 'Ran'],
+  read_file: ['Reading', 'Read'],
+  grep: ['Running', 'Ran'],
+  glob: ['Running', 'Ran'],
+}
+
+export function isGroupable(name: string): boolean {
+  return name in GROUP_NOUN
+}
+
+/**
+ * The counted headline for a run of calls: "Running 1 shell command…" while one
+ * is still out, "Read 3 files" once they are all back. The ellipsis is the
+ * tense — it says the count may still grow.
+ */
+export function groupHeadline(name: string, count: number, pending: boolean): string {
+  const noun = GROUP_NOUN[name]
+  const verb = GROUP_VERB[name]
+  if (!noun || !verb) return `${pending ? 'Running' : 'Ran'} ${name}`
+  const word = count === 1 ? noun[0] : noun[1]
+  return pending ? `${verb[0]} ${count} ${word}…` : `${verb[1]} ${count} ${word}`
+}
+
+/**
+ * Split a turn's calls into the blocks the transcript draws: consecutive calls
+ * to the same groupable tool become one block, everything else stands alone.
+ * Consecutive, not merely same-tool, so the blocks stay in the order the agent
+ * worked in — a read, an edit, then another read is three blocks, not two.
+ */
+export function groupToolUses(uses: ToolUseDisplay[]): ToolUseDisplay[][] {
+  const groups: ToolUseDisplay[][] = []
+  for (const use of uses) {
+    const last = groups[groups.length - 1]
+    if (last && isGroupable(use.name) && last[0].name === use.name) last.push(use)
+    else groups.push([use])
+  }
+  return groups
 }

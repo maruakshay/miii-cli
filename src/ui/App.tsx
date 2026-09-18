@@ -17,14 +17,17 @@ import { ModelsView } from './ModelsView.js'
 import { ProviderPicker } from './ProviderPicker.js'
 import { SessionsView } from './SessionsView.js'
 import { CommandPalette } from './CommandPalette.js'
-import { persistSession, setSessionTitle, summarizeConversation, newSessionId, type SessionMeta } from '../session/store.js'
+import { persistSession, setSessionTitle, summarizeConversation, newSessionId, listSessions, loadSession, toDisplayMessages, type SessionMeta } from '../session/store.js'
 import { setTerminalTitle, resetTerminalTitle } from './terminalTitle.js'
 import { enableMouse, disableMouse, isMouseEnabled, onMouseChange } from './mouse.js'
 import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
-import { useKeyboard } from './hooks/useKeyboard.js'
+import { useKeyboard, vimIndicator } from './hooks/useKeyboard.js'
 import { checkForUpdate, autoUpdate } from '../updateCheck.js'
+import { initMcp, closeMcp, type McpServerStatus } from '../mcp/registry.js'
+import { defaultPermissionMode, loadSettings } from '../settings.js'
+import { estimateHistoryTokens } from '../agent/compact.js'
 
 /** Warn the user once this share of the context window is in use. */
 const CONTEXT_WARN_AT = 0.7
@@ -39,7 +42,14 @@ const AUTO_COMPACT_AT = 0.85
 
 type AppState = 'loading' | 'select-model' | 'ready' | 'models' | 'providers' | 'sessions'
 
-export function App() {
+export interface AppProps {
+  /** `--resume <id>` — open this session instead of a new one. */
+  resumeId?: string
+  /** `-c` / `--continue` — open the most recently updated session. */
+  continueLast?: boolean
+}
+
+export function App({ resumeId, continueLast }: AppProps) {
   const { exit } = useApp()
   const cwd = process.cwd().replace(homedir(), '~').split(sep).join('/')
 
@@ -69,7 +79,15 @@ export function App() {
   const [providerDown, setProviderDown] = useState(false)
 
   // --- sessions ---
-  const [sessionId, setSessionId] = useState(() => newSessionId())
+  /**
+   * Resolved once, at mount: --resume names a session, --continue means the most
+   * recent one, and anything else is a new session. Done in the initialiser so
+   * the very first persistSession writes to the right file rather than minting a
+   * new id and orphaning the one we were asked to continue.
+   */
+  const [sessionId, setSessionId] = useState(
+    () => resumeId ?? (continueLast ? listSessions()[0]?.id : undefined) ?? newSessionId(),
+  )
   // Live mirror of sessionId so async callbacks can check the *current* active
   // session, not the one captured when they started.
   const sessionIdRef = useRef(sessionId)
@@ -88,7 +106,80 @@ export function App() {
   const [filePickerCursor, setFilePickerCursor] = useState(0)
 
   // --- agent streaming & permission state (owned by hook) ---
-  const agent = useAgentRunner(cfg.model, activeCtx)
+  const agent = useAgentRunner(cfg.model, activeCtx, sessionId)
+
+  // --- MCP ---
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([])
+
+  /**
+   * Connect the configured MCP servers once, on mount. Their tools join the
+   * registry as they land, so a slow server simply shows up a moment later
+   * rather than holding the session closed while it starts.
+   */
+  useEffect(() => {
+    let live = true
+    void initMcp(process.cwd())
+      .then((servers) => {
+        if (!live) return
+        setMcpServers(servers)
+        const broken = servers.filter((sv) => !sv.connected)
+        if (broken.length) {
+          setNotice(`MCP: ${broken.map((sv) => `${sv.name} unavailable`).join(', ')} — /mcp for details`)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+      void closeMcp()
+    }
+  }, [])
+
+  /**
+   * Restore a session named on the command line. Runs after mount rather than in
+   * the state initialiser because it has to fill both halves — the transcript
+   * the user reads and the history the model is sent — and those live in the
+   * agent runner, not here.
+   */
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current) return
+    if (!resumeId && !continueLast) return
+    restored.current = true
+    const history = loadSession(sessionId)
+    if (!history.length) {
+      setNotice(resumeId ? `no session "${resumeId}" — started a new one` : 'no session to continue')
+      return
+    }
+    agent.setAgentHistory(history)
+    agent.setMessages(toDisplayMessages(history))
+    agent.setUsedTokens(estimateHistoryTokens(history))
+    // Already titled on disk; don't spend a summarisation call re-deriving it.
+    titledSessions.current.add(sessionId)
+    setNotice(`resumed session · ${history.length} messages`)
+  }, [])
+
+  /**
+   * SessionStart fires once, when the session opens. Its stdout is not injected
+   * anywhere — there is no turn to attach it to yet — so it is shown as a notice
+   * instead: the use is "tell me what branch I'm on and whether CI is red", and
+   * that is information for the user, not the model.
+   */
+  useEffect(() => {
+    void agent.hooks
+      ?.fireSessionStart(resumeId || continueLast ? 'resume' : 'startup')
+      .then((out) => {
+        for (const w of out.warnings) setNotice(w)
+        if (out.context) setNotice(out.context.split('\n')[0])
+      })
+      .catch(() => {})
+  }, [])
+
+  /** A project can pin the mode a session opens in — see settings.json. */
+  useEffect(() => {
+    const pinned = defaultPermissionMode(process.cwd())
+    if (pinned) agent.setMode(pinned)
+    loadSettings(process.cwd())
+  }, [])
 
   useEffect(() => {
     checkForUpdate().then((v) => {
@@ -312,7 +403,7 @@ export function App() {
     sessionId, setSessionId,
     onResumeSession: (id) => titledSessions.current.add(id),
     sessions, setSessions, setNotice, setLogEpoch,
-    switchProvider,
+    switchProvider, mcpServers, activeCtx,
   })
 
   const effort: Effort = cfg.effort ?? 'medium'
@@ -458,6 +549,7 @@ export function App() {
                 disabled={agent.busy}
                 processingLabel={agent.processingLabel}
                 mode={agent.mode}
+                vim={vimIndicator()}
                 hint={
                   providerDown
                     ? 'provider unavailable — /provider to switch · /models to pick a model'

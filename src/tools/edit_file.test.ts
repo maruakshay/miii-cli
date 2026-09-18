@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs'
 import { join, relative } from 'path'
-import { edit_file, fuzzyRange, similarity, applyBatch } from './edit_file.js'
+import { edit_file, fuzzyRange, similarity, applyBatch, realignIndent } from './edit_file.js'
 
 describe('similarity', () => {
   it('is 1 for identical (ws-trimmed) strings', () => {
@@ -165,5 +165,96 @@ describe('edit_file handler', () => {
     expect(out.content).toMatch(/couldn't find/)
     expect(out.content).toMatch(/closest text/i)
     expect(out.content).toMatch(/const alpha = 1/)
+  })
+})
+
+describe('realignIndent', () => {
+  it('adds back the indent the model dropped', () => {
+    const matched = '    if x:\n        return 1'
+    expect(realignIndent(matched, 'if x:\n    return 1', 'if x:\n    return 2')).toBe(
+      '    if x:\n        return 2',
+    )
+  })
+
+  it('strips the indent the model added', () => {
+    const matched = 'if x:\n    return 1'
+    expect(realignIndent(matched, '        if x:\n            return 1', '        if x:\n            return 2')).toBe(
+      'if x:\n    return 2',
+    )
+  })
+
+  it('is a no-op when the indentation already agrees', () => {
+    const matched = '  a = 1'
+    expect(realignIndent(matched, '  a = 1', '  a = 2')).toBe('  a = 2')
+  })
+
+  it('leaves blank lines alone rather than padding them', () => {
+    const matched = '    a = 1\n\n    b = 2'
+    expect(realignIndent(matched, 'a = 1\n\nb = 2', 'a = 9\n\nb = 8')).toBe('    a = 9\n\n    b = 8')
+  })
+
+  it('returns null when the shift is not uniform across lines', () => {
+    // Source dedents the second line; old_str keeps both at the same level, so
+    // no single shift maps one onto the other.
+    const matched = '    a = 1\n  b = 2'
+    expect(realignIndent(matched, 'a = 1\nb = 2', 'a = 9\nb = 8')).toBeNull()
+  })
+
+  it('returns null on a tabs-vs-spaces mismatch', () => {
+    expect(realignIndent('\ta = 1', '    a = 1', '    a = 9')).toBeNull()
+  })
+
+  it('takes new_str verbatim when it already matches the file indentation', () => {
+    // old_str used spaces, the file uses a tab — no shift maps one onto the
+    // other, but new_str is already written at the file's indentation.
+    expect(realignIndent('\tfoo = 1', '    foo = 1', '\tfoo = 2')).toBe('\tfoo = 2')
+  })
+
+  it('returns null when a new_str line lacks the prefix being stripped', () => {
+    expect(realignIndent('a = 1\nb = 2', '    a = 1\n    b = 2', '    a = 9\nb = 8')).toBeNull()
+  })
+})
+
+describe('edit_file indentation safety', () => {
+  let dir: string
+  let file: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(process.cwd(), 'tmp-edit-indent-'))
+    file = join(dir, 'm.py')
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('re-indents new_str onto the region a fuzzy match found', async () => {
+    writeFileSync(file, 'def f(x):\n    if x:\n        return 1\n', 'utf-8')
+    const rel = relative(process.cwd(), file)
+    // Model copied the body with its indentation stripped.
+    const r = await edit_file.handler({ path: rel, old_str: 'if x:\n    return 1', new_str: 'if x:\n    return 2' })
+    expect(r.is_error).toBeFalsy()
+    expect(readFileSync(file, 'utf-8')).toBe('def f(x):\n    if x:\n        return 2\n')
+  })
+
+  it('refuses rather than writing an indentation it cannot line up', async () => {
+    writeFileSync(file, 'def f(x):\n    a = 1\n  b = 2\n', 'utf-8')
+    const rel = relative(process.cwd(), file)
+    const before = readFileSync(file, 'utf-8')
+    const r = await edit_file.handler({ path: rel, old_str: 'a = 1\nb = 2', new_str: 'a = 9\nb = 8' })
+    expect(r.is_error).toBe(true)
+    expect(readFileSync(file, 'utf-8')).toBe(before)
+  })
+
+  it('re-indents inside a batch edit too', async () => {
+    writeFileSync(file, 'def f():\n    x = 1\n    y = 2\n', 'utf-8')
+    const rel = relative(process.cwd(), file)
+    const r = await edit_file.handler({
+      path: rel,
+      edits: [
+        { old_str: 'x = 1', new_str: 'x = 10' },
+        { old_str: 'y = 2', new_str: 'y = 20' },
+      ],
+    })
+    expect(r.is_error).toBeFalsy()
+    expect(readFileSync(file, 'utf-8')).toBe('def f():\n    x = 10\n    y = 20\n')
   })
 })

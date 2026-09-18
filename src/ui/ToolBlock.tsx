@@ -5,7 +5,7 @@ import type { ToolUseDisplay, ToolResultDisplay } from './types.js'
 import type { DiffLine, FileDiff } from '../diff.js'
 import { useToolExpanded } from './toolExpand.js'
 import { registerToolBlock, unregisterToolBlock } from './toolHit.js'
-import { describeTool, TOOL_LABEL } from './toolLabel.js'
+import { describeTool, groupHeadline, groupToolUses, isGroupable, TOOL_LABEL } from './toolLabel.js'
 import { countLines, truncate } from './layout.js'
 import { renderMarkdown } from './markdown.js'
 
@@ -306,7 +306,22 @@ function summarizeResult(res: ToolResultDisplay, toolName?: string): string {
   return extra > 0 ? `${head} (+${extra} lines)` : head
 }
 
-function ToolResultBlock({ id, result, toolName }: { id: string; result: ToolResultDisplay; toolName: string }) {
+function ToolResultBlock({
+  id,
+  result,
+  toolName,
+  subject,
+}: {
+  id: string
+  result: ToolResultDisplay
+  toolName: string
+  /**
+   * Inside a counted group the headline says how many calls there were, not
+   * which — so each result names its own subject (the file, the command) before
+   * its summary.
+   */
+  subject?: string
+}) {
   const expanded = useToolExpanded(id)
   const content = result.content ?? ''
   const lines = content.split('\n')
@@ -316,8 +331,8 @@ function ToolResultBlock({ id, result, toolName }: { id: string; result: ToolRes
   if (!showMulti) {
     return (
       <Box marginLeft={2}>
-        <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error}>
-          {'⎿  '}{summarizeResult(result, toolName)}
+        <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error} wrap="truncate">
+          {'⎿  '}{subject ? `${subject} · ` : ''}{summarizeResult(result, toolName)}
         </Text>
       </Box>
     )
@@ -328,13 +343,14 @@ function ToolResultBlock({ id, result, toolName }: { id: string; result: ToolRes
   const extra = lines.length - shown.length
   // grep/glob summarize to a count; for bash/errors the summary echoes the first
   // content line, which the body below also prints — so use a count header instead.
-  const header =
+  const count =
     toolName === 'grep' || toolName === 'glob'
       ? summarizeResult(result, toolName)
       : `${lines.length} line${lines.length === 1 ? '' : 's'}`
+  const header = subject ? `${subject} · ${count}` : count
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error}>
+      <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error} wrap="truncate">
         {'⎿  '}{header}
       </Text>
       {shown.map((ln, i) => (
@@ -377,11 +393,94 @@ function PlanBlock({ plan, result }: { plan: string; result?: ToolResultDisplay 
   )
 }
 
-export function ToolUseLine({ use, result }: { use: ToolUseDisplay; result?: ToolResultDisplay }) {
+/**
+ * A run of calls to the same tool, drawn as one block with a counted headline.
+ *
+ * Six reads in a turn are one action to whoever is watching, so the block leads
+ * with "Read 6 files" and gives each call a single line underneath. A lone call
+ * keeps its output preview — that's the case where the answer is the point, and
+ * making it a click away would be a step backwards.
+ */
+function ToolGroupBlock({
+  uses,
+  results,
+}: {
+  uses: ToolUseDisplay[]
+  results: Map<string, ToolResultDisplay>
+}) {
+  // The whole group expands together, under the id of the call it starts with.
+  const id = uses[0].id
+  const expanded = useToolExpanded(id)
+  const name = uses[0].name
+  const pending = uses.some((u) => !results.get(u.id))
+  const lone = uses.length === 1
+
   return (
-    <ToolBlockFrame id={use.id}>
-      <ToolUseBody use={use} result={result} />
-    </ToolBlockFrame>
+    <Box flexDirection="column" marginLeft={2}>
+      <Box>
+        <Text color="green">● </Text>
+        <Text color="white">{groupHeadline(name, uses.length, pending)}</Text>
+      </Box>
+      {uses.map((use) => {
+        const result = results.get(use.id)
+        const { technical, subject } = describeTool(use.name, use.input)
+        // Expanded, or on its own: the call in full, exactly as an ungrouped
+        // block used to draw it.
+        if (expanded || lone) {
+          return (
+            <Box key={use.id} flexDirection="column">
+              {expanded && (
+                <Box marginLeft={2}>
+                  <Text dimColor>{technical}</Text>
+                </Box>
+              )}
+              {result ? (
+                <ToolResultBlock id={id} result={result} toolName={use.name} subject={expanded ? undefined : subject} />
+              ) : (
+                <Box marginLeft={2}>
+                  <Text dimColor>{'⎿  '}{subject}</Text>
+                </Box>
+              )}
+            </Box>
+          )
+        }
+        // Collapsed and one of several: the subject and how it went, one row.
+        return (
+          <Box key={use.id} marginLeft={2}>
+            <Text color={result?.is_error ? 'red' : undefined} dimColor={!result?.is_error} wrap="truncate">
+              {'⎿  '}{subject}
+              {result ? ` · ${summarizeResult(result, use.name)}` : ' · running…'}
+            </Text>
+          </Box>
+        )
+      })}
+    </Box>
+  )
+}
+
+/**
+ * Every tool call in a turn, in order, grouped into blocks.
+ */
+export function ToolUseList({
+  uses,
+  results,
+}: {
+  uses: ToolUseDisplay[]
+  results?: ToolResultDisplay[]
+}) {
+  const byId = new Map((results ?? []).map((r) => [r.tool_use_id, r]))
+  return (
+    <>
+      {groupToolUses(uses).map((group) => (
+        <ToolBlockFrame key={group[0].id} id={group[0].id}>
+          {isGroupable(group[0].name) ? (
+            <ToolGroupBlock uses={group} results={byId} />
+          ) : (
+            <ToolUseBody use={group[0]} result={byId.get(group[0].id)} />
+          )}
+        </ToolBlockFrame>
+      ))}
+    </>
   )
 }
 

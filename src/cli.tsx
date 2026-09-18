@@ -1,33 +1,85 @@
 #!/usr/bin/env node
 import { render } from 'ink'
 import { createElement } from 'react'
-import { App } from './ui/App.js'
+import { App, type AppProps } from './ui/App.js'
 import { DISABLE as MOUSE_OFF } from './ui/mouse.js'
 import { cleanupSpill } from './tools/spill.js'
 import { setProvider, listProviders, providerEntries, apiKeyFor, configError, type Provider } from './config.js'
+import { parseHeadlessArgs, readStdin, runHeadless } from './headless.js'
+import { settingsProblems, loadSettings } from './settings.js'
 
 // Drop yesterday's spilled tool output before starting. Best-effort.
 cleanupSpill()
 
 const args = process.argv.slice(2)
-let cmd: string | undefined
 
-// Parse --provider / -p before the main command
+const HELP = `miii — local AI coding agent
+
+Usage
+  miii                          start the interactive session
+  miii -p "<prompt>"            run one turn and print the answer
+  cat file | miii -p "<task>"   the piped text is prepended to the prompt
+
+Session
+  -c, --continue                resume the most recent session
+      --resume <id>             resume a specific session
+
+Headless (-p)
+      --output-format <fmt>     text (default) | json | stream-json
+      --permission-mode <mode>  default | plan | acceptEdits | bypass
+      --dangerously-skip-permissions
+      --allowed-tools a,b,c     restrict the agent to these tools
+      --max-turns <n>           stop after n tool-use turns
+      --model <name>            override the configured model
+
+Everywhere
+      --provider <name>         use a configured backend for this run
+  -v, --version                 print the version
+      --help                    this text
+
+Subcommands
+  miii doctor                   grade your installed models on real tasks
+  miii provider [list|add|remove]
+  miii update                   install the latest release
+`
+
+/**
+ * `--provider` is read before anything dispatches, because every path below —
+ * headless, the TUI, `doctor` — needs the backend already selected. `-P` is the
+ * short form; `-p` belongs to --print, which is what a script reaches for far
+ * more often than a one-off backend switch.
+ */
 for (let i = 0; i < args.length; i++) {
-  if ((args[i] === '--provider' || args[i] === '-p') && i + 1 < args.length) {
-    const p = args[++i] as Provider
+  if ((args[i] === '--provider' || args[i] === '-P') && i + 1 < args.length) {
+    const p = args[i + 1] as Provider
     if (listProviders().includes(p)) setProvider(p)
-  } else if (!cmd) {
-    cmd = args[i]
   }
 }
 
-if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
+/** The first bare word that isn't the value of a flag — the subcommand, if any. */
+function firstCommand(argv: string[]): string | undefined {
+  const takesValue = new Set(['--provider', '-P', '--model', '--resume', '--output-format', '--permission-mode', '--max-turns', '--allowed-tools', '--allowedTools'])
+  for (let i = 0; i < argv.length; i++) {
+    if (takesValue.has(argv[i])) { i++; continue }
+    if (argv[i].startsWith('-')) continue
+    return argv[i]
+  }
+  return undefined
+}
+
+if (args.includes('--help') || args.includes('-h')) {
+  process.stdout.write(HELP)
+  process.exit(0)
+}
+
+const cmd = firstCommand(args)
+
+if (cmd === 'version' || args.includes('--version') || args.includes('-v')) {
   const { createRequire } = await import('module')
   const pkg = createRequire(import.meta.url)('../package.json') as { version: string }
   console.log(pkg.version)
   process.exit(0)
-} else if (cmd === 'update' || cmd === '--update' || cmd === '-u') {
+} else if (cmd === 'update' || args.includes('--update') || args.includes('-u')) {
   const { spawnSync } = await import('child_process')
   console.log('Updating miii-agent…')
   const r = spawnSync('npm', ['i', '-g', 'miii-agent@latest'], { stdio: 'inherit', shell: process.platform === 'win32' })
@@ -74,10 +126,42 @@ if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
   const { runEval } = await import('../eval/run.js')
   process.exit(await runEval(rest))
 } else {
+  const headless = parseHeadlessArgs(args)
+  if (headless.error) {
+    console.error(`miii: ${headless.error}`)
+    process.exit(2)
+  }
+
+  if (headless.options) {
+    // Piped input becomes context above the prompt rather than replacing it, so
+    // `git diff | miii -p "review this"` has both the diff and the instruction.
+    // With no prompt flag argument at all, the piped text IS the prompt.
+    const piped = (await readStdin()).trim()
+    const opts = headless.options
+    const prompt = piped
+      ? opts.prompt
+        ? `${opts.prompt}\n\n<stdin>\n${piped}\n</stdin>`
+        : piped
+      : opts.prompt
+    if (!prompt.trim()) {
+      console.error('miii: -p needs a prompt, as an argument or on stdin')
+      process.exit(2)
+    }
+    process.exit(await runHeadless({ ...opts, prompt }))
+  }
+
   // Warn about a malformed config BEFORE Ink mounts — once the TUI owns the
   // terminal, a raw stderr write gets scrambled or painted over.
   const cfgErr = configError()
   if (cfgErr) console.error(cfgErr)
+  loadSettings()
+  for (const problem of settingsProblems()) {
+    console.error(`miii: ignoring ${problem.path} (${problem.message})`)
+  }
+
+  const resumeIdx = args.indexOf('--resume')
+  const resumeId = resumeIdx !== -1 ? args[resumeIdx + 1] : undefined
+  const continueLast = args.includes('--continue') || args.includes('-c')
 
   // Restore the terminal tab title on any exit path (Ink's unmount cleanup
   // can be skipped on a hard signal).
@@ -86,5 +170,5 @@ if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
   process.on('exit', () => {
     if (process.stdout.isTTY) process.stdout.write(`\x1b]2;\x07${MOUSE_OFF}`)
   })
-  render(createElement(App))
+  render(createElement(App, { resumeId, continueLast } satisfies AppProps))
 }
