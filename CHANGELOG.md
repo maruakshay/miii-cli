@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.4.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.3.0...miii-agent-v3.4.0) (2026-09-18)
+
+
+### Features
+
+* add tool descriptions and enhanced diff rendering ([#93](https://github.com/maruakshay/miii-cli/issues/93)) ([bc51d7a](https://github.com/maruakshay/miii-cli/commit/bc51d7a1e528ad0495f42b36f90784081159fa38))
+* MCP servers, shell hooks, subagents, headless mode and checkpoints ([#95](https://github.com/maruakshay/miii-cli/issues/95)) ([7f735c6](https://github.com/maruakshay/miii-cli/commit/7f735c6481c27da908b3ac0165e6b0b4ec2b34e8))
+
 ## [3.3.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.2.0...miii-agent-v3.3.0) (2026-09-18)
 
 
