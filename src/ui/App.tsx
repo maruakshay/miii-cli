@@ -51,6 +51,14 @@ export function App() {
   const [activeCtx, setActiveCtx] = useState<number | null>(
     () => (cfg.model ? cfg.modelContexts?.[cfg.model] ?? null : null),
   )
+  // Mirrors `contexts` for the async resolvers below, which would otherwise
+  // close over a stale map and re-request numbers already in hand.
+  const contextsRef = useRef(contexts)
+  contextsRef.current = contexts
+  // Names with a lookup already in flight. Both resolvers below can want the
+  // same model at once (the active one, when the picker is the opening screen);
+  // without this it gets fetched twice.
+  const ctxInFlight = useRef(new Set<string>())
   const [state, setState] = useState<AppState>('loading')
   const [cursor, setCursor] = useState(0)
   const [pickerQuery, setPickerQuery] = useState('')
@@ -162,6 +170,71 @@ export function App() {
   // provider the user already switched away from) can't clobber current state.
   const loadGen = useRef(0)
 
+  /**
+   * Resolve one model's context window and make it the active one.
+   *
+   * Cheap when already known. The fetch is per-model because that's what the
+   * providers expose, which is exactly why it isn't done for the whole list.
+   */
+  const ensureContext = async (model: string, stale: () => boolean = () => false) => {
+    const known = contextsRef.current[model]
+    if (known != null) {
+      setActiveCtx(known)
+      return
+    }
+    if (ctxInFlight.current.has(model)) return
+    ctxInFlight.current.add(model)
+    try {
+      const ctx = await modelContext(model)
+      if (stale()) return
+      setContexts((c) => ({ ...c, [model]: ctx }))
+      setActiveCtx(ctx)
+      setModelContexts({ [model]: ctx })
+    } catch {
+      // A missing context number is cosmetic — the header shows "— ctx" and
+      // everything else carries on.
+    } finally {
+      ctxInFlight.current.delete(model)
+    }
+  }
+
+  /**
+   * Fill in the context windows the picker displays, for models we don't have a
+   * number for yet.
+   *
+   * Deliberately not on the launch path: providers answer this one model at a
+   * time, so asking for the whole list up front turns a launch (and every
+   * provider switch) into one round trip per model — for numbers that are only
+   * ever shown inside the picker.
+   */
+  const resolveContexts = (names: string[]) => {
+    const gen = loadGen.current
+    const unknown = names.filter(
+      (n) => contextsRef.current[n] === undefined && !ctxInFlight.current.has(n),
+    )
+    if (unknown.length === 0) return
+    for (const n of unknown) ctxInFlight.current.add(n)
+    Promise.all(
+      unknown.map((name) =>
+        modelContext(name)
+          .then((ctx) => [name, ctx] as const)
+          .catch(() => [name, null] as const),
+      ),
+    )
+      .then((pairs) => {
+        if (gen !== loadGen.current) return
+        setContexts((c) => ({ ...c, ...Object.fromEntries(pairs) }))
+        const resolved = Object.fromEntries(
+          pairs.filter((p): p is readonly [string, number] => p[1] != null),
+        )
+        if (Object.keys(resolved).length) setModelContexts(resolved)
+      })
+      .catch(() => {})
+      .finally(() => {
+        for (const n of unknown) ctxInFlight.current.delete(n)
+      })
+  }
+
   const loadModels = (afterProvider = false) => {
     const gen = ++loadGen.current
     const stale = () => gen !== loadGen.current
@@ -176,25 +249,10 @@ export function App() {
         } else {
           setState(hasModel ? 'ready' : 'select-model')
         }
-        Promise.all(
-          m.map((name) =>
-            modelContext(name)
-              .then((ctx) => [name, ctx] as const)
-              .catch(() => [name, null] as const),
-          ),
-        )
-          .then((pairs) => {
-            if (stale()) return
-            const map = Object.fromEntries(pairs)
-            setContexts(map)
-            const resolved = Object.fromEntries(
-              pairs.filter((p): p is readonly [string, number] => p[1] != null),
-            )
-            if (Object.keys(resolved).length) setModelContexts(resolved)
-            const active = (hasModel ? cfg.model : undefined) ?? m[0]
-            if (active && map[active] != null) setActiveCtx(map[active])
-          })
-          .catch(() => {})
+        // Only the model we're about to use. The rest are filled in when the
+        // picker opens — see the effect below.
+        const active = (hasModel ? cfg.model : undefined) ?? m[0]
+        if (active) void ensureContext(active, stale)
       })
       .catch((err: unknown) => {
         if (stale()) return
@@ -212,6 +270,12 @@ export function App() {
 
   // Load available models on mount; advance past loading screen once done.
   useEffect(loadModels, [])
+
+  // The picker is the only place the full set of context windows is shown, so
+  // that's when they get fetched.
+  useEffect(() => {
+    if (state === 'models' || state === 'select-model') resolveContexts(models)
+  }, [state, models])
 
   function switchProvider(p: Provider) {
     setProvider(p)
@@ -239,7 +303,7 @@ export function App() {
   // Wire keyboard — all key routing lives in useKeyboard.
   useKeyboard({
     exit, state, setState,
-    models: filteredModels, cursor, setCursor, contexts, cfg, setCfg, setActiveCtx,
+    models: filteredModels, cursor, setCursor, cfg, setCfg, setActiveCtx, ensureContext,
     providers: filteredProviders, pickerQuery, setPickerQuery,
     agent,
     input, setInput, caret, setCaret, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,

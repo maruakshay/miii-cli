@@ -10,6 +10,19 @@ import type { Scenario, Result } from './types.js'
 const autoYes: PermissionContext = { ask: async () => 'yes' }
 
 /**
+ * Bucket a repair string from the loop into one of four kinds, so a run reports
+ * "3 key, 1 type" rather than a wall of one-off strings. Shapes come from
+ * normalize.ts: `name: x → y`, `oldkey → field`, `field: parsed number`,
+ * `unwrapped call envelope`.
+ */
+function repairKind(repair: string): string {
+  if (repair.startsWith('name: ')) return 'name'
+  if (repair.includes('envelope')) return 'envelope'
+  if (repair.includes('→')) return 'key'
+  return 'type'
+}
+
+/**
  * Run one scenario end-to-end against a real model and return its metrics.
  *
  * Tools confine to process.cwd() (see src/tools/paths.ts), so we chdir into a
@@ -30,6 +43,8 @@ export async function runScenario(model: string, s: Scenario): Promise<Result> {
     name: s.name,
     pass: false,
     toolCalls: 0,
+    repairs: 0,
+    repairDetail: {},
     promptTokens: 0,
     evalTokens: 0,
     durationMs: 0,
@@ -48,7 +63,13 @@ export async function runScenario(model: string, s: Scenario): Promise<Result> {
     })
     for await (const ev of gen) {
       if (ev.type === 'tool-use') r.toolCalls++
-      else if (ev.type === 'text-delta') finalText += ev.text
+      else if (ev.type === 'tool-repair') {
+        r.repairs += ev.repairs.length
+        for (const rep of ev.repairs) {
+          const kind = repairKind(rep)
+          r.repairDetail[kind] = (r.repairDetail[kind] ?? 0) + 1
+        }
+      } else if (ev.type === 'text-delta') finalText += ev.text
       else if (ev.type === 'turn-end' && ev.stop_reason === 'tool_use') finalText = ''
       else if (ev.type === 'done') {
         r.promptTokens = ev.prompt_tokens
@@ -77,6 +98,13 @@ export async function runScenario(model: string, s: Scenario): Promise<Result> {
     else r.reason = typeof verdict === 'string' ? verdict : 'check returned false'
   } catch (err) {
     r.reason = `check threw: ${err instanceof Error ? err.message : String(err)}`
+  }
+
+  // Right outcome, too many turns: still a regression. Checked after the outcome
+  // so the report says which one it was rather than just "over budget".
+  if (r.pass && s.maxToolCalls !== undefined && r.toolCalls > s.maxToolCalls) {
+    r.pass = false
+    r.reason = `outcome correct but took ${r.toolCalls} tool calls (budget ${s.maxToolCalls})`
   }
 
   rmSync(dir, { recursive: true, force: true })

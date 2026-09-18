@@ -162,10 +162,11 @@ interface KeyboardOptions {
   models: string[]
   cursor: number
   setCursor: (fn: (i: number) => number) => void
-  contexts: Record<string, number | null>
   cfg: { model?: string; provider?: Provider; effort?: Effort }
   setCfg: (fn: (c: any) => any) => void
   setActiveCtx: (n: number) => void
+  /** Sets the active context window for a model, fetching it if not yet known. */
+  ensureContext: (model: string) => void
 
   // provider picker
   providers: NamedProvider[]
@@ -204,7 +205,7 @@ interface KeyboardOptions {
 export function useKeyboard(opts: KeyboardOptions) {
   const {
     exit, state, setState,
-    models, cursor, setCursor, contexts, cfg, setCfg, setActiveCtx,
+    models, cursor, setCursor, cfg, setCfg, setActiveCtx, ensureContext,
     providers, pickerQuery, setPickerQuery,
     agent,
     input, setInput, caret, setCaret, paletteCursor, setPaletteCursor, filePickerCursor, setFilePickerCursor,
@@ -405,7 +406,9 @@ export function useKeyboard(opts: KeyboardOptions) {
         const chosen = models[cursor]
         setModel(chosen)
         setCfg((c) => ({ ...c, model: chosen }))
-        if (contexts[chosen]) setActiveCtx(contexts[chosen])
+        // Contexts are filled in lazily, so the picker can be fast enough to
+        // beat them; ensureContext resolves this one on the spot if so.
+        ensureContext(chosen)
         setPickerQuery('')
         setCursor(() => 0)
         setState('ready')

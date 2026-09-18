@@ -32,11 +32,26 @@ export interface MiiMessage {
 
 export type StopReason = 'end_turn' | 'tool_use'
 
+/**
+ * What the harness had to fix about one tool call before it could run — a name
+ * resolved, keys renamed onto declared fields, values coerced, an envelope
+ * peeled. Emitted as telemetry rather than acted on: the repair tables in
+ * normalize.ts are guesswork until something counts which of them actually fire,
+ * for which model, on which tool.
+ */
+export interface ToolRepair {
+  tool_use_id: string
+  name: string
+  repairs: string[]
+}
+
 export type AgentEvent =
   | { type: 'text-delta'; text: string }
   | { type: 'thinking-delta'; text: string }
   | { type: 'tool-use'; block: ToolUse }
   | { type: 'tool-result'; block: ToolResultBlock }
+  /** A malformed call was repaired before it ran. Pure telemetry — see ToolRepair. */
+  | ({ type: 'tool-repair' } & ToolRepair)
   | { type: 'permission-denied'; toolName: string; tool_use_id: string }
   /**
    * The permission mode changed mid-run — the user approved a plan. The UI

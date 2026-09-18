@@ -1,4 +1,4 @@
-import { existsSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { chat } from '../llm/client.js'
 import { confinePath } from '../tools/paths.js'
 import { getTool, toOllamaTools, toolsForMode } from '../tools/registry.js'
@@ -17,6 +17,7 @@ import { resolveToolName, normalizeToolInput } from './normalize.js'
 import type {
   MiiMessage,
   AgentEvent,
+  ToolRepair,
   ToolUse,
   ToolResultBlock,
   ContentBlock,
@@ -28,29 +29,66 @@ const REPEAT_KILL = 4
 // Max times to ask the model to re-emit a leaked text tool call via the native
 // interface before giving up and ending the turn.
 const MAX_LEAK_NUDGES = 2
+// How many times one byte-identical call may fail before the harness stops
+// running it. 1st failure: the plain error. 2nd: the error plus an escalation
+// that names a different action. 3rd: refused without ever reaching the tool.
+const MAX_IDENTICAL_FAILURES = 2
+
+/**
+ * Fingerprint of a file's state on disk — mtime and size. Cheap enough to take
+ * on every read and every guard check, and precise enough for the one question
+ * being asked: is this still the file the model looked at? Null means gone or
+ * unreadable, which never compares equal to a real stamp.
+ */
+function fileStamp(abs: string): string | null {
+  try {
+    const st = statSync(abs)
+    return `${st.mtimeMs}:${st.size}`
+  } catch {
+    return null
+  }
+}
 
 /**
  * Harness-enforced read-before-write. The system prompt asks the model to read
  * a file before editing it, but weak local models ignore prose invariants — so
- * we enforce it mechanically. `seen` holds canonical paths the model has read
- * (or already written) this run. Returns an actionable error string to block
- * the call, or null to allow it.
+ * we enforce it mechanically. `seen` maps canonical paths the model has read
+ * (or written) this run to the file's stamp at that moment. Returns an
+ * actionable error string to block the call, or null to allow it.
  *
  * - edit_file always targets an existing file → requires a prior read.
  * - write_file creating a NEW file is allowed (nothing to read); overwriting an
  *   existing file requires a prior read.
+ * - A path the model HAS read, whose stamp has since moved, is stale: a command
+ *   it ran, a formatter, or the user rewrote the file after it looked. Editing
+ *   from a stale copy silently reverts whatever landed in between, so the call
+ *   is blocked and the model is sent back to re-read. This is the case the
+ *   path-only version of this guard used to wave straight through.
  * Path/confinement problems are left to the tool handler to report.
  */
-function readGuard(name: string, input: unknown, seen: Set<string>): string | null {
+function readGuard(name: string, input: unknown, seen: Map<string, string>): string | null {
   if (name !== 'edit_file' && name !== 'write_file') return null
   const p = (input as { path?: unknown }).path
   if (typeof p !== 'string' || !p) return null
   let abs: string
   try { abs = confinePath(p) } catch { return null }
-  if (seen.has(abs)) return null
-  if (name === 'write_file' && !existsSync(abs)) return null
   const verb = name === 'edit_file' ? 'edit' : 'overwrite'
-  return `I won't ${verb} ${p} without seeing it first — I don't want to clobber something. Read it with read_file, then retry the ${name}.`
+
+  const stamp = seen.get(abs)
+  if (stamp === undefined) {
+    if (name === 'write_file' && !existsSync(abs)) return null
+    return `I won't ${verb} ${p} without seeing it first — I don't want to clobber something. Read it with read_file, then retry the ${name}.`
+  }
+
+  const now = fileStamp(abs)
+  // Vanished since the read — that's the handler's error to report, not ours.
+  if (now === null || now === stamp) return null
+  return (
+    `${p} changed on disk after you read it — a command you ran, a formatter, or the user ` +
+    `rewrote it — so the copy you're working from is stale and this ${name} would revert ` +
+    `whatever landed in between. Nothing was written. Read it again, then redo the ${verb} ` +
+    `against what's actually there now.`
+  )
 }
 
 /** The tools plan mode advertises — the set planGuard holds the model to. */
@@ -102,14 +140,71 @@ function planGuard(name: string, input: unknown, mode: PermissionMode): string |
  * room. Repairing here means the corrected call is what the UI shows, what
  * loop-detection compares, and what gets persisted to history, so the model
  * never re-reads its own mistake and learns it back.
+ *
+ * Returns what it had to fix, per call. The loop emits that as telemetry: the
+ * repair tables in normalize.ts are guesswork until something counts which
+ * repairs actually fire, for which model, on which tool.
  */
-function repairToolUses(tool_uses: ToolUse[], toolNames: string[]): void {
+function repairToolUses(tool_uses: ToolUse[], toolNames: string[]): ToolRepair[] {
+  const out: ToolRepair[] = []
   for (const use of tool_uses) {
+    const repairs: string[] = []
     const resolved = resolveToolName(use.name, toolNames)
+    if (resolved && resolved !== use.name) repairs.push(`name: ${use.name} → ${resolved}`)
     if (resolved) use.name = resolved
     const tool = getTool(use.name)
-    if (tool) use.input = normalizeToolInput(tool.input_schema, use.input).input
+    if (tool) {
+      const normalized = normalizeToolInput(tool.input_schema, use.input)
+      use.input = normalized.input
+      repairs.push(...normalized.repairs)
+    }
+    if (repairs.length > 0) out.push({ tool_use_id: use.id, name: use.name, repairs })
   }
+  return out
+}
+
+/**
+ * Stable, bounded identity for "this exact call" — the tool plus its arguments,
+ * hashed so a call carrying a whole file body doesn't sit in a Map key.
+ */
+function callKey(name: string, input: unknown): string {
+  const s = `${name}:${JSON.stringify(input ?? {})}`
+  let hash = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `${name}#${(hash >>> 0).toString(36)}`
+}
+
+/**
+ * Appended to the SECOND identical failure of a call.
+ *
+ * The stream-repetition and identical-turn guards only catch a model repeating
+ * itself back to back. The failure that actually eats a run alternates:
+ * edit_file fails → read_file → the same edit_file fails → read_file, forever,
+ * with no two consecutive turns alike. Handing back the same error string each
+ * time is what sustains it — the model has already demonstrated it doesn't know
+ * what to do with those words. So the wording changes and names a different
+ * action.
+ */
+function escalation(name: string): string {
+  return (
+    `\n\nThis is the second time this exact ${name} call has failed with this same error. ` +
+    `Sending it again will fail the same way. Change something: re-read the file to see what ` +
+    `is actually there now, match on different text, use a different tool, or tell the user ` +
+    `what is blocking you.`
+  )
+}
+
+/** Handed back instead of running a call that has already failed twice. */
+function refusal(name: string): string {
+  return (
+    `This exact ${name} call has already failed twice, so I did not run it a third time — ` +
+    `nothing happened. Repeating it will not start working. Do something different: gather ` +
+    `the information you're missing with read_file or grep, take another approach, or stop ` +
+    `and tell the user what you're stuck on.`
+  )
 }
 
 // Tools whose payload carries a large free-text field (file body / edit text).
@@ -147,12 +242,21 @@ function looksTruncatedWrite(name: string, input: Record<string, unknown>): bool
   return false
 }
 
-/** Record a path the model now knows the current state of (read or wrote). */
-function markSeen(name: string, input: unknown, seen: Set<string>): void {
+/**
+ * Record a path the model now knows the current state of (read or wrote), along
+ * with the stamp it had at that moment — which is what later makes a stale edit
+ * detectable. Called only after a successful call, so a failed read never counts
+ * as having seen the file.
+ */
+function markSeen(name: string, input: unknown, seen: Map<string, string>): void {
   if (name !== 'read_file' && name !== 'edit_file' && name !== 'write_file') return
   const p = (input as { path?: unknown }).path
   if (typeof p !== 'string' || !p) return
-  try { seen.add(confinePath(p)) } catch { /* confinement error surfaced by tool */ }
+  try {
+    const abs = confinePath(p)
+    const stamp = fileStamp(abs)
+    if (stamp !== null) seen.set(abs, stamp)
+  } catch { /* confinement error surfaced by tool */ }
 }
 
 export interface RunAgentOpts {
@@ -221,8 +325,12 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   // the native interface this run. Bounded so a model that can't comply ends the
   // turn instead of looping forever.
   let leakNudges = 0
-  // Canonical paths the model has read (or written) this run — gates edit/write.
-  const seenPaths = new Set<string>()
+  // Canonical path -> file stamp when the model last saw it. Gates edit/write,
+  // and catches a file that moved underneath the model between read and edit.
+  const seenPaths = new Map<string, string>()
+  // callKey -> how many times that identical call has failed this run. Cleared
+  // when the same call finally succeeds, so a transient failure costs nothing.
+  const failures = new Map<string, number>()
 
   // Set when the model finishes on its own (end_turn). If we fall out of the
   // loop with this still false, we hit MAX_TURNS mid-task — surface it instead
@@ -323,7 +431,9 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     // Repair names/arguments before anything downstream reads them — the blocks
     // are mutated in place, so history, the UI and loop-detection all see the
     // corrected call rather than the model's near-miss.
-    repairToolUses(tool_uses, toolNames)
+    for (const repair of repairToolUses(tool_uses, toolNames)) {
+      yield { type: 'tool-repair', ...repair }
+    }
 
     // Loop detection runs BEFORE the assistant message is committed to history.
     // If we push first and then bail on a detected repeat, the persisted history
@@ -421,6 +531,39 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
 
     const results: ToolResultBlock[] = []
     for (const use of tool_uses) {
+      // Identity of this exact call — tool plus arguments — for the repeat gate.
+      const key = callKey(use.name, use.input)
+      /**
+       * Every result for this call funnels through here so the repeat gate sees
+       * it: success clears the counter (a transient failure costs nothing),
+       * failure increments it, and the second identical failure gets wording
+       * that differs from the first and names another way out.
+       */
+      const note = (r: ToolResultBlock): ToolResultBlock => {
+        if (!r.is_error) {
+          failures.delete(key)
+          return r
+        }
+        const n = (failures.get(key) ?? 0) + 1
+        failures.set(key, n)
+        if (n === MAX_IDENTICAL_FAILURES) r.content += escalation(use.name)
+        return r
+      }
+
+      // Already failed its budget of identical attempts — refuse without
+      // running it, and without spending a permission prompt on it either.
+      if ((failures.get(key) ?? 0) >= MAX_IDENTICAL_FAILURES) {
+        const r: ToolResultBlock = {
+          type: 'tool_result',
+          tool_use_id: use.id,
+          content: refusal(use.name),
+          is_error: true,
+        }
+        results.push(r)
+        yield { type: 'tool-result', block: r }
+        continue
+      }
+
       const tool = getTool(use.name)
       if (!tool) {
         const r: ToolResultBlock = {
@@ -429,7 +572,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           content: `Unknown tool: ${use.name}. There's no tool by that name. Available tools: ${toolNames.join(', ')}. Pick the one that does what you meant and call it by its exact name.`,
           is_error: true,
         }
-        results.push(r)
+        results.push(note(r))
         yield { type: 'tool-result', block: r }
         continue
       }
@@ -464,7 +607,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           content,
           is_error: true,
         }
-        results.push(r)
+        results.push(note(r))
         yield { type: 'tool-result', block: r }
         continue
       }
@@ -477,7 +620,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           content: blocked,
           is_error: true,
         }
-        results.push(r)
+        results.push(note(r))
         yield { type: 'tool-result', block: r }
         continue
       }
@@ -499,7 +642,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
               'revised plan with exit_plan_mode. Do not try to make changes.',
             is_error: true,
           }
-          results.push(r)
+          results.push(note(r))
           yield { type: 'tool-result', block: r }
           continue
         }
@@ -518,7 +661,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
             '. Carry it out now, starting with the first step. Do not restate the plan — the ' +
             'user has read it. Track progress with write_todos if it runs to several steps.',
         }
-        results.push(r)
+        results.push(note(r))
         yield { type: 'tool-result', block: r }
         continue
       }
@@ -531,7 +674,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           content: `Permission denied — the user chose not to run ${use.name}. Try a different approach, or ask them what they'd prefer.`,
           is_error: true,
         }
-        results.push(r)
+        results.push(note(r))
         yield { type: 'permission-denied', toolName: use.name, tool_use_id: use.id }
         yield { type: 'tool-result', block: r }
         continue
@@ -545,7 +688,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           content: guard,
           is_error: true,
         }
-        results.push(r)
+        results.push(note(r))
         yield { type: 'tool-result', block: r }
         continue
       }
@@ -573,7 +716,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       }
       if (!r.is_error) markSeen(use.name, use.input, seenPaths)
       try { await hooks?.firePost(use, r) } catch { /* hook error ignored */ }
-      results.push(r)
+      results.push(note(r))
       yield { type: 'tool-result', block: r }
     }
 

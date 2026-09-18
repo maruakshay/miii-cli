@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import type { AgentEvent, MiiMessage, ToolResultBlock, ToolUse } from './types.js'
 
 // Shared mutable state for the mocked modules. Declared via vi.hoisted so the
@@ -112,6 +115,22 @@ function toolThenDone(
   return [
     { content: '', done: false, tool_calls: calls },
     { content: '', done: true, prompt_eval_count: 3, eval_count: 5, ...doneExtra },
+  ]
+}
+/**
+ * Same tool call, different surrounding text — so the turn signature differs and
+ * the identical-turn guard stays out of the way. That is what lets a test
+ * exercise a call repeating across NON-consecutive turns, which is the shape the
+ * repeat-failure gate exists for.
+ */
+function sayThenToolThenDone(
+  text: string,
+  calls: Array<{ function: { name: string; arguments: Record<string, unknown> } }>,
+): Array<Record<string, unknown>> {
+  return [
+    { content: text, done: false },
+    { content: '', done: false, tool_calls: calls },
+    { content: '', done: true, prompt_eval_count: 3, eval_count: 5 },
   ]
 }
 function call(name: string, args: Record<string, unknown> = {}) {
@@ -605,5 +624,239 @@ describe('plan mode', () => {
     const { history } = await drive({ ...asker('yes') })
     expect(firstResults(history)[0].is_error).toBeFalsy()
     expect(ranTool('run_bash', ran)).toBe(true)
+  })
+})
+
+// ---- repair telemetry ----------------------------------------------------
+
+describe('repair telemetry', () => {
+  it('reports the tool name it had to resolve', async () => {
+    h.script = [toolThenDone([call('runBash', { command: 'ls' })]), textThenDone('done')]
+    const { events } = await drive()
+    const repairs = events.filter((e) => e.type === 'tool-repair')
+    expect(repairs).toHaveLength(1)
+    expect((repairs[0] as { name: string }).name).toBe('run_bash')
+    expect((repairs[0] as { repairs: string[] }).repairs).toContain('name: runBash → run_bash')
+  })
+
+  it('reports an unwrapped envelope, keyed to the call it repaired', async () => {
+    h.script = [
+      toolThenDone([call('run_bash', { name: 'run_bash', arguments: { command: 'ls' } })]),
+      textThenDone('done'),
+    ]
+    const { events } = await drive()
+    const repair = events.find((e) => e.type === 'tool-repair') as
+      | { tool_use_id: string; repairs: string[] }
+      | undefined
+    const use = events.find((e) => e.type === 'tool-use') as { block: ToolUse }
+    expect(repair?.repairs).toContain('unwrapped call envelope')
+    expect(repair?.tool_use_id).toBe(use.block.id)
+  })
+
+  it('stays silent on a call that arrived clean', async () => {
+    h.script = [toolThenDone([call('run_bash', { command: 'ls' })]), textThenDone('done')]
+    const { events } = await drive()
+    expect(types(events)).not.toContain('tool-repair')
+  })
+})
+
+// ---- repeat-failure gate -------------------------------------------------
+
+/**
+ * The failure the other guards miss. Stream repetition and the identical-turn
+ * check both need consecutive repeats; the run-killing shape alternates —
+ * edit fails, read, the SAME edit fails, read — so no two turns in a row match
+ * and the model happily burns every remaining turn on it.
+ */
+describe('repeat-failure gate', () => {
+  it('escalates the second identical failure and refuses the third without running it', async () => {
+    let echoRuns = 0
+    h.toolHandlers.echo = () => {
+      echoRuns++
+      throw new Error('boom')
+    }
+    h.toolHandlers.run_bash = () => ({ content: 'ok' })
+    const failing = toolThenDone([call('echo', { path: 'a.ts' })])
+    const filler = toolThenDone([call('run_bash', { command: 'ls' })])
+    h.script = [failing, filler, failing, filler, failing, textThenDone('giving up')]
+
+    const { events, history } = await drive()
+    assertBlockOrdering(history)
+
+    // Ran twice; the third identical attempt never reached the handler.
+    expect(echoRuns).toBe(2)
+
+    const errors = events
+      .filter((e): e is { type: 'tool-result'; block: ToolResultBlock } => e.type === 'tool-result')
+      .map((e) => e.block)
+      .filter((b) => b.is_error)
+    expect(errors).toHaveLength(3)
+    expect(errors[0].content).toContain('boom')
+    expect(errors[0].content).not.toMatch(/second time/)
+    expect(errors[1].content).toContain('boom')
+    expect(errors[1].content).toMatch(/second time/)
+    expect(errors[2].content).toMatch(/did not run it a third time/)
+    // The run still ends cleanly — the gate redirects the model, it doesn't kill it.
+    expect(types(events)).toContain('done')
+  })
+
+  it('never spends a permission prompt on a call it has already gated', async () => {
+    h.decision = 'deny'
+    const denied = toolThenDone([call('echo', { path: 'a.ts' })])
+    const filler = toolThenDone([call('run_bash', { command: 'ls' })])
+    h.script = [denied, filler, denied, filler, denied, textThenDone('ok')]
+
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    // Two denials asked; the third was refused by the gate, so check() saw 4
+    // calls total (2 denied echoes + 2 fillers), not 5.
+    expect(h.checkCalls).toBe(4)
+  })
+
+  it('forgets a failure once the same call succeeds', async () => {
+    let runs = 0
+    h.toolHandlers.echo = () => {
+      runs++
+      if (runs === 2) return { content: 'worked' }
+      throw new Error('boom')
+    }
+    const c = [call('echo', { path: 'a.ts' })]
+    h.script = [
+      sayThenToolThenDone('first try', c),
+      sayThenToolThenDone('second try', c),
+      sayThenToolThenDone('third try', c),
+      textThenDone('done'),
+    ]
+
+    const { events } = await drive()
+    const contents = events
+      .filter((e): e is { type: 'tool-result'; block: ToolResultBlock } => e.type === 'tool-result')
+      .map((e) => e.block.content)
+
+    expect(runs).toBe(3)
+    // fail, succeed, fail — the success cleared the counter, so the last
+    // failure is a first failure again and gets no escalation.
+    expect(contents[1]).toBe('worked')
+    expect(contents[2]).not.toMatch(/second time/)
+  })
+
+  it('does not count a user cancellation as the model failing', async () => {
+    const ac = new AbortController()
+    h.toolHandlers.run_bash = () => {
+      ac.abort()
+      return { content: 'ran' }
+    }
+    h.script = [toolThenDone([call('run_bash', { command: 'a' }), call('run_bash', { command: 'b' })])]
+    const { history } = await drive({ signal: ac.signal })
+    const results = firstResults(history)
+    expect(results[1].content).toMatch(/[Cc]ancelled/)
+    expect(results[1].content).not.toMatch(/second time/)
+  })
+})
+
+// ---- read-before-write guard ---------------------------------------------
+
+/**
+ * The guard tracks paths the model has actually seen, and what they looked like
+ * when it saw them. Real files on a real temp cwd: confinePath resolves against
+ * process.cwd(), and the stale check reads mtime/size off disk, so a fake fs
+ * would be testing the fake.
+ */
+describe('read-before-write guard', () => {
+  let dir = ''
+  let prevCwd = ''
+  const file = 'notes.txt'
+  const ran: string[] = []
+
+  beforeEach(() => {
+    prevCwd = process.cwd()
+    dir = mkdtempSync(join(tmpdir(), 'miii-guard-'))
+    process.chdir(dir)
+    writeFileSync(join(dir, file), 'alpha\nbeta\n', 'utf-8')
+    ran.length = 0
+    h.toolHandlers.read_file = () => { ran.push('read_file'); return { content: 'alpha\nbeta\n' } }
+    h.toolHandlers.edit_file = () => { ran.push('edit_file'); return { content: 'edited' } }
+    h.toolHandlers.write_file = (input) => {
+      ran.push('write_file')
+      const { path, content } = input as { path: string; content: string }
+      writeFileSync(join(dir, path), content, 'utf-8')
+      return { content: 'written' }
+    }
+    h.toolHandlers.run_bash = () => {
+      ran.push('run_bash')
+      appendFileSync(join(dir, file), 'gamma\n', 'utf-8')
+      return { content: '' }
+    }
+  })
+
+  afterEach(() => {
+    process.chdir(prevCwd)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  const editCall = () => call('edit_file', { path: file, old_str: 'alpha', new_str: 'ALPHA' })
+
+  it('refuses an edit to a file the model has never read', async () => {
+    h.script = [toolThenDone([editCall()]), textThenDone('ok')]
+    const { history } = await drive()
+    const r = firstResults(history)[0]
+    expect(r.is_error).toBe(true)
+    expect(r.content).toContain('without seeing it first')
+    expect(ran).not.toContain('edit_file')
+  })
+
+  it('allows the edit once the file has been read', async () => {
+    h.script = [
+      toolThenDone([call('read_file', { path: file })]),
+      toolThenDone([editCall()]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    expect(ran).toEqual(['read_file', 'edit_file'])
+  })
+
+  it('refuses an edit against a copy that went stale after something else wrote the file', async () => {
+    h.script = [
+      toolThenDone([call('read_file', { path: file })]),
+      toolThenDone([call('run_bash', { command: `echo gamma >> ${file}` })]),
+      toolThenDone([editCall()]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+
+    const results = history[history.length - 2].content as ToolResultBlock[]
+    expect(results[0].is_error).toBe(true)
+    expect(results[0].content).toMatch(/changed on disk/)
+    // The whole point: the stale edit never reached the tool, so the appended
+    // line is still there.
+    expect(ran).not.toContain('edit_file')
+  })
+
+  it('lets the edit through again after the model re-reads the changed file', async () => {
+    h.script = [
+      toolThenDone([call('read_file', { path: file })]),
+      toolThenDone([call('run_bash', { command: `echo gamma >> ${file}` })]),
+      toolThenDone([editCall()]),
+      toolThenDone([call('read_file', { path: file })]),
+      // Same edit as before — allowed now only because the re-read re-stamped it.
+      toolThenDone([editCall()]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    expect(ran).toEqual(['read_file', 'run_bash', 'read_file', 'edit_file'])
+  })
+
+  it('treats a file the model wrote itself as seen', async () => {
+    h.script = [
+      toolThenDone([call('write_file', { path: 'fresh.txt', content: 'alpha\n' })]),
+      toolThenDone([call('edit_file', { path: 'fresh.txt', old_str: 'alpha', new_str: 'ALPHA' })]),
+      textThenDone('ok'),
+    ]
+    const { history } = await drive()
+    assertBlockOrdering(history)
+    expect(ran).toEqual(['write_file', 'edit_file'])
   })
 })

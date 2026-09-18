@@ -16,7 +16,7 @@ function sse(events: unknown[]): string {
 
 // A complete Messages stream: some thinking, some text, one tool call.
 const STREAM = sse([
-  { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 11, output_tokens: 0 } } },
+  { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 11, cache_read_input_tokens: 900, cache_creation_input_tokens: 89, output_tokens: 0 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
   { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'weighing it' } },
   { type: 'content_block_stop', index: 0 },
@@ -74,7 +74,8 @@ describe('anthropic adapter', () => {
     expect(done.tool_calls).toEqual([
       { id: 'toolu_9', function: { name: 'read_file', arguments: { path: 'a.ts' } } },
     ])
-    expect(done.prompt_eval_count).toBe(11)
+    // uncached + cache reads + cache writes — the real prompt size
+    expect(done.prompt_eval_count).toBe(1000)
     expect(done.eval_count).toBe(42)
   })
 
@@ -83,8 +84,11 @@ describe('anthropic adapter', () => {
       { role: 'system', content: 'be brief' },
       { role: 'user', content: 'hi' },
     ])
-    expect(lastBody.system).toBe('be brief')
-    expect(lastBody.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'hi' }] }])
+    // System is sent as a block array so it can carry a cache breakpoint.
+    expect(lastBody.system.map((b: any) => b.text)).toEqual(['be brief'])
+    expect(lastBody.messages).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'hi', cache_control: { type: 'ephemeral' } }] },
+    ])
   })
 
   it('folds consecutive tool results into one user message', async () => {
@@ -107,7 +111,8 @@ describe('anthropic adapter', () => {
     expect(results.role).toBe('user')
     expect(results.content).toEqual([
       { type: 'tool_result', tool_use_id: 'a', content: 'hit' },
-      { type: 'tool_result', tool_use_id: 'b', content: 'miss' },
+      // The tail of the conversation also carries the cache breakpoint.
+      { type: 'tool_result', tool_use_id: 'b', content: 'miss', cache_control: { type: 'ephemeral' } },
     ])
     expect(lastBody.messages[1].content).toEqual([
       { type: 'tool_use', id: 'a', name: 'grep', input: { q: 'x' } },
@@ -119,7 +124,15 @@ describe('anthropic adapter', () => {
     await collect([{ role: 'user', content: 'hi' }], [
       { type: 'function', function: { name: 'grep', description: 'search', parameters: { type: 'object', properties: {} } } },
     ])
-    expect(lastBody.tools).toEqual([{ name: 'grep', description: 'search', input_schema: { type: 'object', properties: {} } }])
+    expect(lastBody.tools).toEqual([
+      {
+        name: 'grep',
+        description: 'search',
+        input_schema: { type: 'object', properties: {} },
+        // No system prompt in this request, so the breakpoint sits on the tools.
+        cache_control: { type: 'ephemeral' },
+      },
+    ])
     expect(lastBody.thinking).toEqual({ type: 'adaptive', display: 'summarized' })
     // Current Claude models reject temperature alongside thinking.
     expect(lastBody.temperature).toBeUndefined()
@@ -131,6 +144,55 @@ describe('anthropic adapter', () => {
     expect(lastBody.messages[0].content[0]).toEqual({
       type: 'image',
       source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/abc' },
+    })
+  })
+
+  it('caches the stable prefix and the conversation so far', async () => {
+    await collect(
+      [
+        { role: 'system', content: 'be brief' },
+        { role: 'user', content: 'go' },
+      ],
+      [{ type: 'function', function: { name: 'grep', description: 'search', parameters: { type: 'object', properties: {} } } }],
+    )
+    // Breakpoint 1: end of the system prompt, covering tools + system.
+    expect(lastBody.system).toEqual([
+      { type: 'text', text: 'be brief', cache_control: { type: 'ephemeral' } },
+    ])
+    // Breakpoint 2: end of the last message, so next turn reads this whole
+    // conversation back instead of paying for it again.
+    expect(lastBody.messages.at(-1).content.at(-1)).toEqual({
+      type: 'text',
+      text: 'go',
+      cache_control: { type: 'ephemeral' },
+    })
+    // The tools themselves stay untouched — they're already inside breakpoint 1.
+    expect(lastBody.tools[0].cache_control).toBeUndefined()
+  })
+
+  it('falls back to the tool list when there is no system prompt', async () => {
+    await collect([{ role: 'user', content: 'go' }], [
+      { type: 'function', function: { name: 'a', description: 'x', parameters: { type: 'object', properties: {} } } },
+      { type: 'function', function: { name: 'b', description: 'y', parameters: { type: 'object', properties: {} } } },
+    ])
+    expect(lastBody.system).toBeUndefined()
+    expect(lastBody.tools[0].cache_control).toBeUndefined()
+    expect(lastBody.tools[1].cache_control).toEqual({ type: 'ephemeral' })
+  })
+
+  it('caches through a tool-result turn', async () => {
+    await collect([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'a', function: { name: 'grep', arguments: {} } }] },
+      { role: 'tool', content: 'hit', tool_call_id: 'a' },
+    ])
+    // The breakpoint follows the tail of the conversation wherever it lands,
+    // including a tool_result turn — the common case mid-agent-loop.
+    expect(lastBody.messages.at(-1).content.at(-1)).toEqual({
+      type: 'tool_result',
+      tool_use_id: 'a',
+      content: 'hit',
+      cache_control: { type: 'ephemeral' },
     })
   })
 

@@ -21,6 +21,20 @@ async function resolveModels(modelsArg: string): Promise<string[]> {
   return (await listModels()).filter((m) => !m.includes('cloud'))
 }
 
+/**
+ * What the harness had to fix for this model, by kind. A model needing zero
+ * repairs and one needing forty can post the same pass rate — this is the line
+ * that tells them apart, and that says which repair tables are pulling weight.
+ */
+function repairSummary(results: Result[]): string {
+  const total: Record<string, number> = {}
+  for (const r of results) {
+    for (const [kind, n] of Object.entries(r.repairDetail)) total[kind] = (total[kind] ?? 0) + n
+  }
+  const parts = Object.entries(total).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${k}`)
+  return parts.length === 0 ? '  (no repairs)' : `  (repaired: ${parts.join(', ')})`
+}
+
 /** Turn a pass-rate into a plain-language verdict for `miii doctor`. */
 function verdict(passed: number, total: number): string {
   const ratio = total === 0 ? 0 : passed / total
@@ -40,11 +54,12 @@ async function runModel(model: string, picked: Scenario[]): Promise<Result[]> {
     const detail = r.pass ? '' : `  ${r.reason ?? r.error ?? ''}`
     console.log(
       `${mark}  ${pad(r.name, 22)} ${pad(`${r.toolCalls} calls`, 9)} ` +
+        `${pad(`${r.repairs} fix`, 8)} ` +
         `${pad(`${r.evalTokens} tok`, 11)} ${pad(`${r.durationMs}ms`, 8)}${detail}`,
     )
   }
   const passed = results.filter((r) => r.pass).length
-  console.log(`  → ${model}: ${passed}/${picked.length} — ${verdict(passed, picked.length)}`)
+  console.log(`  → ${model}: ${passed}/${picked.length} — ${verdict(passed, picked.length)}${repairSummary(results)}`)
   return results
 }
 

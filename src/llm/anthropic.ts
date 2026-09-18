@@ -176,6 +176,61 @@ function toAnthropicTools(tools?: OllamaTool[]): Anthropic.Tool[] | undefined {
   }))
 }
 
+const EPHEMERAL = { type: 'ephemeral' as const }
+
+/**
+ * Mark the cache breakpoints on an outgoing request.
+ *
+ * Anthropic caches by prefix, and renders in the order tools → system →
+ * messages, so two breakpoints cover an agent loop:
+ *
+ *   1. the end of the system prompt — covers the tool list and the system text,
+ *      both of which hold still for a whole run (buildSystemPrompt has no
+ *      timestamps, and the tool list is built in a fixed order)
+ *   2. the end of the last message — so the *next* turn, whose prefix is this
+ *      entire conversation, reads it back instead of paying for it again
+ *
+ * That second one is what matters: the agent resends the whole transcript every
+ * turn, so without it the bill grows quadratically with the length of a session.
+ *
+ * Caching is silent when it doesn't apply — a prefix under the model's minimum
+ * (512–4096 tokens) simply isn't cached, with no error.
+ */
+function withCacheBreakpoints(
+  system: string,
+  msgs: Anthropic.MessageParam[],
+  tools?: Anthropic.Tool[],
+): {
+  system?: Anthropic.TextBlockParam[]
+  messages: Anthropic.MessageParam[]
+  tools?: Anthropic.Tool[]
+} {
+  // With no system text there is nothing to hang breakpoint 1 on, so it moves
+  // to the last tool — the other half of the same stable prefix.
+  const cachedTools =
+    !system && tools?.length
+      ? tools.map((t, i) => (i === tools.length - 1 ? { ...t, cache_control: EPHEMERAL } : t))
+      : tools
+
+  const out = msgs.slice()
+  const last = out.at(-1)
+  if (last && Array.isArray(last.content) && last.content.length > 0) {
+    const content = last.content.slice()
+    const tail = content.at(-1)!
+    // Thinking blocks can't carry cache_control; every other block type can.
+    if (tail.type !== 'thinking' && tail.type !== 'redacted_thinking') {
+      content[content.length - 1] = { ...tail, cache_control: EPHEMERAL } as Anthropic.ContentBlockParam
+      out[out.length - 1] = { ...last, content }
+    }
+  }
+
+  return {
+    ...(system ? { system: [{ type: 'text', text: system, cache_control: EPHEMERAL }] } : {}),
+    messages: out,
+    ...(cachedTools ? { tools: cachedTools } : {}),
+  }
+}
+
 export async function* chat(
   entry: ProviderEntry,
   model: string,
@@ -186,7 +241,7 @@ export async function* chat(
   if (opts?.signal?.aborted) return
 
   const { system, messages: msgs } = toAnthropic(messages)
-  const anthropicTools = toAnthropicTools(tools)
+  const cached = withCacheBreakpoints(system, msgs, toAnthropicTools(tools))
 
   // num_predict of -1 means "no cap" in the ollama vocabulary; Anthropic needs
   // a real number, so that maps to our default rather than a literal -1.
@@ -205,9 +260,7 @@ export async function* chat(
       {
         model,
         max_tokens: maxTokens,
-        ...(system ? { system } : {}),
-        messages: msgs,
-        ...(anthropicTools ? { tools: anthropicTools } : {}),
+        ...cached,
         // Adaptive thinking is the current-generation shape; `display:
         // 'summarized'` is opt-in, and without it the ThinkingBlock would sit
         // empty through every pause. Temperature is deliberately not sent —
@@ -242,9 +295,17 @@ export async function* chat(
           }
           break
 
-        case 'message_start':
-          inputTokens = event.message.usage.input_tokens ?? 0
+        case 'message_start': {
+          // input_tokens counts only what wasn't served from cache. The context
+          // meter wants the real prompt size, so add the cached halves back —
+          // otherwise the reading collapses the moment caching starts working.
+          const u = event.message.usage
+          inputTokens =
+            (u.input_tokens ?? 0) +
+            (u.cache_read_input_tokens ?? 0) +
+            (u.cache_creation_input_tokens ?? 0)
           break
+        }
 
         case 'message_delta':
           stopReason = event.delta.stop_reason ?? stopReason
