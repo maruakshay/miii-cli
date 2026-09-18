@@ -40,6 +40,7 @@ describe('prompt budget', () => {
 describe('tiering', () => {
   it('sends core only on a window below the threshold', () => {
     expect(small()).not.toContain('# Task list')
+    expect(small()).not.toContain('# Simplicity')
     expect(small()).not.toContain('# Tone')
   })
 
@@ -47,6 +48,8 @@ describe('tiering', () => {
     const p = large()
     expect(p).toContain('# Task list')
     expect(p).toContain('# Verifying')
+    expect(p).toContain('# Simplicity')
+    expect(p).toContain('# Surgical changes')
     expect(p).toContain('# Tone')
   })
 

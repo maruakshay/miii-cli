@@ -4,7 +4,7 @@ import { createElement } from 'react'
 import { App } from './ui/App.js'
 import { DISABLE as MOUSE_OFF } from './ui/mouse.js'
 import { cleanupSpill } from './tools/spill.js'
-import { setProvider, listProviders, configError, type Provider } from './config.js'
+import { setProvider, listProviders, providerEntries, apiKeyFor, configError, type Provider } from './config.js'
 
 // Drop yesterday's spilled tool output before starting. Best-effort.
 cleanupSpill()
@@ -32,6 +32,43 @@ if (cmd === 'version' || cmd === '--version' || cmd === '-v') {
   console.log('Updating miii-agent…')
   const r = spawnSync('npm', ['i', '-g', 'miii-agent@latest'], { stdio: 'inherit', shell: process.platform === 'win32' })
   process.exit(r.status ?? 1)
+} else if (cmd === 'provider' || cmd === 'providers') {
+  // Manage backends without launching the TUI, so a provider can be added from
+  // a setup script or a Dockerfile.
+  const { addByName, removeByName, describePresets } = await import('./llm/manage.js')
+  const rest = args.slice(args.indexOf(cmd) + 1)
+  const [verb, ...verbArgs] = rest
+  if (verb === 'add') {
+    const res = addByName(verbArgs)
+    console[res.ok ? 'log' : 'error'](res.message)
+    process.exit(res.ok ? 0 : 1)
+  } else if (verb === 'remove' || verb === 'rm') {
+    const res = removeByName(verbArgs[0])
+    console[res.ok ? 'log' : 'error'](res.message)
+    process.exit(res.ok ? 0 : 1)
+  } else if (verb === 'list' || verb === undefined) {
+    if (verbArgs.includes('--all')) {
+      console.log('Providers you can add by name:\n' + describePresets())
+    } else {
+      const active = listProviders()
+      const width = Math.max(...active.map((n) => n.length))
+      for (const p of providerEntries()) {
+        // A local server's key is optional, so an unset env var there is not a
+        // problem worth flagging — only remote providers actually need one.
+        const key = apiKeyFor(p.entry)
+          ? 'key ✓'
+          : p.kind === 'api' && p.entry.apiKeyEnv
+            ? `needs $${p.entry.apiKeyEnv}`
+            : '—'
+        console.log(`  ${p.name.padEnd(width)}  ${p.kind.padEnd(5)}  ${p.entry.baseUrl}  ${key}`)
+      }
+      console.log('\nAdd one with: miii provider add <name> [apiKey]   (miii provider list --all to see names)')
+    }
+    process.exit(0)
+  } else {
+    console.error('usage: miii provider [list [--all] | add <name> [baseUrl] [apiKey] | remove <name>]')
+    process.exit(1)
+  }
 } else if (cmd === 'doctor' || cmd === 'eval') {
   const rest = args.filter((a) => a !== cmd)
   const { runEval } = await import('../eval/run.js')

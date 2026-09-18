@@ -154,7 +154,7 @@ Review the staged diff for bugs and unhandled errors. Focus on $ARGUMENTS.
 | `/plan` | Toggle plan mode — research read-only, then approve the plan |
 | `/permissions` | List saved approval rules and which file each lives in |
 | `/models` | Switch model, provider (`tab`) and effort (`←→`) |
-| `/provider` | Pick a configured provider |
+| `/provider` | Pick a backend — `add <name> [apiKey]` / `remove <name>` to manage them |
 | `/new` | Save this session and start fresh |
 | `/sessions` | List and resume a saved session |
 | `/copy` | Copy to the clipboard — `last` (default), `code`, `tool` or `all` |
@@ -180,14 +180,36 @@ Settings live in `~/.miii/config.json`, created on first run:
 
 `effort` (`low` \| `medium` \| `high`) controls temperature and the output token cap. `numCtxCap` (default `16384`) bounds the context window miii asks for, so a model advertising a 131k window can't make Ollama size a KV cache that eats your RAM — it only ever lowers, never raises. A top-level `ollamaHost` still works and is folded into the `ollama` provider on load.
 
-miii talks to any **OpenAI-compatible** local server too — [llama.cpp](https://github.com/ggml-org/llama.cpp), [LM Studio](https://lmstudio.ai), vLLM:
+**Other backends.** miii is local-first, not local-only: add any backend by name and it runs the same agent loop, same tools, same permissions.
+
+```bash
+miii provider add anthropic        # picks up $ANTHROPIC_API_KEY
+miii provider add openai sk-…      # or pass the key once
+miii provider list --all           # every name you can add
+```
+
+Or from inside the TUI: `/provider add groq`, then `/models` to pick one. Names known out of the box:
+
+| | |
+|---|---|
+| **Local** | `ollama` · `lmstudio` · `llamacpp` · `vllm` |
+| **Hosted** | `anthropic` (Claude) · `openai` · `groq` · `openrouter` · `deepseek` · `mistral` · `together` · `cerebras` · `xai` · `gemini` |
+
+Keys are read from the provider's usual environment variable (`$ANTHROPIC_API_KEY`, `$GROQ_API_KEY`, …) at request time, so nothing has to be written to disk. Pass a key explicitly and it's saved to `~/.miii/config.json` instead.
+
+Anything not on that list still works — give it an endpoint and miii assumes the OpenAI-compatible wire format:
+
+```bash
+miii provider add mycorp https://llm.corp.internal/v1 <apiKey>
+```
+
+which is the same as writing it out by hand:
 
 ```json
 {
-  "model": "qwen2.5-coder-14b",
-  "provider": "llamacpp",
+  "provider": "mycorp",
   "providers": {
-    "llamacpp": { "type": "openai", "baseUrl": "http://localhost:8080" }
+    "mycorp": { "type": "openai", "baseUrl": "https://llm.corp.internal/v1", "apiPath": "" }
   }
 }
 ```

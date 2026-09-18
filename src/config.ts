@@ -5,13 +5,36 @@ import { homedir } from 'os'
 export type Effort = 'low' | 'medium' | 'high'
 
 // Wire protocol a provider speaks. 'ollama' = native Ollama API,
-// 'openai' = OpenAI-compatible /v1 (LM Studio, OpenAI, Groq, OpenRouter, …).
-export type ProviderType = 'ollama' | 'openai'
+// 'openai' = OpenAI-compatible /v1 (LM Studio, OpenAI, Groq, OpenRouter, …),
+// 'anthropic' = native Anthropic Messages API (Claude).
+export type ProviderType = 'ollama' | 'openai' | 'anthropic'
 
 export interface ProviderEntry {
   type: ProviderType
   baseUrl: string
+  /** Key stored on disk. Prefer `apiKeyEnv` — see apiKeyFor(). */
   apiKey?: string
+  /**
+   * Environment variable to read the key from at request time. Preferred over
+   * `apiKey`: the secret stays in the shell profile / secret manager instead of
+   * landing in ~/.miii/config.json.
+   */
+  apiKeyEnv?: string
+  /** Path between baseUrl and the endpoint for openai-type providers. */
+  apiPath?: string
+  /** Fallback context window when the provider can't report one. */
+  contextWindow?: number
+}
+
+/**
+ * The key to authenticate with, or undefined for a keyless local server.
+ * An explicit `apiKey` wins; otherwise the named env var is read fresh on every
+ * call, so exporting a new key takes effect without editing the config.
+ */
+export function apiKeyFor(entry: ProviderEntry): string | undefined {
+  if (entry.apiKey) return entry.apiKey
+  if (entry.apiKeyEnv) return process.env[entry.apiKeyEnv] || undefined
+  return undefined
 }
 
 // Selected provider is referenced by name into the `providers` map.
@@ -58,8 +81,10 @@ export const EFFORT_OPTIONS: Record<Effort, { temperature: number; num_predict: 
 const CONFIG_DIR = join(homedir(), '.miii')
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
 
-// Built-in providers. Env vars seed the defaults so existing setups keep working;
-// anything written into config.json overrides these.
+// Built-in providers, always present so a fresh install can talk to a local
+// backend with no setup. Env vars seed the hosts so existing setups keep
+// working; anything written into config.json overrides these. Every other
+// backend is opt-in via addProvider() — see src/llm/presets.ts.
 function defaultProviders(): Record<string, ProviderEntry> {
   return {
     ollama: {
@@ -69,7 +94,7 @@ function defaultProviders(): Record<string, ProviderEntry> {
     lmstudio: {
       type: 'openai',
       baseUrl: process.env.LMSTUDIO_HOST ?? process.env.LLM_HOST ?? 'http://localhost:1234',
-      ...(process.env.LMSTUDIO_API_KEY ? { apiKey: process.env.LMSTUDIO_API_KEY } : {}),
+      apiKeyEnv: 'LMSTUDIO_API_KEY',
     },
   }
 }
@@ -171,7 +196,9 @@ export interface NamedProvider {
 export function providerEntries(cfg: Config = loadConfig()): NamedProvider[] {
   const providers = providersOf(cfg)
   return Object.entries(providers).map(([name, entry]) => {
-    const local = entry.type === 'ollama' || /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(entry.baseUrl)
+    const local =
+      entry.type !== 'anthropic' &&
+      (entry.type === 'ollama' || /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(entry.baseUrl))
     return { name, entry, kind: local ? 'local' : 'api' }
   })
 }
@@ -186,6 +213,39 @@ export function setEffort(effort: Effort): void {
 
 export function setProvider(provider: Provider): void {
   saveConfig({ ...readRawConfig(), provider })
+}
+
+/**
+ * Add or overwrite a named provider and make it active.
+ *
+ * Writes into the raw (on-disk) providers map, so built-in defaults stay
+ * defaults — only what the user actually configured is persisted.
+ */
+export function addProvider(name: string, entry: ProviderEntry): void {
+  const raw = readRawConfig()
+  saveConfig({
+    ...raw,
+    providers: { ...raw.providers, [name]: entry },
+    provider: name,
+  })
+}
+
+/**
+ * Forget a provider. Returns false if it isn't user-configured (built-in
+ * defaults can't be removed — there'd be nothing left to fall back to).
+ * If it was the active provider, selection falls back to the default.
+ */
+export function removeProvider(name: string): boolean {
+  const raw = readRawConfig()
+  if (!raw.providers?.[name]) return false
+  const providers = { ...raw.providers }
+  delete providers[name]
+  saveConfig({
+    ...raw,
+    providers,
+    provider: raw.provider === name ? undefined : raw.provider,
+  })
+  return true
 }
 
 // Cache resolved context windows so the next launch can render them immediately.

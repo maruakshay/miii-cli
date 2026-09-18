@@ -1,4 +1,4 @@
-import type { ProviderEntry } from '../config.js'
+import { apiKeyFor, type ProviderEntry } from '../config.js'
 import type { OllamaMessage, OllamaTool, OllamaToolCall, ChatChunk, ChatOptions } from './types.js'
 
 export const PROVIDER_NAME = 'openai'
@@ -11,8 +11,18 @@ export function notAvailable(entry: ProviderEntry): string {
 
 function headers(entry: ProviderEntry): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (entry.apiKey) h['Authorization'] = `Bearer ${entry.apiKey}`
+  const key = apiKeyFor(entry)
+  if (key) h['Authorization'] = `Bearer ${key}`
   return h
+}
+
+// Most OpenAI-compatible servers serve the API at /v1, but not all (Gemini's
+// compat layer, and self-hosted gateways that mount it elsewhere), so the path
+// is configurable per provider and defaults to the common case.
+function url(entry: ProviderEntry, endpoint: string): string {
+  const base = entry.baseUrl.replace(/\/$/, '')
+  const path = entry.apiPath ?? '/v1'
+  return `${base}${path}${endpoint}`
 }
 
 function isConnectionError(err: unknown): boolean {
@@ -20,13 +30,17 @@ function isConnectionError(err: unknown): boolean {
   return msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('connect')
 }
 
-export function isAvailable(_entry: ProviderEntry): boolean {
-  return true
+// A remote endpoint needs a key to be usable; a local server (LM Studio,
+// llama.cpp) typically needs none, so only gate the ones that declare a key
+// source.
+export function isAvailable(entry: ProviderEntry): boolean {
+  if (!entry.apiKey && !entry.apiKeyEnv) return true
+  return Boolean(apiKeyFor(entry)) || /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(entry.baseUrl)
 }
 
 export async function listModels(entry: ProviderEntry): Promise<string[]> {
   try {
-    const res = await fetch(`${entry.baseUrl}/v1/models`, {
+    const res = await fetch(url(entry, '/models'), {
       headers: headers(entry),
       signal: AbortSignal.timeout(5000),
     })
@@ -45,8 +59,10 @@ export async function listModels(entry: ProviderEntry): Promise<string[]> {
   }
 }
 
-export async function modelContext(_entry: ProviderEntry, _model: string): Promise<number> {
-  return DEFAULT_CONTEXT
+export async function modelContext(entry: ProviderEntry, _model: string): Promise<number> {
+  // The OpenAI API exposes no per-model context window, so a provider preset
+  // supplies one where it's known and we fall back to a conservative default.
+  return entry.contextWindow ?? DEFAULT_CONTEXT
 }
 
 function toOpenAIMessages(msgs: OllamaMessage[]): unknown[] {
@@ -135,7 +151,7 @@ export async function* chat(
     : (opts?.signal ?? timeoutSignal)
 
   try {
-    const res = await fetch(`${entry.baseUrl}/v1/chat/completions`, {
+    const res = await fetch(url(entry, '/chat/completions'), {
       method: 'POST',
       headers: headers(entry),
       body: JSON.stringify(body),

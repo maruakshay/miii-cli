@@ -215,7 +215,10 @@ export function App() {
 
   function switchProvider(p: Provider) {
     setProvider(p)
-    setCfg((c) => ({ ...c, provider: p }))
+    // Re-read from disk rather than patching state: /provider add writes a new
+    // entry into the providers map, and the picker renders from cfg, so a
+    // patch-in-place would leave the provider you just added invisible.
+    setCfg({ ...loadConfig(), provider: p })
     setPickerQuery('')
     setCursor(() => 0)
     agent.setError(null)

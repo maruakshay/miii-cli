@@ -10,7 +10,8 @@ import { homedir } from 'os'
 import { useInput, useStdout } from 'ink'
 import { readClipboardImage, writeClipboardText } from '../clipboard.js'
 import { collectCopyText, describeSize, describeTarget, parseCopyTarget, type CopyTarget } from '../copy.js'
-import { setModel, setEffort, type NamedProvider, type Provider, type Effort } from '../../config.js'
+import { setModel, setEffort, resolveProvider, type NamedProvider, type Provider, type Effort } from '../../config.js'
+import { addByName, removeByName } from '../../llm/manage.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { invalidateFileCache, parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
@@ -639,13 +640,32 @@ export function useKeyboard(opts: KeyboardOptions) {
         } else if (trimmed === '/exit') {
           exit()
         } else if (trimmed.startsWith('/provider ')) {
-          const p = trimmed.slice('/provider '.length).trim() as Provider
-          const names = providers.map((x) => x.name)
-          if (names.includes(p)) {
-            setNotice(`switched to ${p}`)
-            switchProvider(p)
+          // One command, three jobs: `add`/`remove` manage the list, anything
+          // else is a name to switch to.
+          const argv = trimmed.slice('/provider '.length).trim().split(/\s+/)
+          const [verb, ...rest] = argv
+          if (verb === 'add') {
+            const res = addByName(rest)
+            setNotice(res.message)
+            // A successful add also selects it, so refresh models for the new
+            // backend the same way the picker does.
+            if (res.ok) switchProvider(rest[0] as Provider)
+          } else if (verb === 'remove' || verb === 'rm') {
+            const res = removeByName(rest[0])
+            setNotice(res.message)
+            if (res.ok) switchProvider(resolveProvider().name as Provider)
           } else {
-            setNotice(`unknown provider "${p}" — configured: ${names.join(', ')}`)
+            const p = argv.join(' ') as Provider
+            const names = providers.map((x) => x.name)
+            if (names.includes(p)) {
+              setNotice(`switched to ${p}`)
+              switchProvider(p)
+            } else {
+              setNotice(
+                `unknown provider "${p}" — configured: ${names.join(', ')}\n` +
+                `add one with: /provider add <name> [apiKey]`,
+              )
+            }
           }
         } else if (custom) {
           // A Markdown file under .miii/commands. Its body becomes the prompt,

@@ -19,7 +19,7 @@ export interface Command {
 export const COMMANDS: Command[] = [
   { name: '/plan',   description: 'plan first — research read-only, then approve the plan' },
   { name: '/models', description: 'pick model · tab to change provider · ←→ effort' },
-  { name: '/provider', description: 'open provider picker (configured in ~/.miii/config.json)' },
+  { name: '/provider', description: 'switch backend · /provider add <name> [apiKey] · remove <name>' },
   { name: '/new',    description: 'save current session and start fresh' },
   { name: '/sessions', description: 'list sessions and resume one' },
   { name: '/copy',   description: 'copy to clipboard · /copy last | code | tool | all' },

@@ -63,6 +63,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
     "cli-highlight": "^2.1.11",
     "execa": "^9.0.0",
     "ink": "^5.0.0",
