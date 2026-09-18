@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.3.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.2.0...miii-agent-v3.3.0) (2026-09-18)
+
+
+### Features
+
+* add repair tracking to eval harness and implement lazy loading for model contexts in UI ([#92](https://github.com/maruakshay/miii-cli/issues/92)) ([5d553f4](https://github.com/maruakshay/miii-cli/commit/5d553f41fe533b52b6d9d8bbe9961ccb916aef65))
+* implement flexible provider management and adapter-based LLM client ([#90](https://github.com/maruakshay/miii-cli/issues/90)) ([d973c0e](https://github.com/maruakshay/miii-cli/commit/d973c0ed76c6ff88b6995f67df169e4a8e4369bc))
+
 ## [3.2.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.1.0...miii-agent-v3.2.0) (2026-09-05)
 
 
