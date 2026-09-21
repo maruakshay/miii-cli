@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.4.0...miii-agent-v3.5.0) (2026-09-21)
+
+
+### Features
+
+* decision box and shell-backed file I/O ([63d40d5](https://github.com/maruakshay/miii-cli/commit/63d40d5a30563cd984a96923f4d89f6611be459f))
+
 ## [3.4.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.3.0...miii-agent-v3.4.0) (2026-09-18)
 
 
