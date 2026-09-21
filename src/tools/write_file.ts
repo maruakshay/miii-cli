@@ -1,5 +1,4 @@
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs'
-import { dirname } from 'path'
+import { writeFileShell, readTextShell, existsShell } from './shellFs.js'
 import { confinePath } from './paths.js'
 import { verifyHint } from './verifyHint.js'
 import { buildFileDiff } from '../diff.js'
@@ -28,12 +27,11 @@ export const write_file: Tool<Input> = {
       // user should see which lines it actually changed, not a wall of green.
       let before = ''
       try {
-        if (existsSync(abs)) before = readFileSync(abs, 'utf-8')
+        if (existsShell(abs)) before = readTextShell(abs)
       } catch {
         before = ''
       }
-      mkdirSync(dirname(abs), { recursive: true })
-      writeFileSync(abs, content, 'utf-8')
+      writeFileShell(abs, content)
       return {
         content: `Wrote ${path} (${content.length} bytes).${verifyHint(path)}`,
         diff: buildFileDiff(path, before, content),

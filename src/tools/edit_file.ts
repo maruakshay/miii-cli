@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'fs'
+import { readTextShell, writeFileShell } from './shellFs.js'
 import { confinePath } from './paths.js'
 import { verifyHint } from './verifyHint.js'
 import { buildFileDiff } from '../diff.js'
@@ -261,10 +261,10 @@ export const edit_file: Tool<Input> = {
       // Batch mode: resolve + apply all edits atomically against the original.
       if (Array.isArray(edits) && edits.length > 0) {
         const abs = confinePath(path)
-        const src = readFileSync(abs, 'utf-8')
+        const src = readTextShell(abs)
         const res = applyBatch(src, edits)
         if ('error' in res) return { content: `${res.error} (in ${path})`, is_error: true }
-        writeFileSync(abs, res.out, 'utf-8')
+        writeFileShell(abs, res.out)
         return {
           content: `Edited ${path} (${res.count} edits).${verifyHint(path)}`,
           diff: buildFileDiff(path, src, res.out),
@@ -280,7 +280,7 @@ export const edit_file: Tool<Input> = {
         }
       }
       const abs = confinePath(path)
-      const src = readFileSync(abs, 'utf-8')
+      const src = readTextShell(abs)
       const first = src.indexOf(old_str)
       if (first === -1) {
         // Exact match failed — try a unique whitespace-tolerant match before giving up.
@@ -298,7 +298,7 @@ export const edit_file: Tool<Input> = {
               }
             }
             const out = src.slice(0, s) + text + src.slice(e)
-            writeFileSync(abs, out, 'utf-8')
+            writeFileShell(abs, out)
             const how = text === new_str ? 'whitespace-tolerant match' : 'whitespace-tolerant match, re-indented to match the file'
             return {
               content: `Edited ${path} (${how}).${verifyHint(path)}`,
@@ -317,7 +317,7 @@ export const edit_file: Tool<Input> = {
       }
       const out = all ? src.split(old_str).join(new_str) : src.slice(0, first) + new_str + src.slice(first + old_str.length)
       const n = all ? src.split(old_str).length - 1 : 1
-      writeFileSync(abs, out, 'utf-8')
+      writeFileShell(abs, out)
       return {
         content: `Edited ${path}${all ? ` (${n} occurrences)` : ''}.${verifyHint(path)}`,
         diff: buildFileDiff(path, src, out),

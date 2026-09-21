@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs'
+import { readFileShell } from './shellFs.js'
 import { confinePath } from './paths.js'
 import type { Tool } from './types.js'
 
@@ -52,7 +52,7 @@ export const read_file: Tool<Input> = {
   handler: ({ path, offset, limit }) => {
     try {
       const MAX_CHARS = 200_000
-      const buf = readFileSync(confinePath(path))
+      const buf = readFileShell(confinePath(path))
 
       // Image: hand the raw pixels back as a base64 attachment for a vision model
       // rather than refusing it as binary. Extension OR magic bytes qualifies.
