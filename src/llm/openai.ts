@@ -135,6 +135,12 @@ export async function* chat(
   }
   if (oaTools) body.tools = oaTools
   if (opts?.num_predict && opts.num_predict > 0) body.max_tokens = opts.num_predict
+  if (opts?.format) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: { name: 'decision', strict: true, schema: opts.format },
+    }
+  }
 
   const toolCallAccum: Map<number, {
     id?: string

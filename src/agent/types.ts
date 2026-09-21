@@ -63,6 +63,13 @@ export type AgentEvent =
    */
   | { type: 'hook-notice'; message: string }
   /**
+   * The decision box overruled the model's "I'm done" and sent it back to work.
+   * Shown to the user because a turn that keeps going after it looked finished
+   * is otherwise indistinguishable from a bug — and because it is how they
+   * notice a judge model that is wrong more often than it is useful.
+   */
+  | { type: 'judge-notice'; message: string }
+  /**
    * The permission mode changed mid-run — the user approved a plan. The UI
    * mirrors it so the indicator and the next turn agree with the loop.
    */

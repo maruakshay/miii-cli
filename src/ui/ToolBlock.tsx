@@ -299,6 +299,11 @@ function summarizeResult(res: ToolResultDisplay, toolName?: string): string {
       const n = lines.filter(Boolean).length
       return `${n} file${n === 1 ? '' : 's'}`
     }
+    // A command's first line is rarely its answer — `ls -R` opens on a bare
+    // filename — so multi-line output is summarised by size, not by its head.
+    if (toolName === 'run_bash' && lines.length > 1) {
+      return `${lines.length} lines`
+    }
   }
   const firstNonEmpty = lines.find((l) => l.trim().length > 0) ?? ''
   const extra = lines.length - 1
@@ -338,7 +343,11 @@ function ToolResultBlock({
     )
   }
   const MAX_LINE_WIDTH = 200
-  const visible = expanded ? lines : lines.slice(0, COLLAPSED_LINES)
+  // Collapsed, a successful run is one line: how much came back, and how to see
+  // it. A few lines of a 900-line listing tell the reader nothing they can use,
+  // and they cost the screen every later block would have used. Errors are the
+  // exception — the first lines are the whole point of an error.
+  const visible = expanded ? lines : result.is_error ? lines.slice(0, COLLAPSED_LINES) : []
   const shown = visible.map((l) => truncate(l, MAX_LINE_WIDTH))
   const extra = lines.length - shown.length
   // grep/glob summarize to a count; for bash/errors the summary echoes the first
@@ -347,7 +356,8 @@ function ToolResultBlock({
     toolName === 'grep' || toolName === 'glob'
       ? summarizeResult(result, toolName)
       : `${lines.length} line${lines.length === 1 ? '' : 's'}`
-  const header = subject ? `${subject} · ${count}` : count
+  const hint = !expanded && shown.length === 0 ? ' · ctrl+o to expand' : ''
+  const header = `${subject ? `${subject} · ` : ''}${count}${hint}`
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error} wrap="truncate">
@@ -358,7 +368,7 @@ function ToolResultBlock({
           <Text color={result.is_error ? 'red' : undefined} dimColor>{ln || ' '}</Text>
         </Box>
       ))}
-      {extra > 0 && (
+      {extra > 0 && shown.length > 0 && (
         <Box marginLeft={4}>
           <Text dimColor>… {extra} more lines · click or ctrl+o to expand</Text>
         </Box>
@@ -397,9 +407,9 @@ function PlanBlock({ plan, result }: { plan: string; result?: ToolResultDisplay 
  * A run of calls to the same tool, drawn as one block with a counted headline.
  *
  * Six reads in a turn are one action to whoever is watching, so the block leads
- * with "Read 6 files" and gives each call a single line underneath. A lone call
- * keeps its output preview — that's the case where the answer is the point, and
- * making it a click away would be a step backwards.
+ * with "Read 6 files" and gives each call a single line underneath. A single
+ * call is not a run of anything — counting it ("Ran 1 shell command") says less
+ * than naming it, so it leads with what it actually did instead.
  */
 function ToolGroupBlock({
   uses,
@@ -419,7 +429,14 @@ function ToolGroupBlock({
     <Box flexDirection="column" marginLeft={2}>
       <Box>
         <Text color="green">● </Text>
-        <Text color="white">{groupHeadline(name, uses.length, pending)}</Text>
+        <Text color="white">
+          {lone ? describeTool(name, uses[0].input).text : groupHeadline(name, uses.length, pending)}
+        </Text>
+        {/* A path names itself in the headline, but "Linting" or "Listing
+            files" hides which command ran, so a lone shell call carries it. */}
+        {lone && name === 'run_bash' && (
+          <Text dimColor> · {truncate(String((uses[0].input as { command?: string })?.command ?? '').replace(/\s+/g, ' '), 60)}</Text>
+        )}
       </Box>
       {uses.map((use) => {
         const result = results.get(use.id)
@@ -435,7 +452,14 @@ function ToolGroupBlock({
                 </Box>
               )}
               {result ? (
-                <ToolResultBlock id={id} result={result} toolName={use.name} subject={expanded ? undefined : subject} />
+                <ToolResultBlock
+                  id={id}
+                  result={result}
+                  toolName={use.name}
+                  // A lone call already names its subject in the headline; only
+                  // a group's rows have to repeat it.
+                  subject={expanded || lone ? undefined : subject}
+                />
               ) : (
                 <Box marginLeft={2}>
                   <Text dimColor>{'⎿  '}{subject}</Text>

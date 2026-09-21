@@ -117,6 +117,7 @@ export const task: Tool<Input> = {
         ...(ctx?.signal ? { signal: ctx.signal } : {}),
         ...(run.num_ctx !== undefined ? { num_ctx: run.num_ctx } : {}),
         maxTurns: SUBAGENT_MAX_TURNS,
+        judge: false,
         toolFilter: (name) => allowed.has(name),
         buildSystem: (tools) => buildSubagentPrompt(agent.prompt, tools, run.cwd, project),
       })

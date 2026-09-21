@@ -286,6 +286,9 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
         case 'hook-notice':
           process.stderr.write(`miii: ${ev.message}\n`)
           break
+        case 'judge-notice':
+          process.stderr.write(`miii: ${ev.message}\n`)
+          break
       }
     }
   } catch (err) {

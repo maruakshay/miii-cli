@@ -23,6 +23,14 @@ const h = vi.hoisted(() => ({
   onCheck: undefined as undefined | (() => void),
   // validateInput result: null = valid.
   validateResult: null as string | null,
+  // config.decider for the run. Unset = the stop gate is off, which is the
+  // default every other test in this file relies on.
+  decider: undefined as undefined | { model?: string },
+  // What stopGate returns each time it is consulted; shift()ed, and a missing
+  // entry means "no opinion". Calls are recorded for the tests that pin what
+  // the gate is shown.
+  gateAnswers: [] as Array<string | null>,
+  gateCalls: [] as Array<{ userText: string; finalText: string }>,
 }))
 
 vi.mock('../llm/client.js', () => ({
@@ -90,8 +98,15 @@ vi.mock('../permissions/policy.js', async (importOriginal) => ({
     return h.decision
   },
 }))
+vi.mock('./decide.js', () => ({
+  deciderEnabled: (cfg: { model?: string } | undefined) => !!cfg?.model,
+  stopGate: async (input: { userText: string; finalText: string }) => {
+    h.gateCalls.push({ userText: input.userText, finalText: input.finalText })
+    return h.gateAnswers.shift() ?? null
+  },
+}))
 vi.mock('../config.js', () => ({
-  loadConfig: () => ({ effort: 'medium' }),
+  loadConfig: () => ({ effort: 'medium', ...(h.decider ? { decider: h.decider } : {}) }),
   EFFORT_OPTIONS: { medium: { num_predict: -1, temperature: 0.5 } },
   DEFAULT_NUM_CTX_CAP: 8192,
 }))
@@ -201,6 +216,9 @@ beforeEach(() => {
   h.checkCalls = 0
   h.onCheck = undefined
   h.validateResult = null
+  h.decider = undefined
+  h.gateAnswers = []
+  h.gateCalls = []
 })
 
 // ---- invariants ----------------------------------------------------------
@@ -928,5 +946,99 @@ describe('read-before-write guard', () => {
     const { history } = await drive()
     assertBlockOrdering(history)
     expect(ran).toEqual(['read_file', 'run_bash', 'run_bash'])
+  })
+})
+
+// ---- the stop gate -------------------------------------------------------
+
+describe('stop gate (decision box)', () => {
+  const ON = { model: 'judge:1.5b' }
+
+  /** A run that does one tool call and then declares itself finished. */
+  function toolThenClaim(text = 'All done.') {
+    return [toolThenDone([call('echo', { x: 1 })]), textThenDone(text)]
+  }
+
+  it('is never consulted unless a judge model is configured', async () => {
+    h.script = toolThenClaim()
+    h.gateAnswers = ['you forgot the tests']
+    const { events } = await drive()
+    expect(h.gateCalls).toHaveLength(0)
+    expect(events.filter((e) => e.type === 'turn-end').at(-1)).toMatchObject({ stop_reason: 'end_turn' })
+  })
+
+  it('sends the model back to work, telling it what is missing', async () => {
+    h.decider = ON
+    h.script = [...toolThenClaim(), textThenDone('now really done')]
+    h.gateAnswers = ['the tests were never run']
+    const { events, history } = await drive()
+
+    assertBlockOrdering(history)
+    expect(events.some((e) => e.type === 'judge-notice' && e.message.includes('the tests were never run'))).toBe(true)
+    const nudge = history.filter((m) => m.role === 'user').at(-1)
+    expect(String(nudge?.content)).toContain('the tests were never run')
+    // And the run went on to produce a real second turn rather than stopping.
+    expect(events.filter((e) => e.type === 'turn-end').at(-1)).toMatchObject({ stop_reason: 'end_turn' })
+  })
+
+  it('lets the turn end when the judge has no opinion', async () => {
+    h.decider = ON
+    h.script = toolThenClaim()
+    h.gateAnswers = [null]
+    const { events, history } = await drive()
+    expect(h.gateCalls).toHaveLength(1)
+    expect(events.some((e) => e.type === 'judge-notice')).toBe(false)
+    expect(history.filter((m) => m.role === 'user')).toHaveLength(2) // prompt + tool results
+  })
+
+  it('pushes back at most once, however unconvinced the judge stays', async () => {
+    h.decider = ON
+    h.script = [...toolThenClaim(), textThenDone('second'), textThenDone('third')]
+    h.gateAnswers = ['still missing', 'STILL missing']
+    const { events } = await drive()
+    expect(h.gateCalls).toHaveLength(1)
+    expect(events.filter((e) => e.type === 'judge-notice')).toHaveLength(1)
+    expect(events.filter((e) => e.type === 'turn-end').at(-1)).toMatchObject({ stop_reason: 'end_turn' })
+  })
+
+  it('stays out of a turn that ran no tools — a question is not unfinished work', async () => {
+    h.decider = ON
+    h.script = [textThenDone('Your tests fail because the mock is stale.')]
+    h.gateAnswers = ['you did not fix it']
+    await drive()
+    expect(h.gateCalls).toHaveLength(0)
+  })
+
+  it('stays out of plan mode, where ending the turn is the point', async () => {
+    h.decider = ON
+    h.script = [toolThenDone([call('read_file', { path: 'a.ts' })]), textThenDone("Here's the plan.")]
+    h.gateAnswers = ['the plan was never carried out']
+    await drive({ mode: 'plan' })
+    expect(h.gateCalls).toHaveLength(0)
+  })
+
+  it('stays out of a subagent run', async () => {
+    h.decider = ON
+    h.script = toolThenClaim()
+    h.gateAnswers = ['incomplete report']
+    await drive({ judge: false })
+    expect(h.gateCalls).toHaveLength(0)
+  })
+
+  it('judges the request and the closing message, not the whole transcript', async () => {
+    h.decider = ON
+    h.script = toolThenClaim('Renamed it.')
+    h.gateAnswers = [null]
+    await drive({ userText: 'rename foo to bar' })
+    expect(h.gateCalls[0]).toEqual({ userText: 'rename foo to bar', finalText: 'Renamed it.' })
+  })
+
+  it('does not fire after MAX_TURNS cuts the run off mid-task', async () => {
+    h.decider = ON
+    h.alwaysTool = true
+    h.gateAnswers = ['unfinished']
+    const { events } = await drive({ maxTurns: 3 })
+    expect(h.gateCalls).toHaveLength(0)
+    expect(events.some((e) => e.type === 'error' && e.message.includes('Stopped after 3'))).toBe(true)
   })
 })

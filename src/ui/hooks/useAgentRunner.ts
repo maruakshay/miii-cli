@@ -287,6 +287,10 @@ export function useAgentRunner(
             setMessages((prev) => [...prev, { role: 'assistant', content: `⚠ ${ev.message}` }])
             break
           }
+          case 'judge-notice': {
+            setMessages((prev) => [...prev, { role: 'assistant', content: `▸ ${ev.message}` }])
+            break
+          }
           case 'turn-end': {
             flushStream(true)
             flushThink(true)

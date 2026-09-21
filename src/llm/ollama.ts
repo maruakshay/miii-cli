@@ -129,6 +129,7 @@ export async function* chat(
       options,
     }
     if (tools) req.tools = tools
+    if (opts?.format) req.format = opts.format
     try {
       stream = (await client.chat(
         req as unknown as Parameters<typeof client.chat>[0],

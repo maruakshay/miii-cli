@@ -40,6 +40,32 @@ export function apiKeyFor(entry: ProviderEntry): string | undefined {
 // Selected provider is referenced by name into the `providers` map.
 export type Provider = string
 
+/**
+ * The decision box: a small, fast model asked typed yes/no questions the main
+ * loop branches on. It runs on the ACTIVE provider, so `model` must be a model
+ * that provider serves — the point is a 1.5-3b judge sitting next to a 14b
+ * coder, not a second vendor.
+ *
+ * There is deliberately no default model. A judge is a second opinion that can
+ * be wrong, and a wrong judge costs turns; picking one on the user's behalf
+ * would turn that cost on silently for everybody. Unset means off.
+ */
+export interface DeciderConfig {
+  /** Judge model. Unset (or empty) disables every gate. */
+  model?: string
+  /** Master switch, for turning the gates off without losing the model name. */
+  enabled?: boolean
+  /**
+   * How sure the judge must be before its answer is allowed to change the run.
+   * Below this it is treated as having no opinion. Self-reported by the model
+   * (no provider here returns logprobs), so it separates "confident" from
+   * "guessing" and nothing finer — do not read it as a calibrated probability.
+   */
+  threshold?: number
+  /** Deadline for one judgment. A judge that hangs must not hang the run. */
+  timeoutMs?: number
+}
+
 export interface Config {
   model?: string
   provider?: Provider
@@ -56,6 +82,9 @@ export interface Config {
   // machines. We cap the requested window at this value. Raise it if you have
   // the VRAM/RAM. See DEFAULT_NUM_CTX_CAP.
   numCtxCap?: number
+  // Second, much smaller model used as a yes/no judge around the agent loop —
+  // currently only the stop gate. Off unless `model` is set. See DeciderConfig.
+  decider?: DeciderConfig
   // legacy fields — migrated into `providers` on load
   ollamaHost?: string
   lmstudioHost?: string

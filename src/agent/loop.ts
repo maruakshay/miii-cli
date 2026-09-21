@@ -14,6 +14,7 @@ import {
   looksLikeLeakedToolCall,
 } from './adapter.js'
 import { resolveToolName, normalizeToolInput } from './normalize.js'
+import { deciderEnabled, stopGate } from './decide.js'
 import { bashWriteTargets } from './bashWrites.js'
 import type { Tool } from '../tools/types.js'
 import type {
@@ -38,6 +39,12 @@ const MAX_IDENTICAL_FAILURES = 2
 // How many times a Stop hook may send the model back to work before the turn
 // ends anyway. A gate the model cannot satisfy must not cost the whole run.
 const MAX_STOP_NUDGES = 2
+// The same ceiling for the decision box, and deliberately lower. A Stop hook is
+// the user's own rule and is right by definition; the judge is a second model's
+// opinion and is sometimes wrong. One push-back catches the "edited one of
+// three call sites and declared victory" case; a second mostly means the judge
+// will never be satisfied, and arguing with it costs the user the run.
+const MAX_JUDGE_NUDGES = 1
 
 /**
  * Fingerprint of a file's state on disk — mtime and size. Cheap enough to take
@@ -356,6 +363,12 @@ export interface RunAgentOpts {
   buildSystem?: (tools: Tool[], mode: PermissionMode) => string
   /** Tool-use turns before the run is cut off. Defaults to MAX_TURNS. */
   maxTurns?: number
+  /**
+   * Whether the decision box may veto "I'm done" (config permitting). Subagents
+   * pass false: their caller already judges the report, and a judge per
+   * subagent multiplies the cost of the one feature meant to be cheap.
+   */
+  judge?: boolean
 }
 
 /**
@@ -431,6 +444,13 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   let leakNudges = 0
   // How many times a Stop hook has sent the model back to work this run.
   let stopNudges = 0
+  // Same, for the decision box.
+  let judgeNudges = 0
+  // Tool calls actually issued this run. The stop gate reads it to stay out of
+  // the way of a question answered in prose — nothing was done, so there is no
+  // half-done work to catch, and every judgment there is a false positive
+  // waiting to happen.
+  let toolCallCount = 0
   // Canonical path -> file stamp when the model last saw it. Gates edit/write,
   // and catches a file that moved underneath the model between read and edit.
   const seenPaths = new Map<string, string>()
@@ -655,12 +675,51 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           continue
         }
       }
+      // Then the decision box, for the failure a hook cannot express: the model
+      // says "done" having done half of it. Off unless the user names a judge
+      // model (see DeciderConfig). Skipped in plan mode, where ending the turn
+      // to present a plan IS the finish, and on a turn that ran no tools.
+      if (
+        opts.judge !== false &&
+        mode !== 'plan' &&
+        toolCallCount > 0 &&
+        judgeNudges < MAX_JUDGE_NUDGES &&
+        deciderEnabled(cfg.decider)
+      ) {
+        let missing: string | null = null
+        try {
+          missing = await stopGate({
+            userText: opts.userText,
+            finalText: assistantText,
+            history,
+            cfg: cfg.decider,
+            ...(signal ? { signal } : {}),
+          })
+        } catch { /* a judge that throws has no opinion — see decide.ts */ }
+        if (missing && !signal?.aborted) {
+          judgeNudges++
+          // Surfaced to the user, unlike the hook path: this is a second model
+          // overruling the one they are watching, and a turn that silently
+          // keeps going after it looked finished is indistinguishable from a
+          // bug. It also tells them when to turn the thing off.
+          yield { type: 'judge-notice', message: `not done yet — ${missing}` }
+          history.push({
+            role: 'user',
+            content:
+              `Before you stop: a check on this turn says the request is not finished — ${missing}\n\n` +
+              `If that's right, finish it. If it's wrong, say plainly why you are done and stop.`,
+          })
+          yield { type: 'turn-end', stop_reason: 'tool_use' }
+          continue
+        }
+      }
       endedCleanly = true
       yield { type: 'turn-end', stop_reason: 'end_turn' }
       break
     }
 
     for (const u of tool_uses) yield { type: 'tool-use', block: u }
+    toolCallCount += tool_uses.length
 
     const results: ToolResultBlock[] = []
     for (const use of tool_uses) {

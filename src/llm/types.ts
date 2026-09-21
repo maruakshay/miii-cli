@@ -47,4 +47,12 @@ export interface ChatOptions {
   signal?: AbortSignal
   /** Enable model thinking/reasoning. Defaults to true for ollama. */
   think?: boolean
+  /**
+   * JSON schema the reply must conform to — Ollama's `format`, OpenAI's
+   * `response_format: json_schema`. Anthropic has no equivalent that works
+   * alongside our streaming/thinking setup, so that adapter ignores it; every
+   * caller must therefore still parse defensively rather than trust the wire
+   * to have enforced the shape. See src/agent/decide.ts.
+   */
+  format?: Record<string, unknown>
 }
