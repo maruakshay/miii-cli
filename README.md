@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="demo3.gif" alt="miii local AI coding agent running in a terminal, powered by Ollama">
+  <img src="demo4.gif" alt="miii local AI coding agent running in a terminal, powered by Ollama">
 </p>
 
 <p align="center">
