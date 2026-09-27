@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.5.0...miii-agent-v3.6.0) (2026-09-27)
+
+
+### Features
+
+* apply file edits with sed, skip WSL bash on Windows ([#100](https://github.com/maruakshay/miii-cli/issues/100)) ([0cf3b81](https://github.com/maruakshay/miii-cli/commit/0cf3b8194ab4fba33017c227f501bf952b1be9ef))
+
 ## [3.5.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.4.0...miii-agent-v3.5.0) (2026-09-21)
 
 
