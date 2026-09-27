@@ -1,4 +1,4 @@
-import { readTextShell, writeFileShell } from './shellFs.js'
+import { readTextShell, replaceShell } from './shellFs.js'
 import { confinePath } from './paths.js'
 import { verifyHint } from './verifyHint.js'
 import { buildFileDiff } from '../diff.js'
@@ -264,7 +264,7 @@ export const edit_file: Tool<Input> = {
         const src = readTextShell(abs)
         const res = applyBatch(src, edits)
         if ('error' in res) return { content: `${res.error} (in ${path})`, is_error: true }
-        writeFileShell(abs, res.out)
+        replaceShell(abs, src, res.out)
         return {
           content: `Edited ${path} (${res.count} edits).${verifyHint(path)}`,
           diff: buildFileDiff(path, src, res.out),
@@ -298,7 +298,7 @@ export const edit_file: Tool<Input> = {
               }
             }
             const out = src.slice(0, s) + text + src.slice(e)
-            writeFileShell(abs, out)
+            replaceShell(abs, src, out)
             const how = text === new_str ? 'whitespace-tolerant match' : 'whitespace-tolerant match, re-indented to match the file'
             return {
               content: `Edited ${path} (${how}).${verifyHint(path)}`,
@@ -317,7 +317,7 @@ export const edit_file: Tool<Input> = {
       }
       const out = all ? src.split(old_str).join(new_str) : src.slice(0, first) + new_str + src.slice(first + old_str.length)
       const n = all ? src.split(old_str).length - 1 : 1
-      writeFileShell(abs, out)
+      replaceShell(abs, src, out)
       return {
         content: `Edited ${path}${all ? ` (${n} occurrences)` : ''}.${verifyHint(path)}`,
         diff: buildFileDiff(path, src, out),

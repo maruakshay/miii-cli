@@ -1,4 +1,4 @@
-import { writeFileShell, readTextShell, existsShell } from './shellFs.js'
+import { replaceShell, readTextShell, existsShell } from './shellFs.js'
 import { confinePath } from './paths.js'
 import { verifyHint } from './verifyHint.js'
 import { buildFileDiff } from '../diff.js'
@@ -31,7 +31,7 @@ export const write_file: Tool<Input> = {
       } catch {
         before = ''
       }
-      writeFileShell(abs, content)
+      replaceShell(abs, before, content)
       return {
         content: `Wrote ${path} (${content.length} bytes).${verifyHint(path)}`,
         diff: buildFileDiff(path, before, content),
