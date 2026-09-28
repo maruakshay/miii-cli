@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.6.0...miii-agent-v3.7.0) (2026-09-28)
+
+
+### Features
+
+* **ui:** Claude-style transcript, live status line, mid-turn steering ([#103](https://github.com/maruakshay/miii-cli/issues/103)) ([fa52f39](https://github.com/maruakshay/miii-cli/commit/fa52f3982b2549ff14bca5fb75eff2044b3cfd1b))
+
 ## [3.6.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.5.0...miii-agent-v3.6.0) (2026-09-27)
 
 
