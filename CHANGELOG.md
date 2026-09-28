@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.7.0...miii-agent-v3.7.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **ui:** pin input bar to the bottom with an in-app scroll viewport ([#105](https://github.com/maruakshay/miii-cli/issues/105)) ([ea4c76f](https://github.com/maruakshay/miii-cli/commit/ea4c76f972ad8d54bcda62f6c09bbfb5682bf2d4))
+
 ## [3.7.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.6.0...miii-agent-v3.7.0) (2026-09-28)
 
 
