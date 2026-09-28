@@ -281,6 +281,33 @@ describe('runAgent block-ordering invariant', () => {
   })
 })
 
+describe('runAgent steering', () => {
+  it('hands mid-run messages to the model on the last tool result, keeping the pairing', async () => {
+    h.toolHandlers.echo = () => ({ content: 'A' })
+    const inbox = [['use tabs, not spaces']]
+    h.script = [toolThenDone([call('echo', { x: 1 }), call('echo', { x: 2 })]), textThenDone('done')]
+
+    const { events, history } = await drive({ takeSteering: () => inbox.shift() ?? [] })
+    assertBlockOrdering(history)
+
+    const results = firstResults(history)
+    expect(results[0].content).toBe('A')
+    expect(results[1].content).toContain('the user sent: use tabs, not spaces')
+    // Reported after the step it rode on, where the UI shows it.
+    const t = types(events)
+    expect(t.indexOf('steer')).toBe(t.indexOf('turn-end') + 1)
+    expect(events.find((e) => e.type === 'steer')).toEqual({ type: 'steer', text: 'use tabs, not spaces' })
+  })
+
+  it('leaves results alone when nothing was sent', async () => {
+    h.toolHandlers.echo = () => ({ content: 'A' })
+    h.script = [toolThenDone([call('echo', { x: 1 })]), textThenDone('done')]
+    const { events, history } = await drive({ takeSteering: () => [] })
+    expect(firstResults(history)[0].content).toBe('A')
+    expect(types(events)).not.toContain('steer')
+  })
+})
+
 describe('runAgent stop_reason / termination', () => {
   it('flips endedCleanly on a natural finish: end_turn then done, no error', async () => {
     h.script = [textThenDone('here is the answer')]

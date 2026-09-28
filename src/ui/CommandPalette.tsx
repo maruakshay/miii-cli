@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { COMMANDS, type Command } from './constants.js'
 import { customCommands } from '../commands/custom.js'
+import { C } from './theme.js'
 
 export type { Command }
 
@@ -48,19 +49,19 @@ export function CommandPalette({ filter, cursor }: Props) {
       flexDirection="column"
       width="100%"
       borderStyle="round"
-      borderColor="gray"
+      borderColor={C.gray}
       paddingX={1}
     >
       {filtered.map((cmd, i) => {
         const active = i === cursor
         return (
           <Box key={cmd.name} gap={2}>
-            <Text bold={active} color={active ? 'blue' : undefined} dimColor={!active}>
+            <Text bold={active} color={active ? C.blue : undefined} dimColor={!active}>
               {active ? '❯ ' : '  '}{cmd.name.padEnd(nameWidth)}
             </Text>
             <Text dimColor>{cmd.description}</Text>
             {cmd.origin && cmd.origin !== 'builtin' && (
-              <Text color="cyan" dimColor>{cmd.origin}</Text>
+              <Text color={C.cyan} dimColor>{cmd.origin}</Text>
             )}
           </Box>
         )

@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink'
 import type { Effort, ProviderType } from '../config.js'
+import { C } from './theme.js'
 
 interface Props {
   models: string[]
@@ -19,7 +20,7 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
     <Box flexDirection="column" marginLeft={2}>
       <Box flexDirection="column" marginBottom={1}>
         <Text wrap="truncate">
-          <Text dimColor>provider </Text><Text color="cyan">{provider}</Text>
+          <Text dimColor>provider </Text><Text color={C.cyan}>{provider}</Text>
           <Text dimColor>{'   '}host </Text><Text>{host}</Text>
         </Text>
         <Text>
@@ -28,7 +29,7 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
       </Box>
 
       <Text dimColor>select model</Text>
-      <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor={C.gray} paddingX={1}>
         {models.length === 0 ? (
           query ? (
             <Text dimColor>{`no models match "${query}"`}</Text>
@@ -37,7 +38,7 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
           ) : providerType === 'ollama' ? (
             <Box flexDirection="column">
               <Text dimColor>no models installed. pull one, then relaunch:</Text>
-              <Text color="cyan">  ollama pull qwen2.5-coder:14b</Text>
+              <Text color={C.cyan}>  ollama pull qwen2.5-coder:14b</Text>
             </Box>
           ) : (
             <Text dimColor>{`no models found at ${host}. make sure the server is running with a model loaded.`}</Text>
@@ -46,9 +47,9 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
           models.map((m, i) => {
             const sel = i === cursor
             return (
-              <Text key={m} wrap="truncate" color={sel ? 'blue' : undefined} dimColor={!sel}>
+              <Text key={m} wrap="truncate" color={sel ? C.blue : undefined} dimColor={!sel}>
                 {sel ? '❯ ' : '  '}{m}
-                {m === model ? <Text color="green">{'  ●'}</Text> : null}
+                {m === model ? <Text color={C.green}>{'  ●'}</Text> : null}
               </Text>
             )
           })

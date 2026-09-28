@@ -1,13 +1,14 @@
-import { memo, useEffect, useState } from 'react'
+import { memo } from 'react'
 import { Box, Text, useStdout } from 'ink'
-import { INPUT_PLACEHOLDER, INPUT_HINTS, BUSY_HINTS } from './constants.js'
+import { INPUT_PLACEHOLDER, BUSY_PLACEHOLDER, INPUT_HINTS, BUSY_HINTS } from './constants.js'
 import { MODE_LABEL, type PermissionMode } from '../permissions/policy.js'
+import { C } from './theme.js'
 
 interface Props {
   input: string
   caret?: number
-  disabled?: boolean
-  processingLabel?: string
+  /** A turn is running: the bar stays editable, and what's sent is queued. */
+  busy?: boolean
   /** Replaces the default key hints — used to surface a provider error. */
   hint?: string
   /** Permission mode; anything but 'default' is shown, and colours the frame. */
@@ -22,13 +23,11 @@ interface Props {
  * should not look like an ordinary one.
  */
 const MODE_COLOR: Record<PermissionMode, string> = {
-  default: 'gray',
-  plan: 'cyan',
-  acceptEdits: 'green',
-  bypass: 'red',
+  default: C.gray,
+  plan: C.cyan,
+  acceptEdits: C.green,
+  bypass: C.red,
 }
-
-const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 /**
  * Prompt mark, one column. The space that separates it from the text comes from
@@ -102,64 +101,44 @@ export function viewport(
 export const InputBar = memo(function InputBar({
   input,
   caret,
-  disabled,
-  processingLabel,
+  busy,
   hint,
   mode = 'default',
   vim = null,
 }: Props) {
-  const [frame, setFrame] = useState(0)
-  useEffect(() => {
-    if (!disabled) return
-    // 200ms is a clean 2× of the 100ms stream flush (useAgentRunner FLUSH_MS):
-    // the two timers phase-lock instead of beating, so the live frame repaints
-    // on a steady cadence rather than at drifting 100/150ms intervals — the
-    // extra unsynced repaints were a visible flicker source.
-    const t = setInterval(() => setFrame((f) => (f + 1) % SPIN.length), 200)
-    return () => clearInterval(t)
-  }, [disabled])
-
   // The stream Ink is actually rendering to, not the global process.stdout —
   // they differ under test and when the app is driven programmatically.
   const { stdout } = useStdout()
   const view = viewport(input, caret ?? input.length, fieldWidth(stdout?.columns ?? 80))
-  const showPlaceholder = !disabled && input.length === 0
+  const showPlaceholder = input.length === 0
+  const placeholder = busy ? BUSY_PLACEHOLDER : INPUT_PLACEHOLDER
 
   return (
     <Box flexDirection="column" width="100%">
       <Box
         width="100%"
         borderStyle="round"
-        borderColor={disabled ? 'yellow' : MODE_COLOR[mode]}
+        borderColor={MODE_COLOR[mode]}
         paddingX={1}
       >
-        {disabled ? (
+        <Text color={showPlaceholder ? C.gray : C.blue}>{PROMPT}</Text>
+        {/* Gutter: the separator after the prompt, doubling as the
+            scrolled-left marker. Always one column, so the field width —
+            and therefore the bar's height — never changes. */}
+        <Text dimColor>{view.less ? '‹' : ' '}</Text>
+        {showPlaceholder ? (
           <>
-            <Text color="yellow">{SPIN[frame]} </Text>
-            <Text>{processingLabel ?? 'processing…'}</Text>
+            {/* The caret sits on the placeholder's first cell, so an empty
+                bar still shows where typing will land. */}
+            <Text inverse>{placeholder.slice(0, 1)}</Text>
+            <Text dimColor>{placeholder.slice(1)}</Text>
           </>
         ) : (
           <>
-            <Text color={showPlaceholder ? 'gray' : 'blue'}>{PROMPT}</Text>
-            {/* Gutter: the separator after the prompt, doubling as the
-                scrolled-left marker. Always one column, so the field width —
-                and therefore the bar's height — never changes. */}
-            <Text dimColor>{view.less ? '‹' : ' '}</Text>
-            {showPlaceholder ? (
-              <>
-                {/* The caret sits on the placeholder's first cell, so an empty
-                    bar still shows where typing will land. */}
-                <Text inverse>{INPUT_PLACEHOLDER.slice(0, 1)}</Text>
-                <Text dimColor>{INPUT_PLACEHOLDER.slice(1)}</Text>
-              </>
-            ) : (
-              <>
-                <Text>{view.text.slice(0, view.caretCol)}</Text>
-                <Text inverse>{view.text.slice(view.caretCol, view.caretCol + 1) || ' '}</Text>
-                <Text>{view.text.slice(view.caretCol + 1)}</Text>
-                <Text dimColor>{view.more ? '›' : ' '}</Text>
-              </>
-            )}
+            <Text>{view.text.slice(0, view.caretCol)}</Text>
+            <Text inverse>{view.text.slice(view.caretCol, view.caretCol + 1) || ' '}</Text>
+            <Text>{view.text.slice(view.caretCol + 1)}</Text>
+            <Text dimColor>{view.more ? '›' : ' '}</Text>
           </>
         )}
       </Box>
@@ -171,11 +150,11 @@ export const InputBar = memo(function InputBar({
             letter is a command, and not knowing you are in it is how you lose a
             prompt. Insert mode is the default behaviour, so it stays quiet. */}
         {vim === 'normal' && (
-          <Text color="magenta" bold>NORMAL{' · '}</Text>
+          <Text color={C.magenta} bold>NORMAL{' · '}</Text>
         )}
         <Text dimColor>
           {fitHint(
-            hint ?? (disabled ? BUSY_HINTS : INPUT_HINTS),
+            hint ?? (busy ? BUSY_HINTS : INPUT_HINTS),
             // The mode chip eats into the same row, so the hints have to fit
             // what's left of it or the bar wraps and pushes the frame.
             (stdout?.columns ?? 80)

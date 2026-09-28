@@ -1,21 +1,19 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Box, Text, measureElement, type DOMElement } from 'ink'
 import { renderMarkdownStreaming } from './markdown.js'
-import { ThinkingBlock } from './ThinkingBlock.js'
 import type { ChatMessage, ToolUseDisplay, ToolResultDisplay, PermissionRequest } from './types.js'
 import { UserMessage, AssistantMessage, ASST_ACCENT, ASST_RULE } from './Message.js'
 import { ToolUseList } from './ToolBlock.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
 import { clipTail, clipTailVisual, contentWidth } from './layout.js'
+import { mergeToolSteps } from './mergeSteps.js'
 import { setScrollMetrics, useScroll } from './scroll.js'
+import { C } from './theme.js'
 
 interface Props {
   messages: ChatMessage[]
   streaming: boolean
   streamingContent: string
-  thinking: boolean
-  /** Just the line being thought right now — the whole thought lands in `messages`. */
-  thinkingTail?: string
   error?: string | null
   pendingPermission?: PermissionRequest | null
   permissionCursor?: number
@@ -37,8 +35,6 @@ export function ChatView({
   messages,
   streaming,
   streamingContent,
-  thinking,
-  thinkingTail,
   error,
   pendingPermission,
   permissionCursor = 0,
@@ -59,8 +55,6 @@ export function ChatView({
   // after the input bar and any pickers, so its height is yoga's answer, not a
   // guess — measured here because the scroll math needs it in rows.
   const [viewportRows, setViewportRows] = useState(10)
-
-  const scrolled = !scroll.stick
 
   useEffect(() => {
     if (innerRef.current) {
@@ -83,6 +77,9 @@ export function ChatView({
   // the last measure.
   const top = scroll.stick ? maxTop : Math.min(scroll.top, maxTop)
   const below = maxTop - top
+  // A view held at the tail (a block clicked open there) has nothing below it
+  // to announce yet.
+  const scrolled = !scroll.stick && below > 0
   // Tail-following is done with flex, not the margin: bottom-aligning the inner
   // box is exact on the frame it renders, whereas the margin depends on a height
   // measured one render ago — which during streaming is a row out of date every
@@ -101,7 +98,7 @@ export function ChatView({
     const rendered = clipTailVisual(renderMarkdownStreaming(raw.text), budget, width)
     const clipped = raw.clipped + rendered.clipped
     streamNode = (
-      <Box flexDirection="column" marginBottom={1}>
+      <Box flexDirection="column">
         {clipped > 0 && (
           <Text dimColor>{`↑ ${clipped} more line${clipped === 1 ? '' : 's'} above — streaming…`}</Text>
         )}
@@ -114,6 +111,20 @@ export function ChatView({
       </Box>
     )
   }
+
+  // Calls in flight join the transcript as one more step, so they fold into the
+  // block above them as they happen — a read following two reads grows that
+  // "Read 2 files" block in place rather than appearing below it and then
+  // jumping up when its step commits. Behind streaming text they stay separate:
+  // they come after what the agent is saying, not before it.
+  const live = !streamNode && activeToolUses?.length ? activeToolUses : null
+  const shown = useMemo(
+    () =>
+      mergeToolSteps(
+        live ? [...messages, { role: 'assistant', content: '', tool_uses: live, tool_results: activeToolResults }] : messages,
+      ),
+    [messages, live, activeToolResults],
+  )
 
   // Every active tool block renders — the viewport clips what doesn't fit and the
   // user can scroll back to the rest, so there's no row budget to keep here.
@@ -142,27 +153,30 @@ export function ChatView({
         >
           {header}
 
-          {messages.map((msg, i) => (
+          {shown.map((msg, i) => (
             <Box key={`msg-${i}`} marginLeft={1} flexShrink={0}>
               {msg.role === 'user' ? <UserMessage msg={msg} /> : <AssistantMessage msg={msg} />}
             </Box>
           ))}
 
-          <Box flexDirection="column" marginLeft={1} flexShrink={0}>
-            {thinking && <ThinkingBlock tail={thinkingTail} />}
-
+          {/* The step in flight, laid out exactly like a committed one (see
+              AssistantMessage) so it doesn't shift when it commits. Thinking is
+              shown in the input bar's status row, not here: a block that
+              appears between every step and vanishes when text starts is what
+              made a turn jump around instead of reading as one running list. */}
+          <Box flexDirection="column" marginLeft={1} flexShrink={0} rowGap={1}>
             {streamNode}
 
-            {activeToolUses && activeToolUses.length > 0 && (
+            {streamNode && activeToolUses && activeToolUses.length > 0 && (
               <ToolUseList uses={activeToolUses} results={activeToolResults} />
             )}
 
             {pendingPermission && <PermissionPrompt req={pendingPermission} cursor={permissionCursor} />}
 
             {error && (
-              <Box flexDirection="row" marginBottom={1}>
-                <Text color="red">● </Text>
-                <Text color="red">{error}</Text>
+              <Box flexDirection="row">
+                <Text color={C.red}>● </Text>
+                <Text color={C.red}>{error}</Text>
               </Box>
             )}
           </Box>

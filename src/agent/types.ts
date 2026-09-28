@@ -74,6 +74,8 @@ export type AgentEvent =
    * mirrors it so the indicator and the next turn agree with the loop.
    */
   | { type: 'mode-change'; mode: PermissionMode }
+  /** A message the user sent mid-run was handed to the model with the last results. */
+  | { type: 'steer'; text: string }
   | { type: 'turn-end'; stop_reason: StopReason }
   | { type: 'done'; prompt_tokens: number; eval_tokens: number }
   | { type: 'aborted'; prompt_tokens: number; eval_tokens: number; duration_ms: number }

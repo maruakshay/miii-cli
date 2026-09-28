@@ -58,6 +58,20 @@ export function scrollToBottom(): void {
   emit()
 }
 
+/**
+ * Stop following the tail but keep the rows on screen exactly where they are.
+ *
+ * A tail-pinned view grows upward: anything that gets taller pushes the rows
+ * above it off the top. That's right for new output, wrong for a block the
+ * user just clicked open — its headline would scroll away and the click would
+ * look like it did nothing. Holding the current top makes it grow downward.
+ */
+export function holdScroll(): void {
+  if (!state.stick) return
+  state = { top: maxScrollTop(), stick: false }
+  emit()
+}
+
 /** Reset for a fresh transcript (/clear, /new, session load). */
 export function resetScroll(): void {
   state = { top: 0, stick: true }

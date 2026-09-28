@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { setScrollMetrics, scrollBy, scrollToBottom, resetScroll, maxScrollTop, __scrollState } from './scroll.js'
+import { setScrollMetrics, scrollBy, scrollToBottom, resetScroll, holdScroll, maxScrollTop, __scrollState } from './scroll.js'
 
 describe('scroll', () => {
   beforeEach(() => {
@@ -40,5 +40,20 @@ describe('scroll', () => {
     expect(maxScrollTop()).toBe(0)
     scrollBy(-5)
     expect(__scrollState()).toEqual({ top: 0, stick: true })
+  })
+
+  it('holds a tail-pinned view where it is, so an expanding block grows downward', () => {
+    holdScroll()
+    expect(__scrollState()).toEqual({ top: 80, stick: false })
+    // The block opens: content grows, the view stays put.
+    setScrollMetrics(130, 20)
+    scrollBy(0)
+    expect(__scrollState()).toEqual({ top: 80, stick: false })
+  })
+
+  it('leaves an already scrolled view alone', () => {
+    scrollBy(-30)
+    holdScroll()
+    expect(__scrollState()).toEqual({ top: 50, stick: false })
   })
 })

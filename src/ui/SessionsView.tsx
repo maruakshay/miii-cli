@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink'
 import type { SessionMeta } from '../session/store.js'
+import { C } from './theme.js'
 
 interface Props {
   sessions: SessionMeta[]
@@ -27,7 +28,7 @@ export function SessionsView({ sessions, cursor }: Props) {
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Text dimColor>resume session</Text>
-      <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor={C.gray} paddingX={1}>
         {sessions.length === 0 ? (
           <Text dimColor>no saved sessions yet</Text>
         ) : (
@@ -40,7 +41,7 @@ export function SessionsView({ sessions, cursor }: Props) {
             const label = truncate(s.title, titleMax)
             return (
               <Box key={s.id} gap={1}>
-                <Text wrap="truncate" color={active ? 'blue' : undefined} dimColor={!active}>
+                <Text wrap="truncate" color={active ? C.blue : undefined} dimColor={!active}>
                   {active ? '❯ ' : '  '}{label}
                 </Text>
                 <Text wrap="truncate" dimColor>{meta}</Text>

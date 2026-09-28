@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { readdirSync } from 'fs'
 import { join, relative } from 'path'
+import { C } from './theme.js'
 
 const IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '.miii'])
 const MAX_RESULTS = 10
@@ -81,7 +82,7 @@ export function FilePicker({ matches, cursor }: Props) {
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="gray"
+      borderColor={C.gray}
       marginX={1}
       marginBottom={0}
       paddingX={1}
@@ -90,7 +91,7 @@ export function FilePicker({ matches, cursor }: Props) {
         const active = i === cursor
         return (
           <Box key={f}>
-            <Text bold={active} color={active ? 'blue' : undefined} dimColor={!active}>
+            <Text bold={active} color={active ? C.blue : undefined} dimColor={!active}>
               {active ? '❯ ' : '  '}{f}
             </Text>
           </Box>

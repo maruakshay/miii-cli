@@ -8,11 +8,12 @@ import { useState, useRef } from 'react'
 import { runAgent } from '../../agent/loop.js'
 import { HookBus } from '../../hooks/bus.js'
 import { checkpointPreToolHook, snapshotForTurn } from '../../session/checkpoint.js'
-import { compactHistory, estimateHistoryTokens } from '../../agent/compact.js'
+import { compactHistory, estimateHistoryTokens, CHARS_PER_TOKEN } from '../../agent/compact.js'
 import type { ChatMessage, PermissionRequest, PermissionAnswer, ToolUseDisplay, ToolResultDisplay } from '../types.js'
+import { TurnSummaryBuilder } from '../turnSummary.js'
+import { isHiddenTool } from '../mergeSteps.js'
 import type { MiiMessage } from '../../agent/types.js'
 import { MODE_HINT, MODE_LABEL, nextMode, type PermissionMode } from '../../permissions/policy.js'
-import { tailLine } from '../layout.js'
 import { describeTool } from '../toolLabel.js'
 
 // How often (ms) we flush streaming text to React state — avoids a re-render per token.
@@ -34,7 +35,19 @@ export function useAgentRunner(
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [thinking, setThinking] = useState(false)
-  const [thinkingTail, setThinkingTail] = useState('')
+  /** When the running turn (or compaction) began — the status line's clock. */
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  /** Output tokens streamed so far this turn, across every step — an estimate. */
+  const [turnTokens, setTurnTokens] = useState(0)
+  /**
+   * Messages typed while a turn runs. Text-only ones are handed to the model at
+   * the next tool boundary (see takeSteering); whatever is still here when the
+   * turn ends is sent as the next turn. The ref is the queue, the state is what
+   * the input area shows as waiting.
+   */
+  const queueRef = useRef<Array<{ text: string; images?: string[] }>>([])
+  const [queued, setQueued] = useState<string[]>([])
+  const syncQueued = () => setQueued(queueRef.current.map((q) => q.text))
   const [streaming, setStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -140,11 +153,38 @@ export function useAgentRunner(
     req.resolve('no')
   }
 
+  /** Hand the model the queued text-only messages; ones with images wait for the next turn. */
+  function takeSteering(): string[] {
+    const taken = queueRef.current.filter((q) => !q.images?.length)
+    if (!taken.length) return []
+    queueRef.current = queueRef.current.filter((q) => q.images?.length)
+    syncQueued()
+    return taken.map((q) => q.text)
+  }
+
+  /**
+   * Empty the queue and return its text — for esc, which cancels the turn and
+   * hands the unsent messages back to the input rather than firing them off.
+   */
+  function takeQueue(): string {
+    const text = queueRef.current.map((q) => q.text).join('\n\n')
+    queueRef.current = []
+    syncQueued()
+    return text
+  }
+
   async function sendMessage(text: string, images?: string[]) {
-    if (busyRef.current || !model) return
+    if (!model) return
+    if (busyRef.current) {
+      queueRef.current.push({ text, images })
+      syncQueued()
+      return
+    }
     busyRef.current = true
     setBusy(true)
-    setProcessingLabel('crunching…')
+    setProcessingLabel('Thinking…')
+    setStartedAt(Date.now())
+    setTurnTokens(0)
     setError(null)
 
     setMessages((prev) => [...prev, { role: 'user', content: text }])
@@ -153,7 +193,9 @@ export function useAgentRunner(
     let accumulated = ''
     let thinkingAcc = ''
     let firstToken = true
-    setThinkingTail('')
+    // Characters the model has written this turn, thoughts included — the step
+    // buffers above reset on every tool call, this runs for the whole turn.
+    let outChars = 0
 
     // Throttled setters — batch token-level deltas into periodic React updates.
     let streamFlushAt = 0
@@ -163,19 +205,23 @@ export function useAgentRunner(
       if (force || now - streamFlushAt >= FLUSH_MS) {
         streamFlushAt = now
         setStreamingContent(accumulated)
+        setTurnTokens(Math.ceil(outChars / CHARS_PER_TOKEN))
       }
     }
     const flushThink = (force = false) => {
       const now = Date.now()
       if (force || now - thinkFlushAt >= FLUSH_MS) {
         thinkFlushAt = now
-        setThinkingTail(tailLine(thinkingAcc))
+        setTurnTokens(Math.ceil(outChars / CHARS_PER_TOKEN))
       }
     }
 
     let turnUses: ToolUseDisplay[] = []
     let turnResults: ToolResultDisplay[] = []
     const startTime = Date.now()
+    // Turn-wide, unlike turnUses/turnResults which reset with every step.
+    const summary = new TurnSummaryBuilder()
+    const usesById = new Map<string, ToolUseDisplay>()
 
     /** Commit accumulated text + tool activity as a finished assistant message. */
     const flushTurn = (final: { prompt: number; eval: number } | null) => {
@@ -189,6 +235,7 @@ export function useAgentRunner(
       if (final) {
         msg.tokens = { prompt_eval: final.prompt, eval: final.eval }
         msg.duration = Date.now() - startTime
+        msg.summary = summary.build()
       }
       setMessages((prev) => [...prev, msg])
       accumulated = ''
@@ -196,7 +243,6 @@ export function useAgentRunner(
       turnUses = []
       turnResults = []
       setStreamingContent('')
-      setThinkingTail('')
       setActiveToolUses([])
       setActiveToolResults([])
     }
@@ -220,6 +266,7 @@ export function useAgentRunner(
         hooks: hooksRef.current ?? undefined,
         signal: controller.signal,
         num_ctx: activeCtx ?? undefined,
+        takeSteering,
       })
 
       let finalTokens = { prompt: 0, eval: 0 }
@@ -234,35 +281,43 @@ export function useAgentRunner(
           case 'text-delta': {
             if (firstToken) { firstToken = false; setStreaming(true) }
             setThinking(false)
-            setProcessingLabel('responding…')
+            setProcessingLabel('Writing…')
             accumulated += ev.text
+            outChars += ev.text.length
             flushStream()
             break
           }
           case 'thinking-delta': {
             thinkingAcc += ev.text
+            outChars += ev.text.length
             setThinking(true)
-            setProcessingLabel('crunching…')
+            setProcessingLabel('Thinking…')
             flushThink()
             break
           }
           case 'tool-use': {
-            turnUses.push({ id: ev.block.id, name: ev.block.name, input: ev.block.input })
+            const use = { id: ev.block.id, name: ev.block.name, input: ev.block.input }
+            turnUses.push(use)
+            usesById.set(use.id, use)
             setActiveToolUses([...turnUses])
             // The spinner says what the call does, not which tool it is —
             // "Running the tests…" reads like a status, "running run_bash…" doesn't.
-            setProcessingLabel(`${describeTool(ev.block.name, ev.block.input).text}…`)
+            // Hidden tools stay hidden here too: "Updating the task list…" is
+            // the one status nobody needs to see.
+            if (!isHiddenTool(ev.block.name)) setProcessingLabel(`${describeTool(ev.block.name, ev.block.input).text}…`)
             break
           }
           case 'tool-result': {
-            turnResults.push({
+            const res: ToolResultDisplay = {
               tool_use_id: ev.block.tool_use_id,
               content: ev.block.content,
               is_error: ev.block.is_error,
               diff: ev.block.diff,
-            })
+            }
+            turnResults.push(res)
+            summary.add(usesById.get(res.tool_use_id), res)
             setActiveToolResults([...turnResults])
-            setProcessingLabel('crunching…')
+            setProcessingLabel('Thinking…')
             break
           }
           case 'mode-change': {
@@ -277,6 +332,12 @@ export function useAgentRunner(
                 content: `▸ **plan approved** — ${MODE_LABEL[ev.mode]}: ${MODE_HINT[ev.mode]}`,
               },
             ])
+            break
+          }
+          case 'steer': {
+            // Lands after the step it was delivered with, which is where the
+            // model reads it — so the transcript shows when it took effect.
+            setMessages((prev) => [...prev, { role: 'user', content: ev.text }])
             break
           }
           case 'hook-notice': {
@@ -354,6 +415,17 @@ export function useAgentRunner(
     busyRef.current = false
     setBusy(false)
     setProcessingLabel(undefined)
+    setStartedAt(null)
+
+    // Typed after the last tool round, so the model never saw it: it becomes
+    // the next turn. An aborted run's queue went back to the input via esc.
+    if (!controller.signal.aborted && queueRef.current.length) {
+      const next = queueRef.current
+      queueRef.current = []
+      syncQueued()
+      const imgs = next.flatMap((q) => q.images ?? [])
+      void sendMessage(next.map((q) => q.text).join('\n\n'), imgs.length ? imgs : undefined)
+    }
   }
 
   /**
@@ -375,7 +447,9 @@ export function useAgentRunner(
     busyRef.current = true
     setBusy(true)
     setCompacting(true)
-    setProcessingLabel('compacting context…')
+    setProcessingLabel('Compacting context…')
+    setStartedAt(Date.now())
+    setTurnTokens(0)
     setError(null)
 
     const controller = new AbortController()
@@ -410,6 +484,7 @@ export function useAgentRunner(
       setBusy(false)
       setCompacting(false)
       setProcessingLabel(undefined)
+      setStartedAt(null)
     }
   }
 
@@ -417,7 +492,9 @@ export function useAgentRunner(
     // state
     messages, setMessages,
     thinking,
-    thinkingTail, setThinkingTail,
+    startedAt,
+    turnTokens,
+    queued,
     streaming,
     streamingContent, setStreamingContent,
     error, setError,
@@ -440,6 +517,7 @@ export function useAgentRunner(
     modeRef,
     // actions
     sendMessage,
+    takeQueue,
     resolvePermission,
     cancelPermission,
     compact,

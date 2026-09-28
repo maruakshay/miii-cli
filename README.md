@@ -107,6 +107,9 @@ miii delivers the advanced workflow of top-tier agents without the vendor lock-i
 - **🔒 Permission-Gated** — You are in control. Approve every file write and shell command. Rules persist in `.miii/permissions.json`.
 - **⟲ /rewind** — Undo agent changes *and* the conversation history. Checkpoints make experimenting risk-free.
 - **🧩 Subagents** — Delegated `task` loops handle complex searches in their own context, returning only the final answer.
+- **💭 Live Status** — One status line shows what the agent is doing, with live timing and token counts. Full thoughts are a `ctrl+t` away.
+- **⚡ Mid-turn Steering** — Send corrections or new instructions *while* the agent is running. miii queues your input and adapts its next step in real-time.
+- **🎯 Turn Summaries** — Every completed turn ends with a concise summary of files changed and test results. No more scrolling up to see what actually happened.
 - **🧠 Model-Aware** — miii handles broken tool calls from smaller models and optimizes prompts for various context windows.
 - **🔀 Hot-Swapping** — Use `/provider` and `/models` to switch backends instantly without restarting your session.
 - **🔌 MCP Support** — Connect to GitHub, Postgres, or your own internal services via Model Context Protocol.

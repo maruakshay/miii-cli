@@ -6,6 +6,8 @@ import { ToolUseList } from './ToolBlock.js'
 import { formatTokens, formatDuration, contentWidth, padLines, userTextWidth } from './layout.js'
 import { useTerminalWidth } from './hooks/useTerminalWidth.js'
 import { useThinkingVisible, CHALK } from './ThinkingBlock.js'
+import { summaryParts } from './turnSummary.js'
+import { C } from './theme.js'
 
 /**
  * An echoed user message is drawn as a card: a coloured rule down the left edge
@@ -13,11 +15,10 @@ import { useThinkingVisible, CHALK } from './ThinkingBlock.js'
  * several rows — the rule is what carries continuity down the block, and it's
  * what keeps a wrapped message from looking like two.
  *
- * Colours are named rather than hex so they track the terminal's own palette
- * instead of fighting a light or dark theme.
+ * Colours come from the pale palette in theme.ts.
  */
-const USER_BG = 'gray'
-const USER_ACCENT = 'blue'
+const USER_BG = C.panel
+const USER_ACCENT = C.blue
 const USER_RULE = '\u258c'
 
 /**
@@ -27,8 +28,8 @@ const USER_RULE = '\u258c'
  * of the reply on that one frame — a whole-block twitch at the end of each turn.
  * Two columns, matching the offset contentWidth() reserves.
  */
-export const ASST_ACCENT = 'cyan'
-export const ASST_RULE = '\u258c '
+export const ASST_ACCENT = C.white
+export const ASST_RULE = '\u25cf '
 
 export const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage }) {
   // Read through the hook, not process.stdout: this component is memoised, so a
@@ -57,9 +58,13 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
   const thoughts = msg.thinking?.trim()
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    // One step of a turn is a list of items — thought, text, each tool block —
+    // one blank row apart. Every step of the turn lands under the last with the
+    // same spacing, so the whole turn reads as a single running list rather than
+    // a stack of separate cards.
+    <Box flexDirection="column" marginBottom={1} rowGap={1}>
       {showThoughts && thoughts && (
-        <Box flexDirection="row" marginBottom={1}>
+        <Box flexDirection="row">
           <Text color={CHALK}>{'✻ '}</Text>
           <Box width={contentWidth()}>
             <Text dimColor italic wrap="wrap">{thoughts}</Text>
@@ -78,10 +83,20 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
         <ToolUseList uses={msg.tool_uses} results={msg.tool_results} />
       )}
       {msg.tokens && (
-        <Box marginLeft={2}>
-          <Text dimColor>
-            {`↳ Completed · ${formatTokens(msg.tokens.prompt_eval + msg.tokens.eval)} tokens`}
-            {msg.duration != null ? ` · ${formatDuration(msg.duration)}` : ''}
+        // One Text with nested runs, not sibling Texts: siblings are flex
+        // items, and each would wrap in its own column on a narrow terminal.
+        <Box width={contentWidth() + 2}>
+          <Text dimColor wrap="wrap">
+            {'↳ '}
+            {summaryParts(
+              msg.summary,
+              formatTokens(msg.tokens.prompt_eval + msg.tokens.eval),
+              msg.duration != null ? formatDuration(msg.duration) : undefined,
+            ).map((p, i) => (
+              <Text key={i} color={p.tone === 'good' ? C.green : p.tone === 'bad' ? C.red : undefined} dimColor={!p.tone}>
+                {i > 0 ? ' · ' : ''}{p.text}
+              </Text>
+            ))}
           </Text>
         </Box>
       )}

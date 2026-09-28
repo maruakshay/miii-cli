@@ -2,12 +2,14 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Box, Text, type DOMElement } from 'ink'
 import { highlight, supportsLanguage } from 'cli-highlight'
 import type { ToolUseDisplay, ToolResultDisplay } from './types.js'
+import { isHiddenTool } from './mergeSteps.js'
 import type { DiffLine, FileDiff } from '../diff.js'
 import { useToolExpanded } from './toolExpand.js'
 import { registerToolBlock, unregisterToolBlock } from './toolHit.js'
 import { describeTool, groupHeadline, groupToolUses, isGroupable, TOOL_LABEL } from './toolLabel.js'
 import { countLines, truncate } from './layout.js'
 import { renderMarkdown } from './markdown.js'
+import { C } from './theme.js'
 
 // Tool output is collapsed to a few lines by default; a click or ctrl+o toggles full view.
 const COLLAPSED_LINES = 3
@@ -75,8 +77,8 @@ function ToolHeader({ use }: { use: ToolUseDisplay }) {
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color="green">● </Text>
-        <Text color="white">{text}</Text>
+        <Text color={C.green}>● </Text>
+        <Text color={C.white}>{text}</Text>
       </Box>
       {expanded && (
         <Box marginLeft={2}>
@@ -126,7 +128,7 @@ function DiffBlock({ use, label, diff }: { use: ToolUseDisplay; label: string; d
   const counts = `+${diff.added}${diff.removed > 0 ? ` −${diff.removed}` : ''}`
 
   return (
-    <Box flexDirection="column" marginLeft={2}>
+    <Box flexDirection="column">
       <ToolHeader use={use} />
       <Box marginLeft={2}>
         <Text dimColor>
@@ -201,7 +203,7 @@ function FileEditBlock({
   const extra = previewLines.length - shown.length
   const lang = langFromPath(path)
   return (
-    <Box flexDirection="column" marginLeft={2}>
+    <Box flexDirection="column">
       <ToolHeader use={use} />
       <Box marginLeft={2}>
         <Text dimColor>
@@ -244,42 +246,6 @@ function FileEditBlock({
   )
 }
 
-type TodoStatus = 'pending' | 'in_progress' | 'completed'
-type TodoItem = { content: string; status: TodoStatus }
-
-// Live task checklist rendered like a kanban board: every item shows its column
-// (done / in progress / todo) so the user can see progress at a glance. The list
-// lives in the tool's input, redrawn in full on each call.
-function TodoBlock({ todos }: { todos: TodoItem[] }) {
-  const done = todos.filter((t) => t.status === 'completed').length
-  const doing = todos.filter((t) => t.status === 'in_progress').length
-  const glyph: Record<TodoStatus, string> = { completed: '✔', in_progress: '▶', pending: '○' }
-  const color: Record<TodoStatus, string> = { completed: 'green', in_progress: 'yellow', pending: 'gray' }
-  return (
-    <Box flexDirection="column" marginLeft={2}>
-      <Box>
-        <Text color="green">● </Text>
-        <Text color="white">Updating the task list </Text>
-        <Text dimColor>
-          ({done}/{todos.length} done{doing > 0 ? `, ${doing} in progress` : ''})
-        </Text>
-      </Box>
-      {todos.map((t, i) => (
-        <Box key={i} marginLeft={4}>
-          <Text color={color[t.status]}>{glyph[t.status]} </Text>
-          <Text
-            color={t.status === 'in_progress' ? 'yellow' : undefined}
-            dimColor={t.status !== 'in_progress'}
-            strikethrough={t.status === 'completed'}
-            bold={t.status === 'in_progress'}
-          >
-            {t.content}
-          </Text>
-        </Box>
-      ))}
-    </Box>
-  )
-}
 
 function summarizeResult(res: ToolResultDisplay, toolName?: string): string {
   const content = res.content ?? ''
@@ -336,7 +302,7 @@ function ToolResultBlock({
   if (!showMulti) {
     return (
       <Box marginLeft={2}>
-        <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error} wrap="truncate">
+        <Text color={result.is_error ? C.red : undefined} dimColor={!result.is_error} wrap="truncate">
           {'⎿  '}{subject ? `${subject} · ` : ''}{summarizeResult(result, toolName)}
         </Text>
       </Box>
@@ -360,12 +326,12 @@ function ToolResultBlock({
   const header = `${subject ? `${subject} · ` : ''}${count}${hint}`
   return (
     <Box flexDirection="column" marginLeft={2}>
-      <Text color={result.is_error ? 'red' : undefined} dimColor={!result.is_error} wrap="truncate">
+      <Text color={result.is_error ? C.red : undefined} dimColor={!result.is_error} wrap="truncate">
         {'⎿  '}{header}
       </Text>
       {shown.map((ln, i) => (
         <Box key={i} marginLeft={4}>
-          <Text color={result.is_error ? 'red' : undefined} dimColor>{ln || ' '}</Text>
+          <Text color={result.is_error ? C.red : undefined} dimColor>{ln || ' '}</Text>
         </Box>
       ))}
       {extra > 0 && shown.length > 0 && (
@@ -387,15 +353,15 @@ function ToolResultBlock({
  */
 function PlanBlock({ plan, result }: { plan: string; result?: ToolResultDisplay }) {
   return (
-    <Box flexDirection="column" marginLeft={2}>
-      <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
-        <Text color="cyan" bold>Proposed plan</Text>
+    <Box flexDirection="column">
+      <Box borderStyle="round" borderColor={C.cyan} paddingX={1} flexDirection="column">
+        <Text color={C.cyan} bold>Proposed plan</Text>
         <Box marginTop={1}>
           <Text>{renderMarkdown(plan.trim())}</Text>
         </Box>
       </Box>
       {result && (
-        <Text color={result.is_error ? 'yellow' : 'green'}>
+        <Text color={result.is_error ? C.yellow : C.green}>
           {'⎿  '}{result.is_error ? 'kept planning' : 'approved — starting work'}
         </Text>
       )}
@@ -426,10 +392,10 @@ function ToolGroupBlock({
   const lone = uses.length === 1
 
   return (
-    <Box flexDirection="column" marginLeft={2}>
+    <Box flexDirection="column">
       <Box>
-        <Text color="green">● </Text>
-        <Text color="white">
+        <Text color={C.green}>● </Text>
+        <Text color={C.white}>
           {lone ? describeTool(name, uses[0].input).text : groupHeadline(name, uses.length, pending)}
         </Text>
         {/* A path names itself in the headline, but "Linting" or "Listing
@@ -437,6 +403,8 @@ function ToolGroupBlock({
         {lone && name === 'run_bash' && (
           <Text dimColor> · {truncate(String((uses[0].input as { command?: string })?.command ?? '').replace(/\s+/g, ' '), 60)}</Text>
         )}
+        {/* Collapsed, a run is its headline alone; a click opens every call. */}
+        {!lone && !expanded && <Text dimColor> (click to expand)</Text>}
       </Box>
       {uses.map((use) => {
         const result = results.get(use.id)
@@ -468,12 +436,13 @@ function ToolGroupBlock({
             </Box>
           )
         }
-        // Collapsed and one of several: the subject and how it went, one row.
+        // Collapsed and one of several: only a failure earns a row — a run that
+        // went fine is fully told by its headline, one that didn't must say so.
+        if (!result?.is_error) return null
         return (
           <Box key={use.id} marginLeft={2}>
-            <Text color={result?.is_error ? 'red' : undefined} dimColor={!result?.is_error} wrap="truncate">
-              {'⎿  '}{subject}
-              {result ? ` · ${summarizeResult(result, use.name)}` : ' · running…'}
+            <Text color={C.red} wrap="truncate">
+              {'⎿  '}{subject} · {summarizeResult(result, use.name)}
             </Text>
           </Box>
         )
@@ -495,7 +464,7 @@ export function ToolUseList({
   const byId = new Map((results ?? []).map((r) => [r.tool_use_id, r]))
   return (
     <>
-      {groupToolUses(uses).map((group) => (
+      {groupToolUses(uses.filter((u) => !isHiddenTool(u.name))).map((group) => (
         <ToolBlockFrame key={group[0].id} id={group[0].id}>
           {isGroupable(group[0].name) ? (
             <ToolGroupBlock uses={group} results={byId} />
@@ -512,10 +481,6 @@ function ToolUseBody({ use, result }: { use: ToolUseDisplay; result?: ToolResult
   if (use.name === 'exit_plan_mode') {
     const plan = (use.input as { plan?: string }).plan
     if (typeof plan === 'string' && plan.trim()) return <PlanBlock plan={plan} result={result} />
-  }
-  if (use.name === 'write_todos' && !result?.is_error) {
-    const todos = (use.input as { todos?: TodoItem[] }).todos
-    if (Array.isArray(todos) && todos.length > 0) return <TodoBlock todos={todos} />
   }
   if ((use.name === 'write_file' || use.name === 'edit_file') && result?.diff && !result.is_error) {
     return <DiffBlock use={use} label={use.name === 'write_file' ? 'Write' : 'Update'} diff={result.diff} />
@@ -552,7 +517,7 @@ function ToolUseBody({ use, result }: { use: ToolUseDisplay; result?: ToolResult
     return <FileEditBlock use={use} label="Update" path={input.path ?? ''} added={added} removed={removed} previewLines={preview} />
   }
   return (
-    <Box flexDirection="column" marginLeft={2}>
+    <Box flexDirection="column">
       <ToolHeader use={use} />
       {result && <ToolResultBlock id={use.id} result={result} toolName={use.name} />}
     </Box>

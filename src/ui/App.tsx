@@ -22,12 +22,14 @@ import { setTerminalTitle, resetTerminalTitle } from './terminalTitle.js'
 import { enableMouse, disableMouse, isMouseEnabled, onMouseChange } from './mouse.js'
 import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
+import { StatusLine, QueuedMessages } from './StatusLine.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
 import { useKeyboard, vimIndicator } from './hooks/useKeyboard.js'
 import { checkForUpdate, autoUpdate } from '../updateCheck.js'
 import { initMcp, closeMcp, type McpServerStatus } from '../mcp/registry.js'
 import { defaultPermissionMode, loadSettings } from '../settings.js'
 import { estimateHistoryTokens } from '../agent/compact.js'
+import { C } from './theme.js'
 
 /** Warn the user once this share of the context window is in use. */
 const CONTEXT_WARN_AT = 0.7
@@ -460,7 +462,6 @@ export function App({ resumeId, continueLast }: AppProps) {
           messages={[]}
           streaming={false}
           streamingContent=""
-          thinking={false}
           error={agent.error}
         />
       )}
@@ -495,15 +496,13 @@ export function App({ resumeId, continueLast }: AppProps) {
         <>
           {notice && (
             <Box marginLeft={2} marginBottom={1} flexShrink={0}>
-              <Text color="green">{`✓ ${notice}`}</Text>
+              <Text color={C.green}>{`✓ ${notice}`}</Text>
             </Box>
           )}
           <ChatView
             messages={agent.messages}
             streaming={agent.streaming}
             streamingContent={agent.streamingContent}
-            thinking={agent.thinking}
-            thinkingTail={agent.thinkingTail}
             error={agent.error}
             pendingPermission={agent.pendingPermission}
             permissionCursor={agent.permissionCursor}
@@ -521,7 +520,7 @@ export function App({ resumeId, continueLast }: AppProps) {
 
           {state === 'ready' && contextWarning !== null && (
             <Box marginLeft={2} marginBottom={1} flexShrink={0}>
-              <Text color="yellow">
+              <Text color={C.yellow}>
                 {contextPct >= AUTO_COMPACT_AT
                   ? `⚠ context ${contextWarning}% full — compacting automatically after this turn`
                   : `⚠ context ${contextWarning}% full — /compact to summarize and keep going, /clear to start over`}
@@ -543,11 +542,18 @@ export function App({ resumeId, continueLast }: AppProps) {
               entirely (avoids a stray "processing" prompt). */}
           {state === 'ready' && (
             <Box flexShrink={0} flexDirection="column">
+              {agent.busy && agent.startedAt !== null && (
+                <StatusLine
+                  label={agent.processingLabel ?? 'Thinking…'}
+                  startedAt={agent.startedAt}
+                  tokens={agent.turnTokens}
+                />
+              )}
+              <QueuedMessages queued={agent.queued} />
               <InputBar
                 input={input}
                 caret={caret}
-                disabled={agent.busy}
-                processingLabel={agent.processingLabel}
+                busy={agent.busy}
                 mode={agent.mode}
                 vim={vimIndicator()}
                 hint={
@@ -585,7 +591,7 @@ export function App({ resumeId, continueLast }: AppProps) {
 
           {updateAvailable && (
             <Box marginLeft={2} marginBottom={1} flexShrink={0}>
-              <Text color={updateStatus === 'failed' ? 'red' : updateStatus === 'installed' ? 'green' : 'yellow'}>
+              <Text color={updateStatus === 'failed' ? C.red : updateStatus === 'installed' ? C.green : C.yellow}>
                 {updateBannerText(updateAvailable, updateStatus)}
               </Text>
             </Box>

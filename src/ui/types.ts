@@ -14,6 +14,13 @@ export interface ToolResultDisplay {
   diff?: FileDiff
 }
 
+/** What a finished turn did, shown on its closing line. */
+export interface TurnSummary {
+  files: Array<{ path: string; added: number; removed: number }>
+  /** Outcome of the last test command the turn ran, if it ran one. */
+  tests?: 'passed' | 'failed'
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -28,6 +35,8 @@ export interface ChatMessage {
   tool_results?: ToolResultDisplay[]
   tokens?: { prompt_eval: number; eval: number }
   duration?: number
+  /** Set on a turn's last message only, alongside `tokens`. */
+  summary?: TurnSummary
 }
 
 export type PermissionAnswer = 'yes' | 'no' | 'always'

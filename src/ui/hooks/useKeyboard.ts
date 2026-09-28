@@ -15,10 +15,10 @@ import { addByName, removeByName } from '../../llm/manage.js'
 import { filteredCommands } from '../CommandPalette.js'
 import { invalidateFileCache, parseMention, searchFiles } from '../FilePicker.js'
 import { toggleThinkingVisible } from '../ThinkingBlock.js'
-import { toggleToolExpanded, toggleAllToolExpanded } from '../toolExpand.js'
+import { isToolExpanded, toggleToolExpanded, toggleAllToolExpanded } from '../toolExpand.js'
 import { toolBlockAtRow } from '../toolHit.js'
 import { parseMouseEvents, toggleMouse } from '../mouse.js'
-import { scrollBy, scrollToBottom, resetScroll } from '../scroll.js'
+import { scrollBy, scrollToBottom, resetScroll, holdScroll } from '../scroll.js'
 import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
 import {
   persistSession,
@@ -245,7 +245,7 @@ export function useKeyboard(opts: KeyboardOptions) {
   const {
     pendingPermissionRef, permissionCursor, setPermissionCursor, resolvePermission, cancelPermission,
     busyRef, abortRef,
-    sendMessage, compact, messages, agentHistory, setMessages, setAgentHistory, setStreamingContent, setThinkingTail,
+    sendMessage, takeQueue, compact, messages, agentHistory, setMessages, setAgentHistory, setStreamingContent,
     setActiveToolUses, setActiveToolResults, setError, setUsedTokens,
     setMode, cycleMode, modeRef, totals,
   } = agent
@@ -274,7 +274,6 @@ export function useKeyboard(opts: KeyboardOptions) {
     setAgentHistory([])
     setUsedTokens(0)
     setStreamingContent('')
-    setThinkingTail('')
     setActiveToolUses([])
     setActiveToolResults([])
     setError(null)
@@ -391,7 +390,6 @@ export function useKeyboard(opts: KeyboardOptions) {
     setMessages(() => toDisplayMessages(history))
     setUsedTokens(estimateHistoryTokens(history))
     setStreamingContent('')
-    setThinkingTail('')
     setActiveToolUses([])
     setActiveToolResults([])
     setError(null)
@@ -422,7 +420,11 @@ export function useKeyboard(opts: KeyboardOptions) {
         if (ev.wheel) rows += ev.up ? -WHEEL_ROWS : WHEEL_ROWS
         else if (ev.button === 0) {
           const id = toolBlockAtRow(ev.y, process.stdout.rows ?? 24)
-          if (id) toggleToolExpanded(id)
+          if (!id) continue
+          // Opening a block while the view follows the tail would grow it
+          // upward, off the top of the screen — hold the view still instead.
+          if (!isToolExpanded(id)) holdScroll()
+          toggleToolExpanded(id)
         }
       }
       if (rows !== 0) scrollBy(rows)
@@ -465,6 +467,15 @@ export function useKeyboard(opts: KeyboardOptions) {
       // — they cancelled rather than approved.
       cancelPermission()
       abortRef.current.abort()
+      // Messages queued for this turn were meant for it; firing them into a
+      // fresh turn after a cancel is the opposite of what esc asked for. They go
+      // back into the input to be sent, edited or dropped.
+      const unsent = takeQueue()
+      if (unsent) {
+        const next = input.trim() ? `${unsent}\n${input}` : unsent
+        setInput(() => next)
+        setCaret(() => next.length)
+      }
       return
     }
 
@@ -569,7 +580,6 @@ export function useKeyboard(opts: KeyboardOptions) {
         setUsedTokens(estimateHistoryTokens(history))
         setMessages(toDisplayMessages(history))
         setStreamingContent('')
-        setThinkingTail('')
         setActiveToolUses([])
         setActiveToolResults([])
         setError(null)
@@ -593,15 +603,16 @@ export function useKeyboard(opts: KeyboardOptions) {
     }
 
     // --- main chat input ---
+    // Typing stays live while a turn runs: what's sent is queued and handed to
+    // the agent at its next step (useAgentRunner.takeSteering).
     if (state === 'ready') {
-      if (busyRef.current) return
-
       // shift+tab cycles the permission mode. Handled before the palette's tab
       // completion below, which matches on key.tab alone and would otherwise
       // swallow it whenever the input happens to start with '/'. Only while
       // idle: the running turn captured its mode when it started, so changing
       // it mid-run would show a mode the agent is not actually operating under.
       if (key.tab && key.shift) {
+        if (busyRef.current) return
         noticeMode(cycleMode())
         return
       }
@@ -694,6 +705,12 @@ export function useKeyboard(opts: KeyboardOptions) {
         // condition and then uses it, and looking it up twice re-reads the
         // command directory on every send.
         const custom = customCommandFor(trimmed)
+        // Commands act on the session (switch model, clear, rewind), which a
+        // running turn is in the middle of. Keep the line so it's one enter away.
+        if (busyRef.current && trimmed.startsWith('/')) {
+          setNotice(`${trimmed.split(/\s/)[0]} can run once this turn finishes — esc stops it now`)
+          return
+        }
         pushHistory(trimmed)
         historyIndex = -1
         historyDraft = ''

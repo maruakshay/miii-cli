@@ -2,6 +2,7 @@ import { Box, Text } from 'ink'
 import type { Effort } from '../config.js'
 import { currentVersion } from '../updateCheck.js'
 import { WELCOME_COMMANDS, WELCOME_PROMPT } from './constants.js'
+import { C } from './theme.js'
 
 // Lifecycle of the background self-update for the launch banner.
 //   idle        — a newer release exists; auto-update off, on cooldown, or failed to start
@@ -83,7 +84,7 @@ export function WelcomeBlock({
   const version = currentVersion()
   const parts = statusParts(model, activeCtx, effort, provider)
   const updateColor =
-    updateStatus === 'failed' ? 'red' : updateStatus === 'installed' ? 'green' : 'yellow'
+    updateStatus === 'failed' ? C.red : updateStatus === 'installed' ? C.green : C.yellow
 
   if (variant === 'compact') {
     return (
@@ -92,11 +93,11 @@ export function WelcomeBlock({
           flexDirection="column"
           width="100%"
           borderStyle="round"
-          borderColor="gray"
+          borderColor={C.gray}
           paddingX={1}
         >
           <Text>
-            <Text color="blue" bold>{MARK} miii</Text>
+            <Text color={C.blue} bold>{MARK} miii</Text>
             <Text dimColor>{version ? `  v${version}` : ''}</Text>
           </Text>
           <StatusRow parts={parts} />
@@ -119,7 +120,7 @@ export function WelcomeBlock({
     <Box flexDirection="column" marginBottom={1}>
       <Box marginBottom={1}>
         <Text>
-          <Text color="blue" bold>{MARK} miii</Text>
+          <Text color={C.blue} bold>{MARK} miii</Text>
           <Text dimColor>{version ? `  v${version}` : ''}</Text>
         </Text>
       </Box>
@@ -128,14 +129,14 @@ export function WelcomeBlock({
         flexDirection="column"
         width="100%"
         borderStyle="round"
-        borderColor="gray"
+        borderColor={C.gray}
         paddingX={2}
       >
         {/* One <Text> with nested styling, not sibling <Text>s in a row Box:
             siblings are separate flex children and each wraps on its own, which
             shreds the sentence on a narrow terminal. Nested <Text> is inline. */}
         <Text>
-          <Text color="blue">{MARK}</Text> You are using <Text bold>miii</Text> in{' '}
+          <Text color={C.blue}>{MARK}</Text> You are using <Text bold>miii</Text> in{' '}
           <Text bold>{cwd}</Text>
         </Text>
 
@@ -151,7 +152,7 @@ export function WelcomeBlock({
             // still wrapping as one unit — a row Box would wrap the command name
             // itself once the terminal gets narrow.
             <Text key={cmd.name}>
-              <Text color="blue">{cmd.name.padEnd(nameWidth)}</Text>
+              <Text color={C.blue}>{cmd.name.padEnd(nameWidth)}</Text>
               {'  '}
               <Text dimColor>{cmd.description}</Text>
             </Text>

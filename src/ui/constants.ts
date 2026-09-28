@@ -52,9 +52,11 @@ export const WELCOME_PROMPT = 'To get started, describe a task or try one of the
 
 /** Placeholder shown in the input bar while it's empty. */
 export const INPUT_PLACEHOLDER = 'describe a task, or type / for commands'
+/** While a turn runs, what you send is handed to the agent at its next step. */
+export const BUSY_PLACEHOLDER = 'add a message — the agent reads it at its next step'
 
 /** Key hints under the input bar. Kept short — they share one line. */
 export const INPUT_HINTS = '⏎ send · / commands · @ file · shift+tab mode · ctrl+y copy · ctrl+s select · pgup/pgdn to look back'
 
 /** Key hints under the input bar while a turn is running. */
-export const BUSY_HINTS = 'esc interrupt · click a tool for details · ctrl+o all · ctrl+y copy · scroll to look back'
+export const BUSY_HINTS = 'ctrl+t thoughts · click a tool for details · ctrl+o all · ctrl+y copy · scroll to look back'

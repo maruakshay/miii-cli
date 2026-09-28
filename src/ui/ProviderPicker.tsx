@@ -2,6 +2,7 @@ import { Box, Text } from 'ink'
 import { apiKeyFor } from '../config.js'
 import type { NamedProvider } from '../config.js'
 import { PRESETS } from '../llm/presets.js'
+import { C } from './theme.js'
 
 interface Props {
   entries: NamedProvider[]
@@ -30,14 +31,14 @@ export function ProviderPicker({ entries, cursor, activeName, query }: Props) {
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Text dimColor>select provider</Text>
-      <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor={C.gray} paddingX={1}>
         {entries.length === 0 ? (
           <Text dimColor>no providers configured — try /provider add ollama</Text>
         ) : (
           entries.map((e, i) => {
             const sel = i === cursor
             return (
-              <Text key={e.name} color={sel ? 'blue' : undefined} dimColor={!sel}>
+              <Text key={e.name} color={sel ? C.blue : undefined} dimColor={!sel}>
                 {sel ? '❯ ' : '  '}
                 {e.name.padEnd(nameWidth)}
                 <Text dimColor>{'  '}{e.kind.padEnd(5)}</Text>
@@ -45,9 +46,9 @@ export function ProviderPicker({ entries, cursor, activeName, query }: Props) {
                 {/* A remote provider with no key resolves to nothing at request
                     time; flag it here rather than at the first failed turn. */}
                 {e.kind === 'api' && !apiKeyFor(e.entry) ? (
-                  <Text color="yellow">{'  no key'}</Text>
+                  <Text color={C.yellow}>{'  no key'}</Text>
                 ) : null}
-                {e.name === activeName ? <Text color="green">{'  ●'}</Text> : null}
+                {e.name === activeName ? <Text color={C.green}>{'  ●'}</Text> : null}
               </Text>
             )
           })

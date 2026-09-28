@@ -369,6 +369,14 @@ export interface RunAgentOpts {
    * subagent multiplies the cost of the one feature meant to be cheap.
    */
   judge?: boolean
+  /**
+   * Messages the user typed while the run was working, drained after each
+   * round of tool calls. They ride on that round's last tool_result rather than
+   * as a message of their own: a user message may not interleave between an
+   * assistant tool call and its results, and every provider accepts extra text
+   * inside a result.
+   */
+  takeSteering?: () => string[]
 }
 
 /**
@@ -966,8 +974,16 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       yield { type: 'tool-result', block: r }
     }
 
+    const steering = results.length ? (opts.takeSteering?.() ?? []) : []
+    if (steering.length) {
+      const last = results[results.length - 1]
+      last.content +=
+        `\n\n[While you were working, the user sent: ${steering.join('\n\n')}]\n` +
+        `Take this into account from here on — it may change what you do next.`
+    }
     history.push({ role: 'user', content: results as ContentBlock[] })
     yield { type: 'turn-end', stop_reason: 'tool_use' }
+    for (const text of steering) yield { type: 'steer', text }
   }
 
   if (!endedCleanly) {

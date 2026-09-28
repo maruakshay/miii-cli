@@ -15,7 +15,7 @@ import { chat } from '../llm/client.js'
 import type { MiiMessage, ContentBlock } from './types.js'
 
 /** Rough tokens-per-character; good enough for budgeting, never for billing. */
-const CHARS_PER_TOKEN = 4
+export const CHARS_PER_TOKEN = 4
 
 /** How much of the transcript we hand the summariser, in characters. */
 const TRANSCRIPT_BUDGET = 16000

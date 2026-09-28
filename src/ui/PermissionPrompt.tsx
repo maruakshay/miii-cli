@@ -2,6 +2,7 @@ import { Box, Text } from 'ink'
 import type { PermissionRequest } from './types.js'
 import { describeTool } from './toolLabel.js'
 import { subjectFor, widestPattern } from '../permissions/policy.js'
+import { C } from './theme.js'
 
 function summarizeInput(input: unknown): string {
   if (!input || typeof input !== 'object') return ''
@@ -39,14 +40,14 @@ function PlanApproval({ cursor }: { cursor: number }) {
     'No — keep planning, I want changes',
   ]
   return (
-    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="cyan" paddingX={1}>
-      <Text color="cyan" bold>Ready to start?</Text>
+    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor={C.cyan} paddingX={1}>
+      <Text color={C.cyan} bold>Ready to start?</Text>
       <Box marginTop={1}>
         <Text dimColor>The plan above is what will happen. Nothing has been changed yet.</Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
         {options.map((label, i) => (
-          <Text key={label} color={i === cursor ? 'cyan' : undefined}>
+          <Text key={label} color={i === cursor ? C.cyan : undefined}>
             {i === cursor ? '❯ ' : '  '}
             {i + 1}. {label}
           </Text>
@@ -76,8 +77,8 @@ export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; curs
   ]
   const summary = summarizeInput(req.input)
   return (
-    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="blue" paddingX={1}>
-      <Text color="blue" bold>Tool use</Text>
+    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor={C.blue} paddingX={1}>
+      <Text color={C.blue} bold>Tool use</Text>
       <Box marginTop={1}>
         <Text>
           <Text bold>{label}</Text> — allow?
@@ -90,7 +91,7 @@ export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; curs
       )}
       <Box flexDirection="column" marginTop={1}>
         {options.map((opt, i) => (
-          <Text key={opt.key} color={i === cursor ? 'blue' : undefined}>
+          <Text key={opt.key} color={i === cursor ? C.blue : undefined}>
             {i === cursor ? '❯ ' : '  '}
             {i + 1}. {opt.label}
           </Text>
