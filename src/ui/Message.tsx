@@ -3,6 +3,7 @@ import { Box, Text } from 'ink'
 import { renderMarkdown } from './markdown.js'
 import type { ChatMessage } from './types.js'
 import { ToolUseList } from './ToolBlock.js'
+import { isHiddenTool } from './mergeSteps.js'
 import { formatTokens, formatDuration, contentWidth, padLines, userTextWidth } from './layout.js'
 import { useTerminalWidth } from './hooks/useTerminalWidth.js'
 import { useThinkingVisible, CHALK } from './ThinkingBlock.js'
@@ -39,7 +40,10 @@ export const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage
   // of the card, so the content is trimmed to its last real line first.
   const lines = padLines(msg.content.replace(/\s+$/, ''), userTextWidth(cols))
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    // Transcript blocks carry their spacing ABOVE them, so the newest one ends
+    // flush and the gap before the input bar is the status row's to give — the
+    // row that keeps the bar pinned to the bottom of the terminal (App).
+    <Box flexDirection="column" marginTop={1}>
       {lines.map((line, i) => (
         <Box key={i} flexDirection="row">
           <Text color={USER_ACCENT}>{USER_RULE}</Text>
@@ -56,32 +60,39 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
   // subscription also defeats the memo on toggle, which is the point.
   const showThoughts = useThinkingVisible()
   const thoughts = msg.thinking?.trim()
+  const tools = msg.tool_uses?.some((u) => !isHiddenTool(u.name))
+  // A step with nothing to draw (only hidden tool calls, or thoughts while
+  // they're hidden) would still carry its top margin — a stray blank row.
+  if (!(showThoughts && thoughts) && !msg.content && !tools && !msg.tokens) return null
 
   return (
     // One step of a turn is a list of items — thought, text, each tool block —
     // one blank row apart. Every step of the turn lands under the last with the
     // same spacing, so the whole turn reads as a single running list rather than
-    // a stack of separate cards.
-    <Box flexDirection="column" marginBottom={1} rowGap={1}>
-      {showThoughts && thoughts && (
-        <Box flexDirection="row">
-          <Text color={CHALK}>{'✻ '}</Text>
-          <Box width={contentWidth()}>
-            <Text dimColor italic wrap="wrap">{thoughts}</Text>
+    // a stack of separate cards. The turn summary sits outside the gap, directly
+    // under the last item: it's a footnote to the turn, not another entry.
+    <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" rowGap={1}>
+        {showThoughts && thoughts && (
+          <Box flexDirection="row">
+            <Text color={CHALK}>{'✻ '}</Text>
+            <Box width={contentWidth()}>
+              <Text dimColor italic wrap="wrap">{thoughts}</Text>
+            </Box>
           </Box>
-        </Box>
-      )}
-      {msg.content && (
-        <Box flexDirection="row">
-          <Text color={ASST_ACCENT}>{ASST_RULE}</Text>
-          <Box width={contentWidth()}>
-            <Text wrap="wrap">{renderMarkdown(msg.content)}</Text>
+        )}
+        {msg.content && (
+          <Box flexDirection="row">
+            <Text color={ASST_ACCENT}>{ASST_RULE}</Text>
+            <Box width={contentWidth()}>
+              <Text wrap="wrap">{renderMarkdown(msg.content)}</Text>
+            </Box>
           </Box>
-        </Box>
-      )}
-      {msg.tool_uses && msg.tool_uses.length > 0 && (
-        <ToolUseList uses={msg.tool_uses} results={msg.tool_results} />
-      )}
+        )}
+        {msg.tool_uses && msg.tool_uses.length > 0 && (
+          <ToolUseList uses={msg.tool_uses} results={msg.tool_results} />
+        )}
+      </Box>
       {msg.tokens && (
         // One Text with nested runs, not sibling Texts: siblings are flex
         // items, and each would wrap in its own column on a narrow terminal.

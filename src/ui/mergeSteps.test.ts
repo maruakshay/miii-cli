@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeToolSteps } from './mergeSteps.js'
+import { mergeToolSteps, settledCount, splitTextFromTools } from './mergeSteps.js'
 import type { ChatMessage } from './types.js'
 
 const step = (content: string, ...tools: Array<[id: string, name: string]>): ChatMessage => ({
@@ -60,5 +60,36 @@ describe('mergeToolSteps', () => {
   it('drops a step that only updated the task list', () => {
     const out = mergeToolSteps([{ role: 'user', content: 'go' }, step('', ['t', 'write_todos'])])
     expect(out).toHaveLength(1)
+  })
+})
+
+describe('splitTextFromTools', () => {
+  it('puts what a step says and the calls it makes in separate blocks', () => {
+    const out = mergeToolSteps(
+      splitTextFromTools([
+        step('Looking around.', ['a', 'read_file']),
+        step('', ['b', 'read_file']),
+      ]),
+    )
+    expect(out.map((m) => m.content)).toEqual(['Looking around.', ''])
+    expect(out.map(names)).toEqual([[], ['a', 'b']])
+  })
+
+  it('keeps the turn summary on the calls, where the turn ended', () => {
+    const last = { ...step('Done.', ['a', 'run_bash']), tokens: { prompt_eval: 1, eval: 1 } }
+    const [text, tools] = splitTextFromTools([last])
+    expect(text.tokens).toBeUndefined()
+    expect(tools.tokens).toEqual({ prompt_eval: 1, eval: 1 })
+  })
+})
+
+describe('settledCount', () => {
+  const user: ChatMessage = { role: 'user', content: 'go' }
+  it('holds back a run of calls the turn can still add to', () => {
+    expect(settledCount([user, step('', ['a', 'read_file'])], true)).toBe(1)
+  })
+  it('settles everything once the turn is over, or when the last block is text', () => {
+    expect(settledCount([user, step('', ['a', 'read_file'])], false)).toBe(2)
+    expect(settledCount([user, step('Hi.')], true)).toBe(2)
   })
 })

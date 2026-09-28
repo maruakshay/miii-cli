@@ -31,8 +31,8 @@ describe('padLines', () => {
 })
 
 describe('userTextWidth', () => {
-  it('leaves room for the app padding, the rule and the body padding', () => {
-    expect(userTextWidth(80)).toBe(75)
+  it('leaves room for the app padding, the indent, the rule and the body padding', () => {
+    expect(userTextWidth(80)).toBe(74)
   })
 
   it('floors on a narrow terminal rather than going negative', () => {

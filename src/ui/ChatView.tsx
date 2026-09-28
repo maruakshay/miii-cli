@@ -164,7 +164,15 @@ export function ChatView({
               shown in the input bar's status row, not here: a block that
               appears between every step and vanishes when text starts is what
               made a turn jump around instead of reading as one running list. */}
-          <Box flexDirection="column" marginLeft={1} flexShrink={0} rowGap={1}>
+          <Box
+            flexDirection="column"
+            marginLeft={1}
+            flexShrink={0}
+            rowGap={1}
+            // Blocks above end flush and carry their spacing on top, so the live
+            // step does too — only when there's something in it to space.
+            marginTop={streamNode || pendingPermission || error ? 1 : 0}
+          >
             {streamNode}
 
             {streamNode && activeToolUses && activeToolUses.length > 0 && (

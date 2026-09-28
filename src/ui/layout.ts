@@ -80,12 +80,13 @@ export function clipTailVisual(
 }
 
 // Width for assistant prose: marked emits long unwrapped lines, and the content
-// sits offset by the `● ` bullet (2 cols) plus a left margin (1). Without an
+// sits offset by the `● ` bullet (2 cols), the transcript indent (1) and the
+// app's side padding (1 each side). Without an
 // explicit width Ink wraps to the full terminal, overrunning the offset and
 // spilling the last chars onto column 0. Constrain so wrapping stays inside the
 // content column. Floor keeps it sane on narrow terminals.
 export function contentWidth(): number {
-  return Math.max(20, (process.stdout.columns ?? 80) - 4)
+  return Math.max(20, (process.stdout.columns ?? 80) - 5)
 }
 
 // Wrap `content` to `width` columns and pad every row out to exactly that many,
@@ -122,9 +123,10 @@ export function padLines(content: string, width: number): string[] {
 }
 
 // Text columns inside a user message block, for a terminal `cols` wide. The app
-// pads 1 either side, the accent rule takes 1, and the shaded body carries 1
+// pads 1 either side, transcript blocks are indented 1, the accent rule takes 1,
+// and the shaded body carries 1
 // column of its own padding either side so the fill never sits flush against
 // the glyphs. Floor keeps it usable on narrow terminals.
 export function userTextWidth(cols: number): number {
-  return Math.max(8, cols - 5)
+  return Math.max(8, cols - 6)
 }

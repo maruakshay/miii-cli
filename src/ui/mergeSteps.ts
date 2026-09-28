@@ -61,3 +61,32 @@ export function mergeToolSteps(messages: ChatMessage[]): ChatMessage[] {
   }
   return out
 }
+
+/**
+ * Give each step's text and its tool calls separate blocks, before folding.
+ *
+ * Committed blocks print once into the terminal's scrollback and can't change
+ * after that, but a tool block keeps growing for as long as the turn folds more
+ * calls into it. Splitting means the only block ever still growing is a run of
+ * tool calls: what the agent said above it is final the moment its step lands,
+ * so it can print straight away instead of waiting on every tool after it. The
+ * two draw exactly as the combined block did — one blank row apart either way.
+ */
+export function splitTextFromTools(messages: ChatMessage[]): ChatMessage[] {
+  return messages.flatMap((m): ChatMessage[] => {
+    if (m.role !== 'assistant' || !m.content.trim() || !m.tool_uses?.length) return [m]
+    const { tool_uses, tool_results, tokens, duration, summary, ...text } = m
+    return [text, { role: 'assistant', content: '', tool_uses, tool_results, tokens, duration, summary }]
+  })
+}
+
+/**
+ * How many of `blocks` are final. A turn in flight can still fold calls into
+ * its last block when that block is a run of tools the turn hasn't ended on;
+ * everything before it — and everything, once the turn is over — is settled.
+ */
+export function settledCount(blocks: ChatMessage[], busy: boolean): number {
+  const last = blocks[blocks.length - 1]
+  const open = busy && last?.role === 'assistant' && !!last.tool_uses?.length && !last.tokens
+  return open ? blocks.length - 1 : blocks.length
+}

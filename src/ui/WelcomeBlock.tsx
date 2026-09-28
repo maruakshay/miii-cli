@@ -116,8 +116,9 @@ export function WelcomeBlock({
   // empty (a name renamed in COMMANDS but not in WELCOME_COMMAND_NAMES).
   const nameWidth = Math.max(0, ...WELCOME_COMMANDS.map((c) => c.name.length))
 
+  // No bottom margin: every transcript block below carries its own top margin.
   return (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column">
       <Box marginBottom={1}>
         <Text>
           <Text color={C.blue} bold>{MARK} miii</Text>

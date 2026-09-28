@@ -8,6 +8,18 @@ export type { Command }
 interface Props {
   filter: string
   cursor: number
+  /** Most command rows to draw; the list scrolls with the cursor past that. */
+  maxRows?: number
+}
+
+/**
+ * The slice of `count` rows to draw so `cursor` stays in view: centred on it
+ * where there's room, pinned to either end near the edges.
+ */
+export function paletteWindow(count: number, cursor: number, maxRows: number): { start: number; end: number } {
+  const rows = Math.max(1, Math.min(count, maxRows))
+  const start = Math.max(0, Math.min(count - rows, cursor - Math.floor(rows / 2)))
+  return { start, end: start + rows }
 }
 
 /**
@@ -38,11 +50,13 @@ export function filteredCommands(filter: string): Command[] {
   return allCommands().filter((c) => c.name.startsWith(filter))
 }
 
-export function CommandPalette({ filter, cursor }: Props) {
+export function CommandPalette({ filter, cursor, maxRows = Infinity }: Props) {
   const filtered = filteredCommands(filter)
   if (filtered.length === 0) return null
 
+  // Width from the whole list, not the window, so the columns hold still as it scrolls.
   const nameWidth = Math.max(...filtered.map((c) => c.name.length))
+  const { start, end } = paletteWindow(filtered.length, cursor, maxRows)
 
   return (
     <Box
@@ -52,7 +66,8 @@ export function CommandPalette({ filter, cursor }: Props) {
       borderColor={C.gray}
       paddingX={1}
     >
-      {filtered.map((cmd, i) => {
+      {filtered.slice(start, end).map((cmd, j) => {
+        const i = start + j
         const active = i === cursor
         return (
           <Box key={cmd.name} gap={2}>
@@ -67,7 +82,10 @@ export function CommandPalette({ filter, cursor }: Props) {
         )
       })}
       <Box marginTop={0}>
-        <Text dimColor>↑↓ navigate   tab/enter autocomplete   esc dismiss</Text>
+        <Text dimColor>
+          ↑↓ navigate   tab/enter autocomplete   esc dismiss
+          {end - start < filtered.length ? `   ${start + 1}–${end} of ${filtered.length}` : ''}
+        </Text>
       </Box>
     </Box>
   )

@@ -514,7 +514,8 @@ export function App({ resumeId, continueLast }: AppProps) {
 
           {state === 'ready' && input.startsWith('/') && (
             <Box flexShrink={0} flexDirection="column">
-              <CommandPalette filter={input} cursor={paletteCursor} />
+              {/* Room left for the frame's other rows — status, input bar, warnings. */}
+              <CommandPalette filter={input} cursor={paletteCursor} maxRows={Math.max(3, termRows - 16)} />
             </Box>
           )}
 

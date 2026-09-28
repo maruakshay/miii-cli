@@ -2,6 +2,9 @@ import { Marked } from 'marked'
 import { markedTerminal } from 'marked-terminal'
 import { highlight, supportsLanguage } from 'cli-highlight'
 import chalk from 'chalk'
+import wrapAnsi from 'wrap-ansi'
+import stringWidth from 'string-width'
+import { contentWidth } from './layout.js'
 
 // Muted, low-glare palette — soft pastels over saturated brights so long
 // messages stay easy on the eyes in a dark terminal. Tuned for legibility,
@@ -51,15 +54,81 @@ md.use(
   }) as Parameters<typeof md.use>[0],
 )
 
+// marked-terminal's own list renderer numbers items by regex over the rendered
+// body, so a nested list steals numbers from its parent ("1. … 2. nested"), a
+// loose list gets a blank row between every item, and each level indents a
+// full tab. Lists are drawn here instead: tight, `•`/`1.` markers, two columns
+// per level, and wrapped to the content column with a hanging indent — left to
+// Ink, a wrapped item's second row would fall back to column 0.
+const ENTITIES: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" }
+const unescape = (s: string) => s.replace(/&(?:amp|lt|gt|quot|#39);/g, (m) => ENTITIES[m] ?? m)
+
+interface ListItemToken { task?: boolean; checked?: boolean; tokens: Token[] }
+interface ListToken { type: 'list'; ordered: boolean; start: number | ''; items: ListItemToken[] }
+type Token = { type: string; tokens?: Token[]; text?: string; raw?: string }
+type Parser = { parse(tokens: Token[]): string; parseInline(tokens: Token[]): string }
+
+function renderList(parser: Parser, list: ListToken, width: number): string {
+  const start = typeof list.start === 'number' ? list.start : 1
+  const markers = list.items.map((item, i) => {
+    const m = list.ordered ? `${start + i}.` : '•'
+    return item.task ? `${m} ${item.checked ? '☑' : '☐'}` : m
+  })
+  const markerWidth = Math.max(...markers.map((m) => m.length)) + 1
+  const inner = Math.max(10, width - markerWidth)
+  const pad = ' '.repeat(markerWidth)
+  return list.items
+    .map((item, i) => {
+      const parts: string[] = []
+      for (const t of item.tokens) {
+        if (t.type === 'list') parts.push(renderList(parser, t as unknown as ListToken, inner))
+        else if (t.type === 'text' || t.type === 'paragraph') {
+          const text = theme.listitem(unescape(t.tokens ? parser.parseInline(t.tokens) : (t.text ?? '')))
+          parts.push(wrapAnsi(text, inner, { hard: true }))
+        } else if (t.type !== 'space' && t.type !== 'checkbox') parts.push(parser.parse([t]).replace(/\n+$/, ''))
+      }
+      const lines = parts.join('\n').split('\n')
+      return lines.map((l, j) => (j === 0 ? markers[i].padEnd(markerWidth) : pad) + l).join('\n')
+    })
+    .join('\n')
+}
+
+md.use({
+  extensions: [
+    {
+      name: 'list',
+      renderer(this: { parser: Parser }, token) {
+        return renderList(this.parser, token as unknown as ListToken, contentWidth()) + '\n\n'
+      },
+    },
+  ],
+})
+
 export function renderMarkdown(content: string): string {
   try {
     // parse() returns a string in sync mode (no async extensions registered).
     const out = md.parse(content, { async: false }) as string
     // marked-terminal appends a trailing newline; trim so Ink spacing stays tight.
-    return out.replace(/\n+$/, '')
+    return fitToWidth(out.replace(/\n+$/, ''), contentWidth())
   } catch {
     return content
   }
+}
+
+// Wrap here rather than leaving it to Ink: Ink wraps without trimming, so a row
+// broken at a space starts with that space, and an indented line (a blockquote,
+// a code block) loses its indent on every row after the first. Each over-long
+// line is wrapped inside its own indent instead.
+function fitToWidth(text: string, width: number): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      if (stringWidth(line) <= width) return line
+      const indent = /^ */.exec(line)![0]
+      const body = wrapAnsi(line.slice(indent.length), Math.max(10, width - indent.length), { hard: true })
+      return body.split('\n').map((row) => indent + row).join('\n')
+    })
+    .join('\n')
 }
 
 // Just-in-time render for the live streaming buffer. The text is mid-stream and
