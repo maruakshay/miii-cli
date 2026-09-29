@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.8.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.7.1...miii-agent-v3.8.0) (2026-09-29)
+
+
+### Features
+
+* **fix:** add `miii fix` — run the check, fix failures, repeat until green ([b17cf27](https://github.com/maruakshay/miii-cli/commit/b17cf27203965572f545f2f41f46cc05dcd3f4e7))
+* **ui:** drag to select and copy inside miii, with the wheel still scrolling ([8f63ef1](https://github.com/maruakshay/miii-cli/commit/8f63ef1d0f3138ecad3f1224b67f264549c469cf))
+
 ## [3.7.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.7.0...miii-agent-v3.7.1) (2026-09-28)
 
 
