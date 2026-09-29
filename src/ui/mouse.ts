@@ -2,14 +2,15 @@
  * mouse — terminal mouse reporting.
  *
  * The transcript scrolls inside miii's own viewport (see scroll.ts), so the app
- * needs the wheel: this turns on xterm button tracking (mode 1000) with
- * SGR-encoded reports (mode 1006). Motion tracking is deliberately left off, so
- * the terminal keeps as much native behaviour as it can — drag-to-select still
- * works with the usual override (option-drag on macOS, shift-drag elsewhere).
+ * needs the wheel: this turns on xterm button-event tracking (mode 1002) with
+ * SGR-encoded reports (mode 1006). 1002 reports motion only while a button is
+ * held, which is what lets miii select a drag itself (selection.ts) without
+ * hearing about every idle mouse move. The terminal's own override still
+ * works too (option-drag on macOS, shift-drag elsewhere).
  *
  * Reporting can be switched off from the app (ctrl+s), which hands the mouse
- * back to the terminal so a plain drag selects text again — the one thing an
- * app that owns the mouse takes away, and the reason /copy exists too.
+ * back to the terminal entirely — the fallback for a terminal where the
+ * in-app selection misbehaves.
  *
  * Reports arrive on stdin as `ESC [ < b ; x ; y M|m`. Ink's parse-keypress
  * leaves them intact and strips only the leading ESC, so the keyboard handler
@@ -19,8 +20,8 @@
  * (every one after the first keeping its own ESC) and can even be cut mid
  * report — hence the multi-event scan and the carried-over tail.
  */
-const ENABLE = '\x1b[?1000h\x1b[?1006h'
-export const DISABLE = '\x1b[?1006l\x1b[?1000l'
+const ENABLE = '\x1b[?1002h\x1b[?1006h'
+export const DISABLE = '\x1b[?1006l\x1b[?1002l\x1b[?1000l'
 
 // SGR report minus the ESC that Ink strips: `[<button;col;row` + M (press) / m (release).
 const SGR_RE = /^\[<(\d+);(\d+);(\d+)([Mm])$/
@@ -37,8 +38,10 @@ export type MouseEvent = {
   /** 1-based terminal column and row. */
   x: number
   y: number
-  /** true = button press, false = release. */
+  /** true = button press (or drag motion), false = release. */
   press: boolean
+  /** Pointer moved with the button held — a drag, not a fresh press. */
+  motion: boolean
   /** Wheel notch rather than a button; `up` says which way. */
   wheel: boolean
   up: boolean
@@ -89,6 +92,7 @@ function toEvent(b: string, x: string, y: string, end: string): MouseEvent {
     x: Number(x),
     y: Number(y),
     press: end === 'M',
+    motion: (raw & 32) !== 0,
     wheel: (raw & 64) !== 0,
     up: (raw & 1) === 0,
   }

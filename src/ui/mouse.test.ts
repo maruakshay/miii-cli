@@ -4,8 +4,12 @@ import { parseMouseEvent, parseMouseEvents, resetMouseParser } from './mouse.js'
 describe('parseMouseEvent', () => {
   it('parses a left-button press', () => {
     expect(parseMouseEvent('[<0;12;30M')).toEqual({
-      button: 0, x: 12, y: 30, press: true, wheel: false, up: true,
+      button: 0, x: 12, y: 30, press: true, motion: false, wheel: false, up: true,
     })
+  })
+
+  it('flags drag motion with the button held', () => {
+    expect(parseMouseEvent('[<32;14;30M')).toMatchObject({ button: 0, press: true, motion: true })
   })
 
   it('parses a release', () => {

@@ -3,6 +3,7 @@ import { render } from 'ink'
 import { createElement } from 'react'
 import { App, type AppProps } from './ui/App.js'
 import { DISABLE as MOUSE_OFF } from './ui/mouse.js'
+import { captureFrames } from './ui/selection.js'
 import { cleanupSpill } from './tools/spill.js'
 import { setProvider, listProviders, providerEntries, apiKeyFor, configError, type Provider } from './config.js'
 import { parseHeadlessArgs, readStdin, runHeadless } from './headless.js'
@@ -186,5 +187,8 @@ if (cmd === 'version' || args.includes('--version') || args.includes('-v')) {
   process.on('exit', () => {
     if (process.stdout.isTTY) process.stdout.write(`\x1b]2;\x07${MOUSE_OFF}`)
   })
-  render(createElement(App, { resumeId, continueLast } satisfies AppProps))
+  // Ink renders through a recording wrapper so a mouse drag can be turned back
+  // into the text on screen (selection.ts).
+  const stdout = process.stdout.isTTY ? captureFrames(process.stdout) : process.stdout
+  render(createElement(App, { resumeId, continueLast } satisfies AppProps), { stdout })
 }

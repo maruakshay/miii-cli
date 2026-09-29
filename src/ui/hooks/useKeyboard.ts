@@ -18,6 +18,7 @@ import { toggleThinkingVisible } from '../ThinkingBlock.js'
 import { isToolExpanded, toggleToolExpanded, toggleAllToolExpanded } from '../toolExpand.js'
 import { toolBlockAtRow } from '../toolHit.js'
 import { parseMouseEvents, toggleMouse } from '../mouse.js'
+import { beginSelection, clearSelection, endSelection, extendSelection, isSelecting } from '../selection.js'
 import { scrollBy, scrollToBottom, resetScroll, holdScroll } from '../scroll.js'
 import { setTerminalTitle, resetTerminalTitle } from '../terminalTitle.js'
 import {
@@ -410,22 +411,41 @@ export function useKeyboard(opts: KeyboardOptions) {
     // (the terminal's scrollback isn't in play). Every report is swallowed here
     // so an escape sequence can never land in the prompt — a spin of the wheel
     // packs several into one chunk, so they're drained as a batch and the wheel
-    // rows summed into a single scroll. A left click expands the one tool block
-    // it landed on — ctrl+o is the everything-at-once version.
+    // rows summed into a single scroll. A left drag selects text and copies it
+    // on release (selection.ts); a left click that never moved expands the one
+    // tool block it landed on — ctrl+o is the everything-at-once version.
     const mouse = parseMouseEvents(char)
     if (mouse.consumed) {
       let rows = 0
       for (const ev of mouse.events) {
-        if (!ev.press) continue
-        if (ev.wheel) rows += ev.up ? -WHEEL_ROWS : WHEEL_ROWS
-        else if (ev.button === 0) {
-          const id = toolBlockAtRow(ev.y, process.stdout.rows ?? 24)
-          if (!id) continue
-          // Opening a block while the view follows the tail would grow it
-          // upward, off the top of the screen — hold the view still instead.
-          if (!isToolExpanded(id)) holdScroll()
-          toggleToolExpanded(id)
+        if (ev.wheel) {
+          if (!ev.press) continue
+          clearSelection()
+          rows += ev.up ? -WHEEL_ROWS : WHEEL_ROWS
+          continue
         }
+        if (ev.button !== 0 && ev.press) continue
+        if (ev.press && ev.motion) { extendSelection(ev.x, ev.y); continue }
+        if (ev.press) { beginSelection(ev.x, ev.y); continue }
+        // Release. SGR reports it with the button that went up; only a left
+        // press ever starts a selection, so anything else has nothing to end.
+        if (!isSelecting()) continue
+        const text = endSelection()
+        if (text) {
+          setNotice(
+            writeClipboardText(text)
+              ? `copied selection · ${describeSize(text)}`
+              : 'no clipboard tool found — install pbcopy/wl-copy/xclip, or ctrl+s and drag to select',
+          )
+          continue
+        }
+        if (text === '') continue
+        const id = toolBlockAtRow(ev.y, process.stdout.rows ?? 24)
+        if (!id) continue
+        // Opening a block while the view follows the tail would grow it
+        // upward, off the top of the screen — hold the view still instead.
+        if (!isToolExpanded(id)) holdScroll()
+        toggleToolExpanded(id)
       }
       if (rows !== 0) scrollBy(rows)
       return
@@ -447,14 +467,16 @@ export function useKeyboard(opts: KeyboardOptions) {
     if (key.ctrl && char === 'o') { toggleAllToolExpanded(); return }
     // Ctrl+Y yanks the last reply to the clipboard — /copy for anything else.
     if (key.ctrl && char === 'y') { copyToClipboard('last'); return }
-    // Ctrl+S hands the mouse back to the terminal so a drag selects text again.
-    // The wheel stops scrolling the transcript while it's off (pgup/pgdn still
-    // do), which is the trade the notice spells out.
+    // Ctrl+S hands the mouse back to the terminal — the fallback for a terminal
+    // where miii's own drag selection misbehaves. The wheel stops scrolling the
+    // transcript while it's off (pgup/pgdn still do), which is the trade the
+    // notice spells out.
     if (key.ctrl && char === 's') {
+      clearSelection()
       const on = toggleMouse()
       setNotice(
         on
-          ? 'mouse on — wheel scrolls the transcript'
+          ? 'mouse on — wheel scrolls, drag selects and copies'
           : 'mouse off — drag to select and copy · ctrl+s to scroll again',
       )
       return

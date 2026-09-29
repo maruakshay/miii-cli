@@ -56,7 +56,7 @@ export const INPUT_PLACEHOLDER = 'describe a task, or type / for commands'
 export const BUSY_PLACEHOLDER = 'add a message — the agent reads it at its next step'
 
 /** Key hints under the input bar. Kept short — they share one line. */
-export const INPUT_HINTS = '⏎ send · / commands · @ file · shift+tab mode · ctrl+y copy · ctrl+s select · pgup/pgdn to look back'
+export const INPUT_HINTS = '⏎ send · / commands · @ file · shift+tab mode · drag to copy · ctrl+y copy reply · pgup/pgdn to look back'
 
 /** Key hints under the input bar while a turn is running. */
 export const BUSY_HINTS = 'ctrl+t thoughts · click a tool for details · ctrl+o all · ctrl+y copy · scroll to look back'
