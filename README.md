@@ -115,6 +115,7 @@ miii delivers the advanced workflow of top-tier agents without the vendor lock-i
 - **🔌 MCP Support** — Connect to GitHub, Postgres, or your own internal services via Model Context Protocol.
 - **🪝 Shell Hooks** — Trigger custom commands on tool events (e.g., auto-format on write or block specific paths).
 - **🖥️ Headless Mode** — Run `miii -p "prompt"` for scripts, CI/CD, or piping git diffs directly into the agent.
+- **🔁 Fix until green** — `miii fix` runs your tests, fixes what fails, and runs them again until they pass. The test result, not the model, decides what's fixed; attempts that don't help are rolled back automatically, so small local models only ever move the code forward. `miii fix --check "npx tsc --noEmit" --output-format json` for CI.
 - **🐚 Shell-Backed Edits** — Operations run through the shell for maximum compatibility, with a robust Node.js fallback.
 
 <details>

@@ -38,6 +38,14 @@ Everywhere
       --help                    this text
 
 Subcommands
+  miii fix [direction]          run the tests, fix what fails, repeat until green
+      --check "<cmd>"           the check to make pass (default: inferred, e.g. npm test)
+      --max-rounds <n>          fix attempts before giving up (default 5)
+      --max-turns <n>           tool-use turns per attempt (default 20)
+      --max-stalls <n>          attempts in a row without progress before stopping (default 3)
+      --check-timeout <sec>     kill the check after this long (default 600)
+      --output-format <fmt>     text (default) | json
+      --permission-mode <mode>  acceptEdits (default) | bypass | default
   miii doctor                   grade your installed models on real tasks
   miii provider [list|add|remove]
   miii update                   install the latest release
@@ -121,6 +129,14 @@ if (cmd === 'version' || args.includes('--version') || args.includes('-v')) {
     console.error('usage: miii provider [list [--all] | add <name> [baseUrl] [apiKey] | remove <name>]')
     process.exit(1)
   }
+} else if (cmd === 'fix') {
+  const { parseFixArgs, runFix } = await import('./fix/run.js')
+  const parsed = parseFixArgs(args.slice(args.indexOf(cmd) + 1))
+  if (!parsed.options) {
+    console.error(`miii: ${parsed.error}`)
+    process.exit(2)
+  }
+  process.exit(await runFix(parsed.options))
 } else if (cmd === 'doctor' || cmd === 'eval') {
   const rest = args.filter((a) => a !== cmd)
   const { runEval } = await import('../eval/run.js')
