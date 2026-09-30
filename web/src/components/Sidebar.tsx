@@ -27,9 +27,8 @@ export function Sidebar({
   const home = parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : parts.join('/')
   return (
     <div className="flex h-full flex-col gap-1 bg-sidebar p-3 text-sidebar-foreground">
-      <div className="flex items-center gap-2.5 px-2 pt-1 pb-3">
-        <div className="grid size-7 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">m</div>
-        <span className="text-[17px] font-semibold tracking-tight">miii</span>
+      <div className="px-2 pt-1 pb-3">
+        <span className="text-base font-semibold tracking-tight">miii</span>
       </div>
       <Button variant="outline" className="justify-start" onClick={() => act(post('session/new'))} disabled={busy}>
         <SquarePen /> New chat

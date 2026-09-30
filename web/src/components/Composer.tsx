@@ -101,7 +101,7 @@ export function Composer({
               onClick={() => { setText(`${c.name} `); ref.current?.focus() }}
               className={cn('flex w-full items-baseline gap-3 rounded-lg px-3 py-1.5 text-left text-sm', i === sel && 'bg-accent')}
             >
-              <span className="shrink-0 font-mono text-primary">{c.name}</span>
+              <span className="shrink-0 font-mono text-foreground">{c.name}</span>
               <span className="truncate text-muted-foreground">{c.description}</span>
             </button>
           ))}
@@ -138,7 +138,7 @@ export function Composer({
           onKeyDown={onKeyDown}
           onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); void addFiles(e.clipboardData.files) } }}
           placeholder={state.busy ? 'Add a message — miii reads it at its next step' : 'Describe a task, or type / for commands'}
-          className="field-sizing-content max-h-60 min-h-6 resize-none bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground"
+          className="field-sizing-content max-h-60 min-h-6 resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-between gap-2">
           <div className="-ml-2 flex shrink-0 items-center gap-0.5">

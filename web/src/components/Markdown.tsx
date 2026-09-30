@@ -33,7 +33,7 @@ const components: Components = {
           <span className="font-mono">{lang ?? 'text'}</span>
           <CopyButton text={text.replace(/\n$/, '')} label="Copy" />
         </div>
-        <pre className="overflow-x-auto px-4 py-3 font-mono text-[13px] leading-relaxed"><code>{text.replace(/\n$/, '')}</code></pre>
+        <pre className="overflow-x-auto px-4 py-3 font-mono text-xs leading-relaxed"><code>{text.replace(/\n$/, '')}</code></pre>
       </div>
     )
   },

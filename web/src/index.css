@@ -106,6 +106,7 @@
 
 @layer base {
   * { @apply border-border outline-ring/50; }
+  html { font-size: 14px; }
   html, body, #root { @apply h-full; }
   body { @apply bg-background text-foreground antialiased; font-feature-settings: "ss01"; }
 }
@@ -131,5 +132,5 @@
 .prose-miii hr { border: 0; border-top: 1px solid var(--border); margin: 1em 0; }
 .prose-miii input[type="checkbox"] { margin-right: 0.4em; }
 
-.is-streaming > :last-child::after, .is-streaming:empty::after { content: "▍"; color: var(--primary); animation: blink 1s steps(2) infinite; margin-left: 1px; }
+.is-streaming > :last-child::after, .is-streaming:empty::after { content: "▍"; color: var(--muted-foreground); animation: blink 1s steps(2) infinite; margin-left: 1px; }
 @keyframes blink { 50% { opacity: 0; } }

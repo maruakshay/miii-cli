@@ -63,15 +63,14 @@ function Welcome({ cwd, onPick }: { cwd: string; onPick: (text: string) => void 
   const name = cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd
   return (
     <div className="mx-auto mt-[14vh] max-w-xl text-center">
-      <div className="mx-auto mb-5 grid size-12 place-items-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground">m</div>
-      <h1 className="mb-2 font-serif text-4xl tracking-tight">What are we building?</h1>
+      <h1 className="mb-2 font-serif text-3xl tracking-tight">What are we building?</h1>
       <p className="mb-7 text-muted-foreground">
         miii can read, edit and run code in <span className="rounded bg-code px-1.5 py-0.5 font-mono text-sm text-foreground">{name}</span>
       </p>
       <div className="flex flex-wrap justify-center gap-2">
         {STARTERS.map((s) => (
           <Button key={s.cmd} variant="outline" size="sm" className="rounded-full" onClick={() => onPick(s.cmd)}>
-            <span className="font-mono text-primary">{s.cmd}</span> {s.text}
+            <span className="font-mono text-muted-foreground">{s.cmd}</span> {s.text}
           </Button>
         ))}
       </div>
