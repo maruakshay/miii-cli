@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.9.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.8.0...miii-agent-v3.9.0) (2026-09-30)
+
+
+### Features
+
+* **ui:** point to `miii web` on the welcome card ([52d583a](https://github.com/maruakshay/miii-cli/commit/52d583ac86ff3acb3e0447982582d88ebf424fcf))
+* **web:** add `miii web`, a desktop-style browser UI for the agent ([#110](https://github.com/maruakshay/miii-cli/issues/110)) ([5f64a4e](https://github.com/maruakshay/miii-cli/commit/5f64a4e5487d8c02b8d85a51c0b440b80af2ac6e))
+
 ## [3.8.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.7.1...miii-agent-v3.8.0) (2026-09-29)
 
 
