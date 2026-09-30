@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import type { Effort } from '../config.js'
 import { currentVersion } from '../updateCheck.js'
-import { WELCOME_COMMANDS, WELCOME_PROMPT } from './constants.js'
+import { WELCOME_COMMANDS, WELCOME_PROMPT, WELCOME_WEB_TIP } from './constants.js'
 import { C } from './theme.js'
 
 // Lifecycle of the background self-update for the launch banner.
@@ -158,6 +158,16 @@ export function WelcomeBlock({
               <Text dimColor>{cmd.description}</Text>
             </Text>
           ))}
+        </Box>
+
+        {/* Run from a shell, not typed here — so it's set apart from the slash
+            commands rather than padded into their column. */}
+        <Box marginTop={1}>
+          <Text>
+            <Text color={C.green}>{WELCOME_WEB_TIP.command}</Text>
+            {'  '}
+            <Text dimColor>{WELCOME_WEB_TIP.description}</Text>
+          </Text>
         </Box>
       </Box>
 

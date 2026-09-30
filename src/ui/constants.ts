@@ -50,6 +50,12 @@ export const WELCOME_COMMANDS: Command[] = WELCOME_COMMAND_NAMES.flatMap(
 
 export const WELCOME_PROMPT = 'To get started, describe a task or try one of these commands:'
 
+/** The browser UI, advertised on the welcome card: the command, then what it gets you. */
+export const WELCOME_WEB_TIP = {
+  command: 'miii web',
+  description: 'open miii in your browser — a desktop app like Claude Desktop',
+}
+
 /** Placeholder shown in the input bar while it's empty. */
 export const INPUT_PLACEHOLDER = 'describe a task, or type / for commands'
 /** While a turn runs, what you send is handed to the agent at its next step. */
