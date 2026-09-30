@@ -6,21 +6,23 @@ import wrapAnsi from 'wrap-ansi'
 import stringWidth from 'string-width'
 import { contentWidth } from './layout.js'
 
-// Muted, low-glare palette — soft pastels over saturated brights so long
-// messages stay easy on the eyes in a dark terminal. Tuned for legibility,
-// not punch: desaturated blues/greens/mauves, dim grays for chrome.
+// Near-monochrome, like Claude Code: prose is one off-white, and structure
+// comes from weight, italics and underline rather than hue. Inline code is the
+// single accent, so paths and identifiers still stand out without a rainbow.
+const body = chalk.hex('#c4c9cf') // off-white
+const bright = chalk.hex('#e5e7eb') // a step brighter, for headings
 const theme = {
-  heading: chalk.hex('#7fa8d4').bold, // dusty blue
-  firstHeading: chalk.hex('#9ab8de').bold, // slightly lighter for h1
-  strong: chalk.hex('#d6c9a8').bold, // warm sand
-  em: chalk.hex('#b59ec4').italic, // soft mauve
+  heading: bright.bold,
+  firstHeading: bright.bold,
+  strong: body.bold,
+  em: body.italic,
   del: chalk.hex('#6b7280').strikethrough, // dim gray
-  codespan: chalk.hex('#c8a98a'), // muted clay
-  link: chalk.hex('#83b3a6').underline, // sage teal
-  href: chalk.hex('#83b3a6').underline,
+  codespan: chalk.hex('#9ab8de'), // dusty blue — the one accent
+  link: body.underline,
+  href: body.underline,
   blockquote: chalk.hex('#8a9aa8').italic, // slate
-  listitem: chalk.hex('#c4c9cf'), // off-white
-  paragraph: chalk.hex('#c4c9cf'), // off-white body text
+  listitem: body,
+  paragraph: body,
   hr: chalk.hex('#4b5563'), // faint rule
 }
 
