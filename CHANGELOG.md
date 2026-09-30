@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.9.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.9.0...miii-agent-v3.9.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **ui:** render terminal markdown in a near-monochrome palette ([#115](https://github.com/maruakshay/miii-cli/issues/115)) ([3de8810](https://github.com/maruakshay/miii-cli/commit/3de8810cbd49eae9817a23b80cf6d8ad6adf7744))
+* **web:** make model, effort and mode menus usable; tone down styling ([#113](https://github.com/maruakshay/miii-cli/issues/113)) ([b3ede79](https://github.com/maruakshay/miii-cli/commit/b3ede797951b67a323a4974cfdebb2270f800229))
+
 ## [3.9.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.8.0...miii-agent-v3.9.0) (2026-09-30)
 
 
