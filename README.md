@@ -20,6 +20,11 @@
 </p>
 
 <p align="center">
+  <a href="#prefer-a-window-to-a-terminal"><strong>🆕 New — miii now works in your browser too.</strong></a><br>
+  A desktop-style app like Claude Desktop, driving the same local agent. Just run <code>miii web</code>.
+</p>
+
+<p align="center">
   <img src="demo4.gif" alt="miii local AI coding agent running in a terminal, powered by Ollama">
 </p>
 
@@ -69,6 +74,18 @@ Talk to it like a teammate:
 ```
  
 It plans before it acts, and runs your test suite before it claims to be done.
+
+### Prefer a window to a terminal?
+
+```bash
+miii web        # or: miii --web
+```
+
+Opens miii in your browser — chat sidebar, streaming replies, collapsible tool calls with
+real diffs, one-click approvals, image paste, and pickers for model, provider, effort and
+permission mode. It's the same agent, sessions and permission rules as the terminal. The
+server listens on `localhost` only and every request needs the one-time key in the link it
+prints. `--port <n>`, `--no-open`, and `-c` / `--resume <id>` work as you'd expect.
  
 > [!TIP]
 > **Windows Users:** Use `irm https://raw.githubusercontent.com/maruakshay/miii-cli/main/install.ps1 | iex`. 
@@ -114,6 +131,7 @@ miii delivers the advanced workflow of top-tier agents without the vendor lock-i
 - **🔀 Hot-Swapping** — Use `/provider` and `/models` to switch backends instantly without restarting your session.
 - **🔌 MCP Support** — Connect to GitHub, Postgres, or your own internal services via Model Context Protocol.
 - **🪝 Shell Hooks** — Trigger custom commands on tool events (e.g., auto-format on write or block specific paths).
+- **🌐 Web UI** — `miii web` gives you a Claude-desktop-style app in your browser, driving the same local agent.
 - **🖥️ Headless Mode** — Run `miii -p "prompt"` for scripts, CI/CD, or piping git diffs directly into the agent.
 - **🔁 Fix until green** — `miii fix` runs your tests, fixes what fails, and runs them again until they pass. The test result, not the model, decides what's fixed; attempts that don't help are rolled back automatically, so small local models only ever move the code forward. `miii fix --check "npx tsc --noEmit" --output-format json` for CI.
 - **🐚 Shell-Backed Edits** — Operations run through the shell for maximum compatibility, with a robust Node.js fallback.
@@ -201,7 +219,9 @@ big or small, behave like a real coding agent.
 
 ## Contributing
 
-Issues and PRs are welcome from anyone, anywhere. Good places to start: model
+Issues and PRs are welcome from anyone, anywhere. The web UI lives in `web/` (React,
+Vite, Tailwind, shadcn/ui): `npm run dev:web` starts the agent server and Vite together and
+prints one link to open. Set `MIII_PROJECT=/path/to/repo` to point the agent at another project. Good places to start: model
 compatibility reports (which models work well on which hardware), bug reports with a
 repro, and docs improvements.
 

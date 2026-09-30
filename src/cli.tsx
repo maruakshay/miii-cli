@@ -47,6 +47,9 @@ Subcommands
       --check-timeout <sec>     kill the check after this long (default 600)
       --output-format <fmt>     text (default) | json
       --permission-mode <mode>  acceptEdits (default) | bypass | default
+  miii web                      open miii in your browser (also: miii --web)
+      --port <n>                port to listen on (default 4747, next free one if taken)
+      --no-open                 print the link instead of opening a browser
   miii doctor                   grade your installed models on real tasks
   miii provider [list|add|remove]
   miii update                   install the latest release
@@ -67,7 +70,7 @@ for (let i = 0; i < args.length; i++) {
 
 /** The first bare word that isn't the value of a flag — the subcommand, if any. */
 function firstCommand(argv: string[]): string | undefined {
-  const takesValue = new Set(['--provider', '-P', '--model', '--resume', '--output-format', '--permission-mode', '--max-turns', '--allowed-tools', '--allowedTools'])
+  const takesValue = new Set(['--provider', '-P', '--port', '--model', '--resume', '--output-format', '--permission-mode', '--max-turns', '--allowed-tools', '--allowedTools'])
   for (let i = 0; i < argv.length; i++) {
     if (takesValue.has(argv[i])) { i++; continue }
     if (argv[i].startsWith('-')) continue
@@ -138,6 +141,9 @@ if (cmd === 'version' || args.includes('--version') || args.includes('-v')) {
     process.exit(2)
   }
   process.exit(await runFix(parsed.options))
+} else if (cmd === 'web' || args.includes('--web')) {
+  const { runWeb } = await import('./web/run.js')
+  process.exit(await runWeb(args))
 } else if (cmd === 'doctor' || cmd === 'eval') {
   const rest = args.filter((a) => a !== cmd)
   const { runEval } = await import('../eval/run.js')

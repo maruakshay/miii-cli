@@ -152,6 +152,7 @@
   .tile .eyebrow { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
   .tile h3 { font-size: 28px; line-height: 1.14; letter-spacing: -.025em; font-weight: 700; margin: 0 0 10px; }
   .tile p { color: var(--muted); margin: 0; font-size: 17px; }
+  .tile p code { font-size: 14px; }
   .tile .big { font-size: clamp(64px, 9vw, 96px); font-weight: 700; letter-spacing: -.05em; line-height: 1; margin: auto 0 12px; }
   .tile .foot { margin-top: auto; padding-top: 24px; }
   .tile.hero-tile h3 { font-size: clamp(32px, 4vw, 44px); }
@@ -195,6 +196,48 @@
   .picker input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; margin: 0; }
   .picker .note { font-size: 14px; color: var(--muted); margin: 10px 0 0; min-height: 2.9em; }
   .picker .note strong { color: var(--fg); font-weight: 600; font-family: var(--mono); font-size: 13px; letter-spacing: 0; }
+
+  /* announcement banner */
+  .announce { display: block; background: var(--fg); color: var(--bg); text-align: center; font-size: 14px; padding: 10px 16px; letter-spacing: -.01em; }
+  .announce:hover { text-decoration: none; }
+  .announce:hover .go { text-decoration: underline; }
+  .announce .pill { display: inline-block; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-radius: 980px; padding: 2px 8px; margin-right: 10px; vertical-align: 1px; }
+  .announce code { white-space: nowrap; font-size: 13px; background: rgba(127,127,127,.25); border-radius: 6px; padding: 1px 6px; }
+  .announce .go { color: inherit; opacity: .85; margin-left: 8px; white-space: nowrap; }
+
+  /* web app mock */
+  .browser { background: var(--bg); border: 1px solid var(--line-soft); border-radius: 16px; overflow: hidden; margin-top: 24px; box-shadow: 0 20px 50px -30px rgba(0,0,0,.3); font-size: 13px; letter-spacing: -.01em; }
+  section.alt .browser { background: var(--bg); }
+  .browser-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: var(--tile); }
+  .browser-bar .dots { display: flex; gap: 6px; }
+  .browser-bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .browser-bar .url { flex: 1; max-width: 320px; margin: 0 auto; text-align: center; font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 4px 10px; letter-spacing: 0; }
+  .app-mock { display: grid; grid-template-columns: 170px 1fr; min-height: 340px; }
+  .app-side { background: var(--tile); border-right: 1px solid var(--line-soft); padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .app-side .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 0 6px 10px; }
+  .app-side .logo b { width: 20px; height: 20px; border-radius: 6px; background: var(--fg); color: var(--bg); display: grid; place-items: center; font-size: 12px; }
+  .app-side .new { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; margin-bottom: 8px; background: var(--bg); }
+  .app-side .chat { padding: 5px 8px; border-radius: 7px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app-side .chat.on { background: var(--line-soft); color: var(--fg); }
+  .app-main { padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .m-user { align-self: flex-end; background: var(--tile); border-radius: 14px; padding: 7px 12px; max-width: 80%; }
+  .m-tool { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line-soft); border-radius: 10px; padding: 6px 10px; }
+  .m-tool .ok { color: #28a745; } .m-tool .n { margin-left: auto; font-family: var(--mono); font-size: 11px; letter-spacing: 0; }
+  .m-tool .n .a { color: #28a745; } .m-tool .n .d { color: #d93025; }
+  .m-diff { border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0; }
+  .m-diff div { padding: 1px 10px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .m-diff .d { background: rgba(217,48,37,.1); color: #c5221f; } .m-diff .a { background: rgba(40,167,69,.12); color: #1e7e34; }
+  .m-perm { border: 1px solid var(--accent); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+  .m-perm .q { font-weight: 600; }
+  .m-perm .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .m-perm .opts span { border: 1px solid var(--line); border-radius: 7px; padding: 3px 9px; font-size: 12px; }
+  .m-perm .opts span:first-child { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .m-input { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; color: var(--dim); display: flex; justify-content: space-between; }
+  .m-input i { font-style: normal; font-family: var(--mono); font-size: 11px; letter-spacing: 0; }
+  @media (prefers-color-scheme: dark) {
+    .m-diff .d { color: #ff8a80; } .m-diff .a { color: #6ee787; }
+  }
+  @media (max-width: 560px) { .app-mock { grid-template-columns: 1fr; } .app-side { display: none; } }
 
   /* command palette */
   .palette { max-width: 720px; margin: 0 auto; background: var(--tile); border-radius: var(--r); overflow: hidden; }
@@ -275,12 +318,17 @@
 <div class="progress" aria-hidden="true"></div>
 <div class="toast" role="status" aria-live="polite"></div>
 
+<a class="announce" href="#web">
+  <span class="pill">New</span>miii now works in your browser too — a desktop-style app like Claude Desktop. Run <code>miii web</code><span class="go">See it ›</span>
+</a>
+
 <nav>
   <div class="wrap">
     <a class="brand" href="#">miii</a>
     <div class="links">
       <a href="#advantage">Why local</a>
       <a href="#start">Quick start</a>
+      <a href="#web">Web app</a>
       <a href="#commands">Commands</a>
       <a href="#updates">Updates</a>
       <a href="#faq">FAQ</a>
@@ -293,7 +341,7 @@
   <div class="wrap">
     <p class="kicker">Free forever. Works with any model.</p>
     <h1>Made in India.<br />Built for everyone.</h1>
-    <p class="sub">A professional-grade coding agent for your terminal — it plans, reads, writes and verifies code. Bring your own keys (Claude, GPT, Gemini, DeepSeek) or run it 100% locally on your GPU.</p>
+    <p class="sub">A professional-grade coding agent for your terminal or your browser — it plans, reads, writes and verifies code. Bring your own keys (Claude, GPT, Gemini, DeepSeek) or run it 100% locally on your GPU.</p>
     <p class="motto">Apna code, apna model, apni marzi.</p>
     <div class="cta">
       <button class="btn primary" type="button" data-copy="npm i -g miii-agent" title="Click to copy">npm i -g miii-agent <span class="hint">copy</span></button>
@@ -416,6 +464,58 @@
   </div>
 </section>
 
+<section id="web">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Rather have a window?<br /><code>miii web</code></h2>
+      <p class="lead">The same agent in a desktop-style app in your browser — for when you'd rather click than type. Same sessions, same models, same permission rules as the terminal.</p>
+    </div>
+    <div class="bento reveal">
+      <div class="tile s4 r2">
+        <p class="eyebrow">Chat, diffs and approvals</p>
+        <h3>Everything the terminal shows, laid out like a chat app.</h3>
+        <p>Replies stream in, each tool call opens to show the exact command and its output, edits show as real diffs, and every write waits for your click.</p>
+        <div class="browser" aria-hidden="true">
+          <div class="browser-bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">localhost:4747</span></div>
+          <div class="app-mock">
+            <div class="app-side">
+              <div class="logo"><b>m</b>miii</div>
+              <div class="new">＋ New chat</div>
+              <div class="chat on">Fix the add function</div>
+              <div class="chat">Add rate limiting</div>
+              <div class="chat">Review auth changes</div>
+            </div>
+            <div class="app-main">
+              <div class="m-user">add() in math.js is wrong — fix it</div>
+              <div class="m-tool"><span class="ok">✓</span> Reading math.js</div>
+              <div class="m-tool"><span class="ok">✓</span> Editing math.js <span class="n"><span class="a">+1</span> <span class="d">−1</span></span></div>
+              <div class="m-diff"><div class="d">- export const add = (a, b) =&gt; a - b</div><div class="a">+ export const add = (a, b) =&gt; a + b</div></div>
+              <div class="m-perm">
+                <div class="q">Running the tests?</div>
+                <div class="opts"><span>Allow once</span><span>Always allow npm test</span><span>Deny</span></div>
+              </div>
+              <div class="m-input">Describe a task, or type / for commands <i>⏎</i></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tile s2">
+        <p class="eyebrow">One command</p>
+        <h3>Open it from any project.</h3>
+        <p>It starts a local server and opens your browser. Add <code>--port</code>, <code>--no-open</code> or <code>-c</code> to resume your last chat.</p>
+        <div class="code foot"><pre data-copy="miii web"><span class="p">miii web</span>
+<span class="c"># or: miii --web</span></pre></div>
+      </div>
+      <div class="tile s2">
+        <p class="eyebrow">Locked to your machine</p>
+        <h3>Yours alone.</h3>
+        <p>It listens on localhost only, and every request needs the one-time key in the link miii prints. Other sites can't reach it.</p>
+        <div class="foot tags"><code>127.0.0.1</code><code>#token=…</code></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="commands">
   <div class="wrap">
     <div class="head center reveal">
@@ -466,6 +566,7 @@
       <details><summary>Is miii really free?</summary><p>Yes. miii is MIT-licensed with no paid tier, no account and no sign-up. With a local model you pay nothing at all.</p></details>
       <details><summary>Is my code ever uploaded?</summary><p>With a local provider, your code only ever travels to <code>localhost</code>. No telemetry and no analytics — the one outbound call miii makes on its own is a version check against <code>registry.npmjs.org</code>, which carries nothing but the package name.</p></details>
       <details><summary>Can it break my repo?</summary><p>Every write and every shell command asks first, and file tools are confined to the working directory. When something does go wrong, <code>/rewind</code> puts the files and the conversation back.</p></details>
+      <details><summary>Is there a desktop or web app?</summary><p>Yes — run <code>miii web</code> in any project and it opens in your browser: a chat sidebar, streaming replies, real diffs and one-click approvals. It's the same agent and sessions as the terminal, served only on <code>localhost</code>, and every request needs the key in the link it prints.</p></details>
       <details><summary>Do I need a GPU?</summary><p>For fully local models you want one — <code>qwen2.5-coder:3b</code> runs on CPU, but it will be slow and need more hand-holding. Apple Silicon works well: unified memory counts as VRAM here.</p></details>
       <details><summary>Why not just use Claude Code or Cursor?</summary><p>Use them if you can. miii is for when you want the same workflow without being tied to one vendor or one subscription — or you need to go fully offline for air-gapped work, NDA'd code, or a flight with no wifi.</p></details>
     </div>
@@ -591,6 +692,17 @@ document.querySelectorAll(".code").forEach((wrap) => {
         ["Nothing written yet. Approve the plan? (y/n)", "sys"],
       ],
     },
+    web: {
+      label: "miii web",
+      input: "$ miii web",
+      lines: [
+        ["miii is running at http://localhost:4747/#token=…", "u"],
+        ["project  ~/code/my-app", "sys"],
+        ["only this machine can reach it; the link carries the key", "sys"],
+        ["opening your browser…", "tool"],
+        ["✓ chat, diffs and approvals — now in a window", "ok"],
+      ],
+    },
     rewind: {
       label: "/rewind",
       input: "> /rewind",
@@ -607,6 +719,7 @@ document.querySelectorAll(".code").forEach((wrap) => {
   // Free-typed prompts map to the closest scenario by keyword.
   function scenarioFor(text) {
     const t = text.toLowerCase();
+    if (/web|browser|window|desktop|gui|\bui\b/.test(t)) return { ...SCENARIOS.web, input: "> " + text };
     if (/^\/?rewind|undo|revert/.test(t)) return { ...SCENARIOS.rewind, input: "> " + text };
     if (/^\/plan|plan|refactor|migrate|design/.test(t)) return { ...SCENARIOS.plan, input: "> " + text, lines: [...SCENARIOS.plan.lines.slice(0, 3), ["Plan:", "u"], ["  1. map every call site the change touches", "u"], ["  2. make the edit in small, testable steps", "u"], ["  3. run the test suite after each step", "u"], SCENARIOS.plan.lines[7]] };
     if (/test|fail|fix|bug|error|broken/.test(t)) return { ...SCENARIOS.fix, input: "> " + text };
