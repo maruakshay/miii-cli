@@ -177,6 +177,12 @@ if (cmd === 'version' || args.includes('--version') || args.includes('-v')) {
   // terminal, a raw stderr write gets scrambled or painted over.
   const cfgErr = configError()
   if (cfgErr) console.error(cfgErr)
+  // Before the first loadSettings(), which caches: a yes here has to be seen by it.
+  const { confirmTrust, untrustedNotice } = await import('./trust.js')
+  if (!(await confirmTrust())) {
+    const notice = untrustedNotice()
+    if (notice) console.error(notice)
+  }
   loadSettings()
   for (const problem of settingsProblems()) {
     console.error(`miii: ignoring ${problem.path} (${problem.message})`)

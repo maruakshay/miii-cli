@@ -11,6 +11,7 @@ import { configError } from '../config.js'
 import { loadSettings, settingsProblems } from '../settings.js'
 import { initMcp, closeMcp } from '../mcp/registry.js'
 import { startWeb, clientDir } from './server.js'
+import { confirmTrust, untrustedNotice } from '../trust.js'
 
 function openBrowser(url: string) {
   const [cmd, ...args] =
@@ -38,6 +39,10 @@ export async function runWeb(argv: string[]): Promise<number> {
 
   const cfgErr = configError()
   if (cfgErr) console.error(cfgErr)
+  if (!(await confirmTrust())) {
+    const notice = untrustedNotice()
+    if (notice) console.error(notice)
+  }
   loadSettings()
   for (const problem of settingsProblems()) console.error(`miii: ignoring ${problem.path} (${problem.message})`)
   if (!clientDir()) console.error('miii: the web app is not built — run `npm run build` (the page will say so too)')

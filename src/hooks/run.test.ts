@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { invalidateSettings } from '../settings.js'
+import { trustProject } from '../trust.js'
 import { matches, hooksFor, runHooks, hasHooks } from './run.js'
 
 let root: string
@@ -12,6 +13,7 @@ let realHome: string | undefined
 function settings(body: unknown) {
   mkdirSync(join(root, '.miii'), { recursive: true })
   writeFileSync(join(root, '.miii', 'settings.json'), JSON.stringify(body))
+  trustProject(root)
   invalidateSettings()
 }
 

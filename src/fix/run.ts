@@ -22,6 +22,7 @@ import { initMcp, closeMcp } from '../mcp/registry.js'
 import { loadConfig } from '../config.js'
 import { modelContext } from '../llm/client.js'
 import { loadSettings, settingsEnv, settingsProblems } from '../settings.js'
+import { untrustedNotice } from '../trust.js'
 import { PERMISSION_MODES, type PermissionMode } from '../permissions/policy.js'
 import { newSessionId, persistSession } from '../session/store.js'
 import type { AgentEvent, MiiMessage } from '../agent/types.js'
@@ -413,6 +414,8 @@ export async function runFix(opts: FixOptions): Promise<number> {
   for (const problem of settingsProblems()) {
     process.stderr.write(`miii: ignoring ${problem.path} (${problem.message})\n`)
   }
+  const notice = untrustedNotice(opts.cwd)
+  if (notice) process.stderr.write(notice + '\n')
 
   const controller = new AbortController()
   const onSigint = () => {

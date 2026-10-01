@@ -22,6 +22,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { PermissionMode } from './permissions/policy.js'
+import { isProjectTrusted } from './trust.js'
 
 /** Points in a turn a hook can run at. */
 export type HookEvent =
@@ -181,9 +182,16 @@ export function loadSettings(cwd: string = process.cwd()): Settings {
   if (cache && cache.cwd === cwd) return cache.value
   problems.length = 0
   let merged: Settings = {}
+  // An untrusted folder's files can still forbid things, never grant them —
+  // see trust.ts for why hooks, servers, allow rules and env wait for a yes.
+  const trusted = isProjectTrusted(cwd)
   for (const scope of SETTINGS_SCOPES) {
     const one = readOne(settingsPath(scope, cwd))
-    if (one) merged = mergeSettings(merged, one)
+    if (!one) continue
+    merged = mergeSettings(
+      merged,
+      scope === 'user' || trusted ? one : { permissions: { deny: one.permissions?.deny ?? [] } },
+    )
   }
   cache = { cwd, value: merged }
   return merged
@@ -238,7 +246,7 @@ export function defaultPermissionMode(cwd?: string): PermissionMode | undefined 
   return loadSettings(cwd).permissions?.defaultMode
 }
 
-/** Extra environment for run_bash and hooks. Never overrides the real env. */
+/** Extra environment for run_bash and hooks, laid over the real env. */
 export function settingsEnv(cwd?: string): Record<string, string> {
   return loadSettings(cwd).env ?? {}
 }

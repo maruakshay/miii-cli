@@ -21,6 +21,7 @@ import { defaultPermissionMode, settingsProblems, loadSettings } from './setting
 import { PERMISSION_MODES, type PermissionMode } from './permissions/policy.js'
 import { listSessions, loadSession, persistSession, newSessionId } from './session/store.js'
 import { snapshotForTurn } from './session/checkpoint.js'
+import { untrustedNotice } from './trust.js'
 import type { AgentEvent, MiiMessage } from './agent/types.js'
 
 export type OutputFormat = 'text' | 'json' | 'stream-json'
@@ -194,6 +195,9 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
   for (const problem of settingsProblems()) {
     process.stderr.write(`miii: ignoring ${problem.path} (${problem.message})\n`)
   }
+  // Headless never asks: stdin is usually the prompt, not a person.
+  const notice = untrustedNotice(opts.cwd)
+  if (notice) process.stderr.write(notice + '\n')
 
   const history: MiiMessage[] = opts.resume
     ? loadSession(opts.resume)
