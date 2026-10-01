@@ -23,13 +23,14 @@ function readImage(file: File): Promise<Attachment> {
 }
 
 export function Composer({
-  state, commands, modes, draft, onDraftUsed, onError,
+  state, commands, modes, draft, onDraftUsed, onSent, onError,
 }: {
   state: WebState
   commands: Command[]
   modes: ModeInfo[]
   draft: string | null
   onDraftUsed: () => void
+  onSent: () => void
   onError: (msg: string) => void
 }) {
   const [text, setText] = useState('')
@@ -63,6 +64,7 @@ export function Composer({
     act(post('send', { text: t, images: images.map((i) => i.base64) }))
     setText('')
     setImages([])
+    onSent()
   }
 
   const addFiles = async (files: FileList | File[]) => {

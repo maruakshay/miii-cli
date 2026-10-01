@@ -33,8 +33,8 @@ function Todos({ todos }: { todos: Todo[] }) {
 
 export function Plan({ plan }: { plan: string }) {
   return (
-    <div className="rounded-xl border border-primary/40 bg-card px-5 py-4">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">Plan</div>
+    <div className="rounded-xl border border-plan/50 bg-card px-5 py-4">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-plan">Proposed plan</div>
       <Markdown text={plan} />
     </div>
   )

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Brain, ChevronRight, ImageIcon } from 'lucide-react'
+import { Brain, ChevronRight, ImageIcon, Undo2 } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { CopyButton, Markdown } from '@/components/Markdown'
 import { ToolCall } from '@/components/ToolCall'
@@ -26,16 +26,31 @@ function fmtTokens(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
 }
 
-export function MessageView({ m }: { m: WebMessage }) {
+export function MessageView({ m, onRewind }: { m: WebMessage; onRewind?: (m: WebMessage) => void }) {
   if (m.role === 'user') {
     return (
-      <div className="ml-auto max-w-[85%] rounded-2xl bg-secondary px-4 py-2.5 whitespace-pre-wrap break-words">
-        {m.content}
-        {m.images ? (
-          <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-            <ImageIcon className="size-3.5" /> {m.images} image{m.images > 1 ? 's' : ''}
+      <div className="group flex flex-col items-end gap-1">
+        <div className="max-w-[85%] rounded-xl rounded-l-sm border-l-[3px] border-user-rule bg-secondary px-4 py-2.5 whitespace-pre-wrap break-words">
+          {m.content}
+          {m.images ? (
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <ImageIcon className="size-3.5" /> {m.images} image{m.images > 1 ? 's' : ''}
+            </div>
+          ) : null}
+        </div>
+        {onRewind && m.turn !== undefined && (
+          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <CopyButton text={m.content} label="Copy" />
+            <button
+              type="button"
+              onClick={() => onRewind(m)}
+              title="Undo this message and everything after it, including file changes"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Undo2 className="size-3.5" /> Rewind to here
+            </button>
           </div>
-        ) : null}
+        )}
       </div>
     )
   }

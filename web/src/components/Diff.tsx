@@ -1,7 +1,16 @@
+import { useMemo } from 'react'
+import { highlight, languageForPath } from '@/lib/highlight'
 import type { FileDiff } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 export function DiffView({ diff }: { diff: FileDiff }) {
+  // Line by line: a hunk is a slice of the file, so a multi-line string or
+  // comment that started off-screen would throw a whole-hunk pass off anyway.
+  const lang = languageForPath(diff.path)
+  const html = useMemo(
+    () => diff.hunks.map((h) => h.lines.map((l) => (lang ? highlight(l.text, lang) : null))),
+    [diff, lang],
+  )
   return (
     <div className="max-h-[420px] overflow-auto rounded-lg border bg-code font-mono text-[12.5px] leading-normal">
       <div className="sticky top-0 flex gap-3 border-b bg-code px-3 py-1.5 text-xs text-muted-foreground">
@@ -24,7 +33,10 @@ export function DiffView({ diff }: { diff: FileDiff }) {
               >
                 <td className="w-px select-none px-2 text-right align-top text-muted-foreground/70">{l.sign === '+' ? '' : l.oldNo}</td>
                 <td className="w-px select-none px-2 text-right align-top text-muted-foreground/70">{l.sign === '-' ? '' : l.newNo}</td>
-                <td className="whitespace-pre px-2"><span className="select-none opacity-60">{l.sign === ' ' ? ' ' : l.sign}</span> {l.text}</td>
+                <td className="whitespace-pre px-2">
+                  <span className="select-none opacity-60">{l.sign === ' ' ? ' ' : l.sign}</span>{' '}
+                  {html[hi][li] != null ? <span className="hljs" dangerouslySetInnerHTML={{ __html: html[hi][li]! }} /> : l.text}
+                </td>
               </tr>
             )),
           ])}

@@ -26,6 +26,8 @@ export interface WebMessage {
   thinking?: string
   tools?: WebTool[]
   images?: number
+  /** On a user message: what `rewind` takes to drop back to before it. */
+  turn?: number
   live?: boolean
   tokens?: { prompt: number; eval: number }
   duration?: number
@@ -58,6 +60,7 @@ export interface WebState {
   error: string | null
 }
 
+export interface Checkpoint { turn: number; ts: string; files: string[] }
 export interface SessionMeta { id: string; createdAt: string; updatedAt: string; title: string; messageCount: number }
 export interface Command { name: string; description: string }
 export interface ModeInfo { mode: PermissionMode; label: string; hint: string }

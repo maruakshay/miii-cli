@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import { ShieldQuestion } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Markdown } from '@/components/Markdown'
 import type { Answer, PendingPermission } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 function preview(p: PendingPermission): string | null {
   const i = (p.input ?? {}) as Record<string, unknown>
@@ -60,17 +60,16 @@ export function PermissionCard({ p, onAnswer }: { p: PendingPermission; onAnswer
   const body = plan ? null : preview(p)
   const diffy = p.toolName === 'edit_file'
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-primary/50 bg-card p-4 shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
+    <div className={cn('flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-lg animate-in fade-in-0 slide-in-from-bottom-2', plan ? 'border-plan/60' : 'border-primary/50')}>
       <div className="flex items-start gap-3">
-        <ShieldQuestion className="mt-0.5 size-5 shrink-0 text-primary" />
+        <ShieldQuestion className={cn('mt-0.5 size-5 shrink-0', plan ? 'text-plan' : 'text-primary')} />
         <div className="min-w-0">
           <div className="font-medium">{plan ? 'Ready to start?' : `${p.label}?`}</div>
           <div className="text-sm text-muted-foreground">
-            {plan ? 'Nothing has changed yet — approving lets miii carry out this plan.' : 'miii wants to do this in your project.'}
+            {plan ? 'The plan is above. Nothing has changed yet — approving lets miii carry it out.' : 'miii wants to do this in your project.'}
           </div>
         </div>
       </div>
-      {plan && p.plan && <div className="max-h-[40vh] overflow-y-auto rounded-lg border px-4 py-3"><Markdown text={p.plan} /></div>}
       {body && (
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-code px-3 py-2 font-mono text-xs">
           {diffy ? body.split('\n').map((l, i) => <Line key={i} text={l} />) : body}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { KeyRound, Menu, Moon, Sun, WifiOff } from 'lucide-react'
+import { ArrowDown, KeyRound, Menu, Moon, Sun, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Composer } from '@/components/Composer'
@@ -7,8 +7,8 @@ import { MessageView } from '@/components/MessageView'
 import { PermissionCard } from '@/components/PermissionCard'
 import { Sidebar } from '@/components/Sidebar'
 import { useMiii } from '@/hooks/useMiii'
-import { post, token } from '@/lib/api'
-import type { Answer, WebState } from '@/lib/types'
+import { get, post, token } from '@/lib/api'
+import type { Answer, Checkpoint, WebMessage, WebState } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 function useTheme() {
@@ -63,7 +63,8 @@ function Welcome({ cwd, onPick }: { cwd: string; onPick: (text: string) => void 
   const name = cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd
   return (
     <div className="mx-auto mt-[14vh] max-w-xl text-center">
-      <h1 className="mb-2 font-serif text-3xl tracking-tight">What are we building?</h1>
+      <div className="mb-4 font-mono text-sm text-primary">&gt;_ miii</div>
+      <h1 className="mb-2 text-2xl font-semibold tracking-tight">What are we building?</h1>
       <p className="mb-7 text-muted-foreground">
         miii can read, edit and run code in <span className="rounded bg-code px-1.5 py-0.5 font-mono text-sm text-foreground">{name}</span>
       </p>
@@ -90,12 +91,43 @@ export function App() {
   const [draft, setDraft] = useState<string | null>(null)
   const clearDraft = useCallback(() => setDraft(null), [])
 
+  // Follow the transcript while you're at the bottom; leave it alone once you scroll up to read.
   const scroller = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
+  const [away, setAway] = useState(false)
+  const toBottom = useCallback((smooth = false) => {
+    pinned.current = true
+    setAway(false)
+    const el = scroller.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  }, [])
   useLayoutEffect(() => {
     const el = scroller.current
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [messages, state?.pending, state?.status])
+  // A different chat starts at its latest message.
+  useEffect(() => toBottom(), [state?.sessionId, toBottom])
+  // Sending is a request to see the reply, wherever you were scrolled.
+  const onSent = useCallback(() => toBottom(), [toBottom])
+
+  const rewind = useCallback(async (m: WebMessage) => {
+    if (m.turn === undefined) return
+    try {
+      const { checkpoints } = await get<{ checkpoints: Checkpoint[] }>('checkpoints')
+      const files = [...new Set(checkpoints.filter((c) => c.turn >= m.turn!).flatMap((c) => c.files))]
+      const shown = files.slice(0, 8).map((f) => `  • ${f}`).join('\n') + (files.length > 8 ? `\n  … and ${files.length - 8} more` : '')
+      const ok = confirm(
+        'Rewind to before this message?\n\nThe conversation from here on is dropped' +
+        (files.length ? `, and ${files.length} file${files.length > 1 ? 's go' : ' goes'} back to how ${files.length > 1 ? 'they were' : 'it was'}:\n${shown}` : '. No files were changed after it.'),
+      )
+      if (!ok) return
+      await post('rewind', { turn: m.turn })
+      // As in the terminal: the message comes back to the composer to edit and resend.
+      setDraft(m.content)
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }, [showToast])
 
   useEffect(() => {
     document.title = state?.title ? `${state.title} · miii` : 'miii'
@@ -115,7 +147,7 @@ export function App() {
       <div className="grid h-full place-items-center p-4">
         <div className="max-w-md text-center">
           <KeyRound className="mx-auto mb-4 size-10 text-primary" />
-          <h1 className="mb-2 font-serif text-2xl">Open the link from your terminal</h1>
+          <h1 className="mb-2 text-xl font-semibold">Open the link from your terminal</h1>
           <p className="text-muted-foreground">
             This page needs the link <code className="rounded bg-code px-1 font-mono text-sm">miii web</code> printed when it started — it carries the key that lets this tab drive your agent.
           </p>
@@ -157,6 +189,7 @@ export function App() {
             onScroll={(e) => {
               const el = e.currentTarget
               pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+              setAway(!pinned.current)
             }}
           >
             <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-4 pb-10 sm:px-6">
@@ -164,17 +197,28 @@ export function App() {
                 ? <Welcome cwd={state.cwd} onPick={setDraft} />
                 : messages.map((m, i) => (
                     <div key={m.id} className={cn(m.role === 'assistant' && messages[i - 1]?.role === 'assistant' && '-mt-3.5')}>
-                      <MessageView m={m} />
+                      <MessageView m={m} onRewind={state.busy ? undefined : rewind} />
                     </div>
                   ))}
             </div>
           </div>
 
-          <div className="shrink-0 px-4 pb-3 sm:px-6">
+          <div className="relative shrink-0 px-4 pb-3 sm:px-6">
+            {away && (
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="absolute -top-11 left-1/2 z-10 -translate-x-1/2 rounded-full bg-background shadow-md"
+                onClick={() => toBottom(true)}
+                aria-label="Jump to latest"
+              >
+                <ArrowDown />
+              </Button>
+            )}
             <div className="mx-auto flex max-w-3xl flex-col gap-2">
               {showStatus && (
                 <div className="flex items-center gap-2.5 px-1 text-sm text-muted-foreground">
-                  <span className="size-3.5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                  <span className="size-3.5 animate-spin rounded-full border-2 border-muted border-t-warning" />
                   <span className="truncate">{state.status ?? 'Working…'}</span>
                   <Elapsed key={messages.filter((m) => m.role === 'user').length} busy={state.busy} />
                   <span className="ml-auto hidden text-xs sm:inline">esc to stop</span>
@@ -190,7 +234,7 @@ export function App() {
               {!state.model && (
                 <div className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm">Pick a model from the menu below to get started.</div>
               )}
-              <Composer state={state} commands={commands} modes={modes} draft={draft} onDraftUsed={clearDraft} onError={showToast} />
+              <Composer state={state} commands={commands} modes={modes} draft={draft} onDraftUsed={clearDraft} onSent={onSent} onError={showToast} />
               <div className="hidden text-center text-[11px] text-muted-foreground/80 sm:block">
                 ⏎ send · ⇧⏎ newline · esc stop · ⇧⇥ mode · / commands · miii can make mistakes — review what it changes
               </div>
