@@ -28,7 +28,7 @@ export function Sidebar({
   return (
     <div className="flex h-full flex-col gap-1 bg-sidebar p-3 text-sidebar-foreground">
       <div className="px-2 pt-1 pb-3">
-        <span className="text-base font-semibold tracking-tight">miii</span>
+        <span className="font-mono text-base font-semibold tracking-tight"><span className="text-primary">&gt;_</span> miii</span>
       </div>
       <Button variant="outline" className="justify-start" onClick={() => act(post('session/new'))} disabled={busy}>
         <SquarePen /> New chat

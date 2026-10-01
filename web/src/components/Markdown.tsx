@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Check, Copy } from 'lucide-react'
+import { highlight } from '@/lib/highlight'
 import { cn } from '@/lib/utils'
 
 export function CopyButton({ text, className, label }: { text: string; className?: string; label?: string }) {
@@ -27,13 +28,17 @@ const components: Components = {
     const text = String(children ?? '')
     // Inline code has no language and no newline; fenced code has at least one.
     if (!lang && !text.includes('\n')) return <code>{children}</code>
+    const source = text.replace(/\n$/, '')
+    const html = highlight(source, lang)
     return (
       <div className="not-prose my-3 overflow-hidden rounded-lg border bg-code">
         <div className="flex items-center justify-between border-b px-3 py-1 text-xs text-muted-foreground">
           <span className="font-mono">{lang ?? 'text'}</span>
-          <CopyButton text={text.replace(/\n$/, '')} label="Copy" />
+          <CopyButton text={source} label="Copy" />
         </div>
-        <pre className="overflow-x-auto px-4 py-3 font-mono text-xs leading-relaxed"><code>{text.replace(/\n$/, '')}</code></pre>
+        <pre className="overflow-x-auto px-4 py-3 font-mono text-xs leading-relaxed">
+          {html !== null ? <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} /> : <code>{source}</code>}
+        </pre>
       </div>
     )
   },
@@ -45,7 +50,10 @@ const components: Components = {
   img: ({ alt }) => <span className="text-muted-foreground">[image{alt ? `: ${alt}` : ''}]</span>,
 }
 
-/** react-markdown renders no raw HTML, which is what keeps model output from scripting the page. */
+/**
+ * react-markdown renders no raw HTML, which is what keeps model output from
+ * scripting the page. The one innerHTML is highlight.js output, which escapes its input.
+ */
 export const Markdown = memo(function Markdown({ text, streaming, className }: { text: string; streaming?: boolean; className?: string }) {
   return (
     <div className={cn('prose-miii', streaming && 'is-streaming', className)}>

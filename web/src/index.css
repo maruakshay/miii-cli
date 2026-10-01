@@ -3,68 +3,99 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* shadcn/ui tokens — stone base, warm terracotta accent. */
+/*
+ * shadcn/ui tokens, taken from the terminal UI's pale palette (src/ui/theme.ts
+ * and src/ui/markdown.ts) so `miii web` and the TUI read as one product:
+ * slate panels, off-white prose, dusty blue as the one accent, and sage /
+ * rose / butter / sea glass / lavender for meaning.
+ *
+ * Dark is the TUI as-is. Light keeps the same hues, deepened until they hold
+ * contrast on white — the terminal pastels wash out on a light background.
+ */
 :root {
   --radius: 0.75rem;
-  --background: oklch(0.985 0.004 90);
-  --foreground: oklch(0.24 0.012 80);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.012 80);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.012 80);
-  --primary: oklch(0.66 0.14 45);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.955 0.007 85);
-  --secondary-foreground: oklch(0.24 0.012 80);
-  --muted: oklch(0.955 0.007 85);
-  --muted-foreground: oklch(0.52 0.014 80);
-  --accent: oklch(0.94 0.008 85);
-  --accent-foreground: oklch(0.24 0.012 80);
-  --destructive: oklch(0.58 0.2 27);
-  --border: oklch(0.91 0.01 85);
-  --input: oklch(0.88 0.012 85);
-  --ring: oklch(0.66 0.14 45);
-  --sidebar: oklch(0.965 0.007 88);
-  --sidebar-foreground: oklch(0.24 0.012 80);
-  --sidebar-accent: oklch(0.92 0.01 85);
-  --sidebar-border: oklch(0.91 0.01 85);
-  --code: oklch(0.965 0.006 85);
-  --diff-add: oklch(0.95 0.05 150);
-  --diff-add-fg: oklch(0.45 0.12 150);
-  --diff-del: oklch(0.95 0.04 25);
-  --diff-del-fg: oklch(0.5 0.16 27);
-  --success: oklch(0.55 0.13 150);
+  --background: #f7f8fa;
+  --foreground: #2b2f36;
+  --card: #ffffff;
+  --card-foreground: #2b2f36;
+  --popover: #ffffff;
+  --popover-foreground: #2b2f36;
+  --primary: #4a6f9e;              /* dusty blue */
+  --primary-foreground: #ffffff;
+  --secondary: #eceef2;            /* the user-message panel */
+  --secondary-foreground: #2b2f36;
+  --muted: #eceef2;
+  --muted-foreground: #616977;     /* slate gray, a touch deeper to hold on the panel */
+  --accent: #e8ebf0;
+  --accent-foreground: #2b2f36;
+  --destructive: #b05454;          /* rose clay */
+  --border: #e1e4e9;
+  --input: #d5d9e0;
+  --ring: #4a6f9e;
+  --sidebar: #f0f2f5;
+  --sidebar-foreground: #2b2f36;
+  --sidebar-accent: #e4e7ec;
+  --sidebar-border: #e1e4e9;
+  --code: #f1f3f6;
+  --code-foreground: #3d6596;      /* inline code — the markdown accent */
+  --quote: #5f6e7c;
+  --diff-add: #e6f1e7;
+  --diff-add-fg: #3f6e46;
+  --diff-del: #f6e6e6;
+  --diff-del-fg: #9c4545;
+  --success: #4f7d56;              /* sage */
+  --warning: #8a6d1f;              /* butter */
+  --plan: #3f7f84;                 /* sea glass */
+  --user-rule: #4a6f9e;
+  /* Syntax highlighting — the TUI's hues, deepened for white. */
+  --hl-keyword: #7a5b94;           /* lavender */
+  --hl-string: #4f7d56;            /* sage */
+  --hl-number: #8a6d1f;            /* butter */
+  --hl-title: #3d6596;             /* dusty blue */
+  --hl-type: #3f7f84;              /* sea glass */
+  --hl-comment: #6c7682;
 }
 
 .dark {
-  --background: oklch(0.26 0.003 85);
-  --foreground: oklch(0.94 0.005 85);
-  --card: oklch(0.3 0.003 85);
-  --card-foreground: oklch(0.94 0.005 85);
-  --popover: oklch(0.3 0.003 85);
-  --popover-foreground: oklch(0.94 0.005 85);
-  --primary: oklch(0.68 0.14 45);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.33 0.004 85);
-  --secondary-foreground: oklch(0.94 0.005 85);
-  --muted: oklch(0.33 0.004 85);
-  --muted-foreground: oklch(0.7 0.01 85);
-  --accent: oklch(0.35 0.004 85);
-  --accent-foreground: oklch(0.94 0.005 85);
-  --destructive: oklch(0.65 0.19 25);
-  --border: oklch(0.36 0.004 85);
-  --input: oklch(0.4 0.004 85);
-  --ring: oklch(0.68 0.14 45);
-  --sidebar: oklch(0.225 0.003 85);
-  --sidebar-foreground: oklch(0.94 0.005 85);
-  --sidebar-accent: oklch(0.31 0.004 85);
-  --sidebar-border: oklch(0.32 0.004 85);
-  --code: oklch(0.22 0.003 85);
-  --diff-add: oklch(0.32 0.05 150);
-  --diff-add-fg: oklch(0.82 0.1 150);
-  --diff-del: oklch(0.32 0.05 25);
-  --diff-del-fg: oklch(0.82 0.09 25);
-  --success: oklch(0.72 0.14 150);
+  --background: #1f2226;
+  --foreground: #d4d7dc;           /* off-white */
+  --card: #272a30;
+  --card-foreground: #d4d7dc;
+  --popover: #2b2f35;
+  --popover-foreground: #d4d7dc;
+  --primary: #9ab8de;              /* dusty blue */
+  --primary-foreground: #1f2226;
+  --secondary: #343840;            /* panel — the fill behind user messages */
+  --secondary-foreground: #d4d7dc;
+  --muted: #2e3238;
+  --muted-foreground: #8b929c;     /* slate, a step up from #6b7280 so it reads as text */
+  --accent: #33373e;
+  --accent-foreground: #e5e7eb;
+  --destructive: #d9a0a0;          /* rose clay */
+  --border: #363b42;
+  --input: #3e434b;
+  --ring: #9ab8de;
+  --sidebar: #1a1d21;
+  --sidebar-foreground: #d4d7dc;
+  --sidebar-accent: #2c3036;
+  --sidebar-border: #2c3036;
+  --code: #181b1f;
+  --code-foreground: #9ab8de;
+  --quote: #8a9aa8;                /* slate */
+  --diff-add: #26332a;
+  --diff-add-fg: #9cc5a1;          /* sage */
+  --diff-del: #3a2a2c;
+  --diff-del-fg: #d9a0a0;          /* rose clay */
+  --success: #9cc5a1;
+  --warning: #e0cf9f;              /* butter */
+  --plan: #9ac6c9;                 /* sea glass */
+  --user-rule: #9ab8de;
+  --hl-keyword: #c4aed4;           /* lavender */
+  --hl-string: #9cc5a1;
+  --hl-number: #e0cf9f;
+  --hl-title: #9ab8de;
+  --hl-type: #9ac6c9;
+  --hl-comment: #7f8792;
 }
 
 @theme inline {
@@ -100,7 +131,9 @@
   --color-diff-del: var(--diff-del);
   --color-diff-del-fg: var(--diff-del-fg);
   --color-success: var(--success);
-  --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+  --color-warning: var(--warning);
+  --color-plan: var(--plan);
+  --color-user-rule: var(--user-rule);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -124,9 +157,9 @@
 .prose-miii ul { list-style: disc; }
 .prose-miii ol { list-style: decimal; }
 .prose-miii li + li { margin-top: 0.2em; }
-.prose-miii a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
-.prose-miii :not(pre) > code { background: var(--code); border: 1px solid var(--border); border-radius: 5px; padding: 0.05em 0.35em; font-size: 0.88em; font-family: var(--font-mono); }
-.prose-miii blockquote { border-left: 3px solid var(--border); padding-left: 0.8em; color: var(--muted-foreground); }
+.prose-miii a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.prose-miii :not(pre) > code { color: var(--code-foreground); background: var(--code); border: 1px solid var(--border); border-radius: 5px; padding: 0.05em 0.35em; font-size: 0.88em; font-family: var(--font-mono); }
+.prose-miii blockquote { border-left: 3px solid var(--border); padding-left: 0.8em; color: var(--quote); font-style: italic; }
 .prose-miii table { border-collapse: collapse; display: block; overflow-x: auto; }
 .prose-miii :where(th, td) { border: 1px solid var(--border); padding: 0.3em 0.7em; text-align: left; }
 .prose-miii hr { border: 0; border-top: 1px solid var(--border); margin: 1em 0; }
@@ -134,3 +167,14 @@
 
 .is-streaming > :last-child::after, .is-streaming:empty::after { content: "▍"; color: var(--muted-foreground); animation: blink 1s steps(2) infinite; margin-left: 1px; }
 @keyframes blink { 50% { opacity: 0; } }
+
+/* highlight.js classes. Diff lines keep their add/remove tint; tokens only recolor the text. */
+.hljs :is(.hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-doctag, .hljs-meta .hljs-keyword) { color: var(--hl-keyword); }
+.hljs :is(.hljs-string, .hljs-regexp, .hljs-template-tag, .hljs-addition, .hljs-selector-attr) { color: var(--hl-string); }
+.hljs :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-variable.constant_, .hljs-bullet) { color: var(--hl-number); }
+.hljs :is(.hljs-title, .hljs-section, .hljs-selector-id, .hljs-selector-class, .hljs-name) { color: var(--hl-title); }
+.hljs :is(.hljs-type, .hljs-attr, .hljs-attribute, .hljs-property, .hljs-params .hljs-type) { color: var(--hl-type); }
+.hljs :is(.hljs-comment, .hljs-quote, .hljs-meta) { color: var(--hl-comment); font-style: italic; }
+.hljs .hljs-deletion { color: var(--diff-del-fg); }
+.hljs .hljs-emphasis { font-style: italic; }
+.hljs .hljs-strong { font-weight: 600; }

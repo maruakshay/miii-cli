@@ -64,6 +64,8 @@ export interface WebMessage {
   tools?: WebTool[]
   /** Images attached to a user message — the count, not the bytes. */
   images?: number
+  /** On a user message: the history index it starts at — what `rewind` takes to drop back to before it. */
+  turn?: number
   /** Still streaming. */
   live?: boolean
   tokens?: { prompt: number; eval: number }
@@ -128,7 +130,12 @@ function webTool(id: string, name: string, input: Record<string, unknown>): WebT
 
 /** Resumed history → web messages. Thinking and timings are not stored, so they are absent. */
 export function historyToWeb(history: MiiMessage[], nextId: () => number): WebMessage[] {
+  // toDisplayMessages keeps exactly the user entries that carry text, in order,
+  // so their history indices line up with its user messages one for one.
+  const turns = history.flatMap((m, i) => (m.role === 'user' && userText(m).trim() ? [i] : []))
+  let u = 0
   return toDisplayMessages(history).map((m) => {
+    if (m.role === 'user') return { id: nextId(), role: m.role, content: m.content, ...(turns[u] !== undefined ? { turn: turns[u++] } : {}) }
     const results = new Map((m.tool_results ?? []).map((r) => [r.tool_use_id, r]))
     const tools = m.tool_uses?.map((u) => {
       const t = webTool(u.id, u.name, u.input)
@@ -138,6 +145,11 @@ export function historyToWeb(history: MiiMessage[], nextId: () => number): WebMe
     })
     return { id: nextId(), role: m.role, content: m.content, ...(tools?.length ? { tools } : {}) }
   })
+}
+
+function userText(m: MiiMessage): string {
+  if (typeof m.content === 'string') return m.content
+  return m.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
 }
 
 export class WebAgent {
@@ -407,7 +419,7 @@ export class WebAgent {
     this.busy = true
     this.status = 'Thinking…'
     this.error = null
-    this.add({ role: 'user', content: text, ...(images?.length ? { images: images.length } : {}) })
+    this.add({ role: 'user', content: text, turn: this.history.length, ...(images?.length ? { images: images.length } : {}) })
     this.pushState()
 
     const started = Date.now()
@@ -596,6 +608,8 @@ export class WebAgent {
       this.history = res.history
       this.usedTokens = estimateHistoryTokens(res.history)
       persistSession(this.sessionId, this.history)
+      // The indices user messages carried point into the old history; nothing before this is rewindable now.
+      this.resetView(this.messages.map(({ turn: _, ...m }) => m))
       const kept = res.keptMessages ? `, last ${res.keptMessages} kept verbatim` : ''
       this.notice(
         `**Context compacted** — ${res.droppedMessages} messages summarised${kept}. ` +
@@ -619,7 +633,8 @@ export class WebAgent {
   /** Put files back as they were before `turn`, and the conversation with them. */
   rewind(turn: number) {
     if (!this.guardIdle('rewind')) return
-    if (!this.checkpoints().some((p) => p.turn === turn)) { this.toast(`no checkpoint at turn ${turn}`); return }
+    // Any user message is a place to come back to; checkpoints only decide which files move.
+    if (!Number.isInteger(turn) || this.history[turn]?.role !== 'user') { this.toast(`no turn ${turn} to rewind to`); return }
     const result = restoreTo(this.sessionId, turn, this.cwd)
     this.history = this.history.slice(0, turn)
     this.usedTokens = estimateHistoryTokens(this.history)
