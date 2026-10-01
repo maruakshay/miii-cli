@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.0...miii-agent-v3.10.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **security:** trust gate for project config, symlink-safe paths, web crash ([#118](https://github.com/maruakshay/miii-cli/issues/118)) ([c94d433](https://github.com/maruakshay/miii-cli/commit/c94d433e010f578f489fe1717fa1abc9a4a415ba))
+
 ## [3.10.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.9.1...miii-agent-v3.10.0) (2026-10-01)
 
 
