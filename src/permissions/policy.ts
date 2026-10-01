@@ -34,6 +34,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from '
 import { join } from 'path'
 import { homedir } from 'os'
 import { settingsAllowRules, settingsDenyRules } from '../settings.js'
+import { isProjectTrusted, trustProject } from '../trust.js'
 
 export type Decision = 'allow' | 'deny'
 export type AskAnswer = 'yes' | 'no' | 'always'
@@ -119,8 +120,19 @@ function readRulesFile(path: string): Rule[] {
   }
 }
 
-/** Rules stored in one scope. */
+/**
+ * "Always" answers given in a folder that is not trusted, keyed by cwd. They
+ * cannot go in the project file — an untrusted project file is never read, so
+ * the approval would vanish — and they must not go user-wide either.
+ */
+const sessionRules = new Map<string, Rule[]>()
+
+/**
+ * Rules stored in one scope. The project file is checked in like settings.json,
+ * so it only counts once the folder is trusted (see trust.ts).
+ */
 export function loadScopedRules(scope: RuleScope): Rule[] {
+  if (scope === 'project' && !isProjectTrusted()) return sessionRules.get(process.cwd()) ?? []
   return readRulesFile(rulesPath(scope))
 }
 
@@ -169,7 +181,15 @@ export function addRules(tool: string, patterns: string[], scope: RuleScope = 'p
     rules.push({ tool, pattern })
     changed = true
   }
-  if (changed) saveRules(scope, rules)
+  if (!changed) return
+  if (scope === 'project' && !isProjectTrusted()) {
+    sessionRules.set(process.cwd(), rules)
+    return
+  }
+  saveRules(scope, rules)
+  // Our own write changes the hash trust is pinned to; re-pin it, or the next
+  // start would ask whether to trust the rule you just approved.
+  if (scope === 'project') trustProject()
 }
 
 /** Extract the string a rule pattern matches against for a given tool call. */

@@ -67,6 +67,13 @@ describe('miii web server', () => {
     expect((await call(web, '/api/mode', auth, 'POST', '{"mode":"plan"}')).status).toBe(200)
   })
 
+  it('survives a malformed URL that any page could send it', async () => {
+    // No token needed for static paths, so this is reachable from any website.
+    const bad = await call(web, '/%E0')
+    expect(bad.status).toBeLessThan(500)
+    expect((await call(web, '/api/state', { 'x-miii-token': 'test-token' })).status).toBe(200)
+  })
+
   it('never serves files from outside the app build', async () => {
     const res = await call(web, '/..%2f..%2fpackage.json')
     expect(res.body).not.toContain('"miii-agent"')

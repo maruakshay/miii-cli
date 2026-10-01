@@ -23,6 +23,7 @@ process.env.HOME = home
 process.chdir(project)
 
 const { loadRules, loadScopedRules, addRules, check } = await import('./policy.js')
+const { trustProject } = await import('../trust.js')
 
 afterAll(() => {
   process.chdir(originalCwd)
@@ -42,6 +43,7 @@ function reset() {
 function seed(dir: string, rules: Array<{ tool: string; pattern: string }>) {
   mkdirSync(join(dir, '.miii'), { recursive: true })
   writeFileSync(join(dir, '.miii', 'permissions.json'), JSON.stringify({ rules }), 'utf-8')
+  trustProject(dir)
 }
 
 beforeEach(reset)
@@ -85,6 +87,7 @@ describe('rule scopes', () => {
   it('survives a corrupt or partial rules file rather than throwing', () => {
     mkdirSync(join(project, '.miii'), { recursive: true })
     writeFileSync(join(project, '.miii', 'permissions.json'), '{not json', 'utf-8')
+    trustProject(project)
     expect(loadRules()).toEqual([])
     // And a well-formed file with junk entries keeps only the usable ones.
     seed(project, [{ tool: 'run_bash', pattern: 'ls' }, { tool: '', pattern: '' }])

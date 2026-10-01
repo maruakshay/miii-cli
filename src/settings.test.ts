@@ -6,6 +6,7 @@ import {
   loadSettings, invalidateSettings, mergeSettings, parseRuleSpec, settingsProblems,
   settingsAllowRules, settingsDenyRules, defaultPermissionMode, type Settings,
 } from './settings.js'
+import { trustProject } from './trust.js'
 
 let root: string
 let home: string
@@ -14,6 +15,7 @@ let realHome: string | undefined
 function write(name: string, body: unknown) {
   mkdirSync(join(root, '.miii'), { recursive: true })
   writeFileSync(join(root, '.miii', name), typeof body === 'string' ? body : JSON.stringify(body))
+  trustProject(root)
 }
 
 beforeEach(() => {

@@ -236,7 +236,14 @@ function serveStatic(dir: string | null, path: string, res: ServerResponse) {
   }
   // Resolve inside the build directory and nowhere else; anything that is not
   // a file there is the single-page app.
-  const target = resolve(dir, '.' + decodeURIComponent(path))
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(path)
+  } catch {
+    // `/%E0` and friends: a bad request, not a reason for the process to die.
+    return send(res, 400, { error: 'malformed URL' })
+  }
+  const target = resolve(dir, '.' + decoded)
   const inside = target.startsWith(dir + sep)
   const file = inside && existsSync(target) && statSync(target).isFile() ? target : join(dir, 'index.html')
   const type = TYPES[extname(file)] ?? 'application/octet-stream'
@@ -276,7 +283,14 @@ export async function startWeb(opts: WebServerOptions = {}): Promise<RunningWeb>
     ...(opts.continueLast ? { continueLast: true } : {}),
   })
   const handler = createWebHandler(agent, token)
-  const server = createServer((req, res) => { void handler(req, res) })
+  // Anything the handler throws ends this one request. Left unhandled, a single
+  // bad request from any page in the browser would exit the whole server.
+  const server = createServer((req, res) => {
+    handler(req, res).catch((err: unknown) => {
+      if (res.headersSent) res.destroy()
+      else send(res, 500, { error: err instanceof Error ? err.message : String(err) })
+    })
+  })
 
   const port = await new Promise<number>((resolve, reject) => {
     const tryListen = (p: number, attemptsLeft: number) => {
