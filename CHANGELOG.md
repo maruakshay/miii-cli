@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.9.1...miii-agent-v3.10.0) (2026-10-01)
+
+
+### Features
+
+* **web:** rewind from the transcript, syntax highlighting, TUI palette ([#116](https://github.com/maruakshay/miii-cli/issues/116)) ([91d6440](https://github.com/maruakshay/miii-cli/commit/91d6440f170ac54abff2b8308b0073465d7037d9))
+
 ## [3.9.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.9.0...miii-agent-v3.9.1) (2026-09-30)
 
 
