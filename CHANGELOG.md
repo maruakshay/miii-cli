@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.2](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.1...miii-agent-v3.10.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **models:** accept typed model names; handle providers without /models ([#120](https://github.com/maruakshay/miii-cli/issues/120)) ([5d040c8](https://github.com/maruakshay/miii-cli/commit/5d040c885f1ab8988667b710acf7195c760a42e9))
+
 ## [3.10.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.0...miii-agent-v3.10.1) (2026-10-01)
 
 
