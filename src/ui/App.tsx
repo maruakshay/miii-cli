@@ -58,6 +58,8 @@ export function App({ resumeId, continueLast }: AppProps) {
   // --- config & model list ---
   const [cfg, setCfg] = useState(loadConfig())
   const [models, setModels] = useState<string[]>([])
+  // false when the provider has no /models — the picker then takes a typed name.
+  const [modelsListed, setModelsListed] = useState(true)
   // Seed from the cached context windows so the header shows a real value on the
   // first render, before the live `show` request resolves.
   const [contexts, setContexts] = useState<Record<string, number | null>>(() => cfg.modelContexts ?? {})
@@ -335,9 +337,15 @@ export function App({ resumeId, continueLast }: AppProps) {
     const stale = () => gen !== loadGen.current
     setProviderDown(false)
     listModels()
-      .then((m) => {
+      .then(({ models: listedModels, listed }) => {
         if (stale()) return
+        // A provider with no /models can't confirm the saved model, so trust it
+        // on startup — but not after a switch, where it belongs to the old
+        // provider.
+        const trustSaved = !listed && !afterProvider && !!cfg.model
+        const m = trustSaved && !listedModels.includes(cfg.model!) ? [cfg.model!, ...listedModels] : listedModels
         setModels(m)
+        setModelsListed(listed)
         const hasModel = !!cfg.model && m.includes(cfg.model)
         if (afterProvider) {
           setState(hasModel ? 'models' : 'select-model')
@@ -355,6 +363,7 @@ export function App({ resumeId, continueLast }: AppProps) {
         agent.setError(isAvailable() ? msg : NOT_AVAILABLE())
         setProviderDown(true)
         setModels([])
+        setModelsListed(true)
         setPickerQuery('')
         setCursor(() => 0)
         // Error reaching the provider — drop to chat with the error shown and the
@@ -476,6 +485,7 @@ export function App({ resumeId, continueLast }: AppProps) {
           providerType={provEntry.type}
           effort={effort}
           query={pickerQuery}
+          listed={modelsListed}
           requireSelection
         />
       )}
@@ -586,6 +596,7 @@ export function App({ resumeId, continueLast }: AppProps) {
                 providerType={provEntry.type}
                 effort={effort}
                 query={pickerQuery}
+                listed={modelsListed}
               />
             </Box>
           )}

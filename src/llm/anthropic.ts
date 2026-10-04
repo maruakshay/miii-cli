@@ -11,7 +11,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { apiKeyFor, type ProviderEntry } from '../config.js'
-import type { OllamaMessage, OllamaTool, OllamaToolCall, ChatChunk, ChatOptions } from './types.js'
+import { ModelsUnsupportedError, MODELS_UNSUPPORTED_STATUS, type OllamaMessage, type OllamaTool, type OllamaToolCall, type ChatChunk, type ChatOptions } from './types.js'
 
 export const PROVIDER_NAME = 'anthropic'
 
@@ -68,6 +68,11 @@ export async function listModels(entry: ProviderEntry): Promise<string[]> {
     for await (const m of client(entry).models.list({ limit: 100 })) ids.push(m.id)
     return ids
   } catch (err) {
+    // Gateways and proxies in front of the Messages API often don't serve
+    // /v1/models.
+    if (err instanceof Anthropic.APIError && err.status && MODELS_UNSUPPORTED_STATUS.has(err.status)) {
+      throw new ModelsUnsupportedError(err.status)
+    }
     return rethrow(entry, err)
   }
 }

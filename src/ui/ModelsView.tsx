@@ -11,11 +11,13 @@ interface Props {
   providerType?: ProviderType
   effort: Effort
   query: string
+  /** false when the provider has no /models endpoint — the list is only a suggestion. */
+  listed?: boolean
   /** true on the initial forced pick (no model yet) — hides "esc back". */
   requireSelection?: boolean
 }
 
-export function ModelsView({ models, cursor, model, host, provider, providerType, effort, query, requireSelection }: Props) {
+export function ModelsView({ models, cursor, model, host, provider, providerType, effort, query, listed = true, requireSelection }: Props) {
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Box flexDirection="column" marginBottom={1}>
@@ -28,11 +30,13 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
         </Text>
       </Box>
 
-      <Text dimColor>select model</Text>
+      <Text dimColor>{listed ? 'select model' : 'select model — this provider doesn\'t list its models, so type any name'}</Text>
       <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor={C.gray} paddingX={1}>
         {models.length === 0 ? (
           query ? (
-            <Text dimColor>{`no models match "${query}"`}</Text>
+            <Text dimColor>{`no models match "${query}" — enter to use it anyway`}</Text>
+          ) : !listed ? (
+            <Text dimColor>type a model name and press enter.</Text>
           ) : provider === 'lmstudio' ? (
             <Text dimColor>no models. load a model in LM Studio and start the server.</Text>
           ) : providerType === 'ollama' ? (
@@ -41,7 +45,7 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
               <Text color={C.cyan}>  ollama pull qwen2.5-coder:14b</Text>
             </Box>
           ) : (
-            <Text dimColor>{`no models found at ${host}. make sure the server is running with a model loaded.`}</Text>
+            <Text dimColor>{`no models found at ${host}. make sure the server is running with a model loaded, or type a model name and press enter.`}</Text>
           )
         ) : (
           models.map((m, i) => {

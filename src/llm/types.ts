@@ -56,3 +56,18 @@ export interface ChatOptions {
    */
   format?: Record<string, unknown>
 }
+
+/**
+ * The provider answered, but has no model-listing endpoint (404/405/501 on
+ * /models). Not an outage: chat still works, the user just has to name the
+ * model themselves. See listModels() in client.ts.
+ */
+export class ModelsUnsupportedError extends Error {
+  constructor(status: number) {
+    super(`This provider doesn't list its models (HTTP ${status} on /models). Type the model name in /models instead.`)
+    this.name = 'ModelsUnsupportedError'
+  }
+}
+
+/** Statuses meaning "this server has no /models", as opposed to "/models failed". */
+export const MODELS_UNSUPPORTED_STATUS = new Set([404, 405, 501])

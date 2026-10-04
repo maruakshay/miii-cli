@@ -274,7 +274,10 @@ export class WebAgent {
 
   async models(): Promise<{ models: string[]; error?: string }> {
     try {
-      return { models: await listModels() }
+      const { models, listed } = await listModels()
+      // Without a list, the configured model is the one we know works.
+      const current = loadConfig().model
+      return { models: !listed && current && !models.includes(current) ? [current, ...models] : models }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       return { models: [], error: isAvailable() ? msg : NOT_AVAILABLE() }

@@ -18,7 +18,7 @@ async function resolveModels(modelsArg: string): Promise<string[]> {
   if (modelsArg !== 'all') return modelsArg.split(',').map((m) => m.trim()).filter(Boolean)
   // Skip cloud models by default — they're slow/billed and the harness targets
   // local models. Opt back in by naming them explicitly.
-  return (await listModels()).filter((m) => !m.includes('cloud'))
+  return (await listModels()).models.filter((m) => !m.includes('cloud'))
 }
 
 /**
