@@ -1,5 +1,5 @@
 import { apiKeyFor, type ProviderEntry } from '../config.js'
-import type { OllamaMessage, OllamaTool, OllamaToolCall, ChatChunk, ChatOptions } from './types.js'
+import { ModelsUnsupportedError, MODELS_UNSUPPORTED_STATUS, type OllamaMessage, type OllamaTool, type OllamaToolCall, type ChatChunk, type ChatOptions } from './types.js'
 
 export const PROVIDER_NAME = 'openai'
 
@@ -44,6 +44,7 @@ export async function listModels(entry: ProviderEntry): Promise<string[]> {
       headers: headers(entry),
       signal: AbortSignal.timeout(5000),
     })
+    if (MODELS_UNSUPPORTED_STATUS.has(res.status)) throw new ModelsUnsupportedError(res.status)
     if (!res.ok) {
       let detail = ''
       try { detail = await res.text() } catch {}

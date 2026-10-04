@@ -1,5 +1,6 @@
 import { resolveProvider, type ProviderEntry } from '../config.js'
-import type { OllamaMessage, OllamaTool, ChatChunk, ChatOptions } from './types.js'
+import { ModelsUnsupportedError, type OllamaMessage, type OllamaTool, type ChatChunk, type ChatOptions } from './types.js'
+import { PRESETS } from './presets.js'
 import * as ollama from './ollama.js'
 import * as openai from './openai.js'
 import * as anthropic from './anthropic.js'
@@ -39,9 +40,25 @@ export function NOT_AVAILABLE(): string {
   return openai.notAvailable(entry)
 }
 
-export async function listModels(): Promise<string[]> {
-  const { entry } = active()
-  return adapterFor(entry).listModels(entry)
+export interface ModelList {
+  models: string[]
+  /**
+   * false when the provider has no model-listing endpoint. `models` is then
+   * only the preset's suggestion (possibly empty), so callers shouldn't treat
+   * "not in the list" as "doesn't exist" — the user types the name instead.
+   */
+  listed: boolean
+}
+
+export async function listModels(): Promise<ModelList> {
+  const { name, entry } = active()
+  try {
+    return { models: await adapterFor(entry).listModels(entry), listed: true }
+  } catch (err) {
+    if (!(err instanceof ModelsUnsupportedError)) throw err
+    const suggested = PRESETS[name]?.defaultModel
+    return { models: suggested ? [suggested] : [], listed: false }
+  }
 }
 
 export async function modelContext(model: string): Promise<number> {

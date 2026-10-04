@@ -531,8 +531,11 @@ export function useKeyboard(opts: KeyboardOptions) {
     if (state === 'select-model' || state === 'models') {
       if (key.upArrow) { setCursor((i) => Math.max(0, i - 1)); return }
       if (key.downArrow) { setCursor((i) => Math.min(models.length - 1, i + 1)); return }
-      if (key.return && models[cursor]) {
-        const chosen = models[cursor]
+      // Nothing matches the filter (or the provider can't list its models):
+      // take what was typed as the model name.
+      const typed = pickerQuery.trim()
+      if (key.return && (models[cursor] || typed)) {
+        const chosen = models[cursor] ?? typed
         setModel(chosen)
         setCfg((c) => ({ ...c, model: chosen }))
         // Contexts are filled in lazily, so the picker can be fast enough to
@@ -568,10 +571,12 @@ export function useKeyboard(opts: KeyboardOptions) {
         if (state === 'models') { setPickerQuery(''); setCursor(() => 0); setState('ready') }
         return
       }
-      // type to filter
+      // type to filter. Pastes are let through too — a model id is often
+      // copied from the provider's docs, now that it can be used as typed.
       if (key.backspace || key.delete) { setPickerQuery(pickerQuery.slice(0, -1)); setCursor(() => 0); return }
-      if (char && !key.ctrl && !key.meta && char.length === 1 && char >= ' ') {
-        setPickerQuery(pickerQuery + char)
+      const text = char?.replace(/\x1b\[20[01]~/g, '').trim()
+      if (text && !key.ctrl && !key.meta && !/[\x00-\x1f\x7f]/.test(text)) {
+        setPickerQuery(pickerQuery + text)
         setCursor(() => 0)
       }
       return
