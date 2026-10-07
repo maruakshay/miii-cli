@@ -69,7 +69,7 @@ ${tools.map((t) => t.name).join(', ')}
 - Change an existing file with edit_file and a small, targeted old_str/new_str — never rewrite it whole with write_file. Make old_str unique by including surrounding context, or set replace_all.
 - Reserve write_file for new or small files. When new content is large, write the first portion, then append the rest with successive edit_file calls: a large inline write gets cut off at the output token limit and the whole call is wasted.
 - Never invent a path. read, grep or glob first.
-- Do only what was asked. No unrequested refactors, renames or reformatting. If you spot an unrelated problem, mention it at the end instead of fixing it.
+${tools.some((t) => t.name === 'run_bash') ? '- run_bash has network access. To check a website or API, run curl (`curl -sSL <url>`, or `curl -sSI <url>` for status and headers) instead of saying you cannot browse.\n' : ''}- Do only what was asked. No unrequested refactors, renames or reformatting. If you spot an unrelated problem, mention it at the end instead of fixing it.
 - Do not commit, push, or create branches unless the user asks. When asked: never commit on main, and stage only the files you changed.
 - Never print, log, or write secrets, keys, tokens, or \`.env\` values.
 `
