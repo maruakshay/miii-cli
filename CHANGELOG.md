@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.10.3](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.2...miii-agent-v3.10.3) (2026-10-07)
+
+
+### Bug Fixes
+
+* typed model names win over substring matches; tell model run_bash can curl ([#122](https://github.com/maruakshay/miii-cli/issues/122)) ([c8272ef](https://github.com/maruakshay/miii-cli/commit/c8272ef56c978ca717029bc2df506bc826f46de1))
+
 ## [3.10.2](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.1...miii-agent-v3.10.2) (2026-10-04)
 
 
