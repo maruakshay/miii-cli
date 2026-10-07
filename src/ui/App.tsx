@@ -398,7 +398,15 @@ export function App({ resumeId, continueLast }: AppProps) {
 
   // Filtered lists for the pickers (case-insensitive substring match).
   const q = pickerQuery.toLowerCase()
-  const filteredModels = q ? models.filter((m) => m.toLowerCase().includes(q)) : models
+  const matchedModels = q ? models.filter((m) => m.toLowerCase().includes(q)) : models
+  // Offer the typed text as its own row unless it names a listed model exactly,
+  // so a name that's a substring of another (llama3 vs llama3:8b) stays
+  // reachable. First when the provider can't list models (the list is only a
+  // suggestion), last otherwise so type-to-filter still lands on a real match.
+  const typedModel = pickerQuery.trim()
+  const filteredModels = !typedModel || matchedModels.includes(typedModel)
+    ? matchedModels
+    : modelsListed ? [...matchedModels, typedModel] : [typedModel, ...matchedModels]
   const allProviders = providerEntries(cfg)
   const filteredProviders = q
     ? allProviders.filter((p) => p.name.toLowerCase().includes(q))

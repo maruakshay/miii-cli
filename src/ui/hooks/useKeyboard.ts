@@ -531,11 +531,10 @@ export function useKeyboard(opts: KeyboardOptions) {
     if (state === 'select-model' || state === 'models') {
       if (key.upArrow) { setCursor((i) => Math.max(0, i - 1)); return }
       if (key.downArrow) { setCursor((i) => Math.min(models.length - 1, i + 1)); return }
-      // Nothing matches the filter (or the provider can't list its models):
-      // take what was typed as the model name.
-      const typed = pickerQuery.trim()
-      if (key.return && (models[cursor] || typed)) {
-        const chosen = models[cursor] ?? typed
+      // The list already carries the typed text as its own row (see App), so
+      // the highlighted entry is always the choice.
+      if (key.return && models[cursor]) {
+        const chosen = models[cursor]
         setModel(chosen)
         setCfg((c) => ({ ...c, model: chosen }))
         // Contexts are filled in lazily, so the picker can be fast enough to
