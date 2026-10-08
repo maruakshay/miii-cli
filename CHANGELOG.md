@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.11.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.3...miii-agent-v3.11.0) (2026-10-08)
+
+
+### Features
+
+* **web:** model search, safer permission keys, background-tab alerts ([#124](https://github.com/maruakshay/miii-cli/issues/124)) ([38183de](https://github.com/maruakshay/miii-cli/commit/38183de503663608d1d63b6e854bd9a6dce389f7))
+
 ## [3.10.3](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.2...miii-agent-v3.10.3) (2026-10-07)
 
 
