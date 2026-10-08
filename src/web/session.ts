@@ -533,7 +533,8 @@ export class WebAgent {
             break
           case 'done':
             tokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            this.usedTokens = ev.prompt_tokens + ev.eval_tokens
+            // Some providers never report usage — keep the last figure rather than zero it.
+            if (ev.context_tokens > 0) this.usedTokens = ev.context_tokens
             this.totals = {
               input: this.totals.input + ev.prompt_tokens,
               output: this.totals.output + ev.eval_tokens,

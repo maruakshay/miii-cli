@@ -105,6 +105,41 @@ function toOpenAITools(tools?: OllamaTool[]): unknown[] | undefined {
   }))
 }
 
+/**
+ * Token usage from one stream chunk, wherever this server put it. Most send a
+ * top-level `usage` (OpenAI and friends on the last chunk, once asked via
+ * stream_options; Mistral, Gemini and Together alongside finish_reason). Groq
+ * nests it under `x_groq`. Llama.cpp also reports `timings` with the counts.
+ */
+export function usageOf(chunk: Record<string, unknown>): { prompt: number; eval: number } | null {
+  const u = (chunk.usage ?? (chunk.x_groq as { usage?: unknown } | undefined)?.usage) as
+    | { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number }
+    | null
+    | undefined
+  if (u) {
+    const prompt = u.prompt_tokens ?? u.input_tokens ?? 0
+    const out = u.completion_tokens ?? u.output_tokens ?? 0
+    if (prompt || out) return { prompt, eval: out }
+  }
+  const t = chunk.timings as { prompt_n?: number; predicted_n?: number; cache_n?: number } | undefined
+  if (t && (t.prompt_n || t.predicted_n)) {
+    return { prompt: (t.prompt_n ?? 0) + (t.cache_n ?? 0), eval: t.predicted_n ?? 0 }
+  }
+  return null
+}
+
+/** True when a 4xx body says the server doesn't know `stream_options`. */
+function rejectsStreamOptions(status: number, detail: string): boolean {
+  return status >= 400 && status < 500 && /stream_options|include_usage/i.test(detail)
+}
+
+// After finish_reason, how long to keep reading for the trailing usage chunk.
+// Some servers (older LM Studio) never close the stream, so this is bounded.
+const USAGE_GRACE_MS = 1500
+
+// Base URLs that rejected stream_options this session, so we don't retry every turn.
+const noStreamOptions = new Set<string>()
+
 function parseSSELine(line: string): unknown | null {
   if (!line.startsWith('data: ')) return null
   const data = line.slice(6).trim()
@@ -134,6 +169,8 @@ export async function* chat(
     stream: true,
     temperature: opts?.temperature ?? 0.2,
   }
+  // Without this, OpenAI-style servers stream no token counts at all.
+  if (!noStreamOptions.has(entry.baseUrl)) body.stream_options = { include_usage: true }
   if (oaTools) body.tools = oaTools
   if (opts?.num_predict && opts.num_predict > 0) body.max_tokens = opts.num_predict
   if (opts?.format) {
@@ -150,6 +187,7 @@ export async function* chat(
     args: string
   }> = new Map()
   let lastFinishReason: string | null | undefined
+  let usage: { prompt: number; eval: number } | null = null
 
   const TIMEOUT_MS = 180000
   const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
@@ -158,12 +196,26 @@ export async function* chat(
     : (opts?.signal ?? timeoutSignal)
 
   try {
-    const res = await fetch(url(entry, '/chat/completions'), {
+    const send = () => fetch(url(entry, '/chat/completions'), {
       method: 'POST',
       headers: headers(entry),
       body: JSON.stringify(body),
       signal: combinedSignal,
     })
+    let res = await send()
+
+    if (!res.ok) {
+      let detail = ''
+      try { detail = await res.text() } catch {}
+      // A strict server that doesn't know stream_options: remember, and go without counts.
+      if (body.stream_options && rejectsStreamOptions(res.status, detail)) {
+        noStreamOptions.add(entry.baseUrl)
+        delete body.stream_options
+        res = await send()
+        detail = ''
+        if (!res.ok) try { detail = await res.text() } catch {}
+      }
+    }
 
     if (!res.ok) {
       let detail = ''
@@ -181,17 +233,33 @@ export async function* chat(
     let buffer = ''
 
     try {
+      let finished = false
       readLoop: while (true) {
-        const { done: readerDone, value } = await reader.read()
-        if (readerDone || opts?.signal?.aborted) break
+        let next: ReadableStreamReadResult<Uint8Array> | null
+        if (!finished) {
+          next = await reader.read()
+        } else {
+          // Finished, still waiting on usage: give it a moment, not forever.
+          let timer: ReturnType<typeof setTimeout> | undefined
+          next = await Promise.race([
+            reader.read(),
+            new Promise<null>((r) => { timer = setTimeout(() => r(null), USAGE_GRACE_MS) }),
+          ])
+          clearTimeout(timer)
+        }
+        if (!next || next.done || opts?.signal?.aborted) break
+        const value = next.value
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
 
         for (const line of lines) {
+          if (line.startsWith('data: ') && line.slice(6).trim() === '[DONE]') break readLoop
           const parsed = parseSSELine(line) as Record<string, unknown> | null
           if (!parsed) continue
+          usage = usageOf(parsed) ?? usage
+          if (finished && usage) break readLoop
 
           const choices = parsed.choices as Array<{
             delta: Record<string, unknown>
@@ -242,7 +310,9 @@ export async function* chat(
           }
 
           if (finishReason) {
-            break readLoop
+            // The usage chunk, when there is one, comes after this.
+            if (usage) break readLoop
+            finished = true
           }
         }
       }
@@ -292,5 +362,7 @@ export async function* chat(
     // Ollama spelling so the agent loop can detect truncation uniformly.
     done_reason: lastFinishReason === 'length' ? 'length' : lastFinishReason ?? undefined,
     tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+    prompt_eval_count: usage?.prompt ?? 0,
+    eval_count: usage?.eval ?? 0,
   }
 }

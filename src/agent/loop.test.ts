@@ -332,6 +332,37 @@ describe('runAgent stop_reason / termination', () => {
   })
 })
 
+describe('runAgent token accounting', () => {
+  it('sums every step for cost, but sizes the context from the last step alone', async () => {
+    h.script = [
+      [
+        { content: '', done: false, tool_calls: [call('echo', { n: 1 })] },
+        { content: '', done: true, prompt_eval_count: 100, eval_count: 10 },
+      ],
+      [
+        { content: 'ok', done: false },
+        { content: '', done: true, prompt_eval_count: 130, eval_count: 20 },
+      ],
+    ]
+    const { events } = await drive()
+    expect(events.find((e) => e.type === 'done')).toEqual({
+      type: 'done', prompt_tokens: 230, eval_tokens: 30, context_tokens: 150,
+    })
+  })
+
+  it('keeps the last reported size when a later step reports nothing', async () => {
+    h.script = [
+      [
+        { content: '', done: false, tool_calls: [call('echo', { n: 1 })] },
+        { content: '', done: true, prompt_eval_count: 100, eval_count: 10 },
+      ],
+      [{ content: 'ok', done: false }, { content: '', done: true }],
+    ]
+    const { events } = await drive()
+    expect(events.find((e) => e.type === 'done')).toMatchObject({ context_tokens: 110 })
+  })
+})
+
 describe('runAgent abort', () => {
   it('yields {type:aborted} and never {type:done} when the signal is aborted', async () => {
     const { events } = await drive({ signal: AbortSignal.abort() })

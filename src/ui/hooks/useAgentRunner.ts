@@ -374,7 +374,8 @@ export function useAgentRunner(
           }
           case 'done': {
             finalTokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            setUsedTokens(ev.prompt_tokens + ev.eval_tokens)
+            // Some providers never report usage — keep the estimate rather than zero it.
+            if (ev.context_tokens > 0) setUsedTokens(ev.context_tokens)
             setTotals((t) => ({
               input: t.input + ev.prompt_tokens,
               output: t.output + ev.eval_tokens,
@@ -385,11 +386,15 @@ export function useAgentRunner(
           }
           case 'aborted': {
             finalTokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            setUsedTokens(ev.prompt_tokens + ev.eval_tokens)
+            if (ev.context_tokens > 0) setUsedTokens(ev.context_tokens)
             setStreaming(false)
             setThinking(false)
             flushTurn(finalTokens)
-            setError(`Aborted · ${ev.prompt_tokens + ev.eval_tokens} tokens · ${(ev.duration_ms / 1000).toFixed(1)}s`)
+            setError([
+              'Aborted',
+              ev.prompt_tokens + ev.eval_tokens > 0 ? `${ev.prompt_tokens + ev.eval_tokens} tokens` : '',
+              `${(ev.duration_ms / 1000).toFixed(1)}s`,
+            ].filter(Boolean).join(' · '))
             break
           }
           case 'error': {

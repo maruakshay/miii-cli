@@ -57,4 +57,8 @@ describe('summaryParts', () => {
     expect(summaryParts({ files: three }, '10', undefined)[0].text).toBe('Changed 3 files (+3)')
     expect(summaryParts(undefined, '10', '1s').map((p) => p.text)).toEqual(['Completed', '10 tokens', '1s'])
   })
+
+  it('drops the token count when the provider reported none', () => {
+    expect(summaryParts(undefined, undefined, '1s').map((p) => p.text)).toEqual(['Completed', '1s'])
+  })
 })

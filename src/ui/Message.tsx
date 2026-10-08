@@ -101,7 +101,8 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
             {'↳ '}
             {summaryParts(
               msg.summary,
-              formatTokens(msg.tokens.prompt_eval + msg.tokens.eval),
+              // Zero means the provider didn't report usage, not that it was free.
+              msg.tokens.prompt_eval + msg.tokens.eval > 0 ? formatTokens(msg.tokens.prompt_eval + msg.tokens.eval) : undefined,
               msg.duration != null ? formatDuration(msg.duration) : undefined,
             ).map((p, i) => (
               <Text key={i} color={p.tone === 'good' ? C.green : p.tone === 'bad' ? C.red : undefined} dimColor={!p.tone}>
