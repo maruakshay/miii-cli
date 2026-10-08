@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { ShieldQuestion } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Answer, PendingPermission } from '@/lib/types'
@@ -45,11 +45,20 @@ export function PermissionCard({ p, onAnswer }: { p: PendingPermission; onAnswer
         { answer: 'no', label: 'Deny' },
       ]
 
-  // 1 / 2 / 3 answer from the keyboard, as in the terminal — unless you're typing.
+  // 1 / 2 / 3 answer from the keyboard, as in the terminal — but never from a
+  // text field, even an empty one: "1. rename the…" typed into the composer
+  // must not approve the first option. The card takes focus when it appears so
+  // the keys work, unless you were in the middle of writing something.
+  const card = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = document.activeElement as HTMLTextAreaElement | HTMLInputElement | null
+    const typing = (el?.tagName === 'TEXTAREA' || el?.tagName === 'INPUT') && el.value
+    if (!typing) card.current?.focus()
+  }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = document.activeElement as HTMLTextAreaElement | null
-      if (el?.tagName === 'TEXTAREA' && el.value) return
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) return
       const n = Number(e.key)
       if (n >= 1 && n <= 3 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); onAnswer(options[n - 1].answer) }
     }
@@ -60,7 +69,13 @@ export function PermissionCard({ p, onAnswer }: { p: PendingPermission; onAnswer
   const body = plan ? null : preview(p)
   const diffy = p.toolName === 'edit_file'
   return (
-    <div className={cn('flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-lg animate-in fade-in-0 slide-in-from-bottom-2', plan ? 'border-plan/60' : 'border-primary/50')}>
+    <div
+      ref={card}
+      tabIndex={-1}
+      role="alertdialog"
+      aria-label={plan ? 'Approve the plan' : `${p.label}?`}
+      className={cn('flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-lg outline-none animate-in fade-in-0 slide-in-from-bottom-2', plan ? 'border-plan/60' : 'border-primary/50')}
+    >
       <div className="flex items-start gap-3">
         <ShieldQuestion className={cn('mt-0.5 size-5 shrink-0', plan ? 'text-plan' : 'text-primary')} />
         <div className="min-w-0">

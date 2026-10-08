@@ -495,6 +495,7 @@ export function App({ resumeId, continueLast }: AppProps) {
           query={pickerQuery}
           listed={modelsListed}
           requireSelection
+          maxRows={Math.max(3, termRows - 12)}
         />
       )}
 
@@ -605,6 +606,9 @@ export function App({ resumeId, continueLast }: AppProps) {
                 effort={effort}
                 query={pickerQuery}
                 listed={modelsListed}
+                // The view's own chrome (header, label, border, footer) is ~7
+                // rows more than the palette's, on top of the same frame rows.
+                maxRows={Math.max(3, termRows - 23)}
               />
             </Box>
           )}

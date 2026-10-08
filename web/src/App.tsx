@@ -79,6 +79,15 @@ function Welcome({ cwd, onPick }: { cwd: string; onPick: (text: string) => void 
   )
 }
 
+/** A system notification, if the browser allows them. Clicking it brings this tab back. */
+function notify(title: string, body?: string) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  try {
+    const n = new Notification(`miii — ${title}`, { body, tag: 'miii', silent: false })
+    n.onclick = () => { window.focus(); n.close() }
+  } catch { /* some browsers only allow notifications from a service worker */ }
+}
+
 export function App() {
   const [toast, setToast] = useState<string | null>(null)
   const showToast = useCallback((text: string) => {
@@ -107,8 +116,12 @@ export function App() {
   }, [messages, state?.pending, state?.status])
   // A different chat starts at its latest message.
   useEffect(() => toBottom(), [state?.sessionId, toBottom])
-  // Sending is a request to see the reply, wherever you were scrolled.
-  const onSent = useCallback(() => toBottom(), [toBottom])
+  // Sending is a request to see the reply, wherever you were scrolled. It is
+  // also a click, which is what browsers want before they'll ask about notifications.
+  const onSent = useCallback(() => {
+    toBottom()
+    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
+  }, [toBottom])
 
   const rewind = useCallback(async (m: WebMessage) => {
     if (m.turn === undefined) return
@@ -129,9 +142,35 @@ export function App() {
     }
   }, [showToast])
 
+  // Turns run long and people switch tabs. When this one is in the background
+  // and miii needs an answer or has finished, say so in the tab title and, if
+  // allowed, with a system notification.
+  const [attention, setAttention] = useState<string | null>(null)
+  const wasBusy = useRef(false)
+  const pendingId = state?.pending?.id
   useEffect(() => {
-    document.title = state?.title ? `${state.title} · miii` : 'miii'
-  }, [state?.title])
+    const busy = !!state?.busy
+    const finished = wasBusy.current && !busy
+    wasBusy.current = busy
+    if (!document.hidden || !state) return
+    const why = pendingId !== undefined
+      ? (state.pending?.toolName === 'exit_plan_mode' ? 'Plan ready for review' : 'Waiting for approval')
+      : finished ? (state.error ? 'Stopped' : 'Done') : null
+    if (!why) return
+    setAttention(why)
+    notify(why, pendingId !== undefined ? state.pending?.label : state.title || undefined)
+    // Only the edges matter — a new prompt, or busy going false.
+  }, [pendingId, state?.busy])
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) setAttention(null) }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
+  useEffect(() => {
+    const base = state?.title ? `${state.title} · miii` : 'miii'
+    document.title = attention ? `● ${attention} — ${base}` : base
+  }, [state?.title, attention])
 
   // esc stops the turn, as in the terminal.
   useEffect(() => {
@@ -159,7 +198,12 @@ export function App() {
     return <div className="grid h-full place-items-center text-muted-foreground">Connecting to miii…</div>
   }
 
-  const answer = (a: Answer) => state.pending && void post('permission', { id: state.pending.id, answer: a }).catch((e: Error) => showToast(e.message))
+  const answer = (a: Answer) => {
+    if (!state.pending) return
+    void post('permission', { id: state.pending.id, answer: a }).catch((e: Error) => showToast(e.message))
+    // The card held focus for its 1/2/3 keys; hand it back to the composer.
+    document.querySelector<HTMLTextAreaElement>('main textarea')?.focus()
+  }
   const last = messages[messages.length - 1]
   const showStatus = state.busy && !state.pending && !(last?.live && last.content && state.status === 'Writing…')
 

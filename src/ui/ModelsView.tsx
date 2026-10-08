@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import type { Effort, ProviderType } from '../config.js'
 import { C } from './theme.js'
+import { paletteWindow } from './CommandPalette.js'
 
 interface Props {
   models: string[]
@@ -15,9 +16,12 @@ interface Props {
   listed?: boolean
   /** true on the initial forced pick (no model yet) — hides "esc back". */
   requireSelection?: boolean
+  /** Most model rows to draw; the list scrolls with the cursor past that. */
+  maxRows?: number
 }
 
-export function ModelsView({ models, cursor, model, host, provider, providerType, effort, query, listed = true, requireSelection }: Props) {
+export function ModelsView({ models, cursor, model, host, provider, providerType, effort, query, listed = true, requireSelection, maxRows = Infinity }: Props) {
+  const { start, end } = paletteWindow(models.length, cursor, maxRows)
   return (
     <Box flexDirection="column" marginLeft={2}>
       <Box flexDirection="column" marginBottom={1}>
@@ -48,8 +52,8 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
             <Text dimColor>{`no models found at ${host}. make sure the server is running with a model loaded, or type a model name and press enter.`}</Text>
           )
         ) : (
-          models.map((m, i) => {
-            const sel = i === cursor
+          models.slice(start, end).map((m, j) => {
+            const sel = start + j === cursor
             return (
               <Text key={m} wrap="truncate" color={sel ? C.blue : undefined} dimColor={!sel}>
                 {sel ? '❯ ' : '  '}{m}
@@ -64,6 +68,7 @@ export function ModelsView({ models, cursor, model, host, provider, providerType
         {query ? <Text dimColor>{`filter: ${query}`}</Text> : null}
         <Text dimColor>
           {`↑↓ navigate   enter select   ←→ effort   tab provider   type to filter${requireSelection ? '   ctrl+c quit' : '   esc close'}`}
+          {end - start < models.length ? `   ${start + 1}–${end} of ${models.length}` : ''}
         </Text>
       </Box>
     </Box>
