@@ -25,7 +25,7 @@ import {
   type Effort,
 } from '../config.js'
 import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
-import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPatterns, describePatterns, type PermissionMode } from '../permissions/policy.js'
+import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPatterns, type PermissionMode } from '../permissions/policy.js'
 import { defaultPermissionMode } from '../settings.js'
 import { describeTool } from '../ui/toolLabel.js'
 import { stoppedLine } from '../ui/layout.js'
@@ -78,8 +78,11 @@ export interface PendingPermission {
   toolName: string
   input: unknown
   label: string
-  /** The glob an "always" answer would persist, so the button can name it. */
-  rule: string
+  /**
+   * The globs an "always" answer would persist, one per part of the command not
+   * already allowed, so the option can name them, as the terminal prompt does.
+   */
+  rules: string[]
   plan?: string
 }
 
@@ -224,7 +227,7 @@ export class WebAgent {
       usedTokens: this.usedTokens,
       totals: this.totals,
       queued: this.queue.map((q) => q.text),
-      pending: p ? { id: p.id, toolName: p.toolName, input: p.input, label: p.label, rule: p.rule, ...(p.plan ? { plan: p.plan } : {}) } : null,
+      pending: p ? { id: p.id, toolName: p.toolName, input: p.input, label: p.label, rules: p.rules, ...(p.plan ? { plan: p.plan } : {}) } : null,
       error: this.error,
     }
   }
@@ -377,7 +380,7 @@ export class WebAgent {
         toolName,
         input,
         label: describeTool(toolName, inp).text,
-        rule: toolName === 'exit_plan_mode' ? '' : describePatterns(widestPatterns(toolName, subjectFor(toolName, input))),
+        rules: toolName === 'exit_plan_mode' ? [] : widestPatterns(toolName, subjectFor(toolName, input)),
         ...(toolName === 'exit_plan_mode' && typeof inp.plan === 'string' ? { plan: inp.plan } : {}),
         resolve,
       }
