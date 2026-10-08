@@ -13,6 +13,17 @@ export function formatDuration(ms: number): string {
   return `${m}m ${s}s`
 }
 
+/**
+ * The line shown when a turn is interrupted, the same in the TUI and the web:
+ * "Stopped · 24.6k tokens · 3m 23s". The count is left out when the provider
+ * reported none.
+ */
+export function stoppedLine(tokens: number, ms: number): string {
+  return ['Stopped', tokens > 0 ? `${formatTokens(tokens)} tokens` : '', formatDuration(ms)]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 export function countLines(s: string): number {
   if (!s) return 0
   return s.split('\n').length

@@ -28,6 +28,7 @@ import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/cli
 import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPattern, type PermissionMode } from '../permissions/policy.js'
 import { defaultPermissionMode } from '../settings.js'
 import { describeTool } from '../ui/toolLabel.js'
+import { stoppedLine } from '../ui/layout.js'
 import { expandCommand, findCustomCommand, customCommands, invalidateCustomCommands } from '../commands/custom.js'
 import { COMMANDS } from '../ui/constants.js'
 import { INIT_PROMPT, reviewPrompt, contextReport, costReport, mcpReport, agentsReport, settingsReport } from '../ui/reports.js'
@@ -544,7 +545,7 @@ export class WebAgent {
             break
           case 'aborted':
             tokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            this.error = `Stopped · ${(ev.duration_ms / 1000).toFixed(1)}s`
+            this.error = stoppedLine(ev.prompt_tokens + ev.eval_tokens, ev.duration_ms)
             break
           case 'error':
             this.error = ev.message
@@ -553,7 +554,7 @@ export class WebAgent {
       }
     } catch (err) {
       this.error = controller.signal.aborted
-        ? `Stopped · ${((Date.now() - started) / 1000).toFixed(1)}s`
+        ? stoppedLine(tokens.prompt + tokens.eval, Date.now() - started)
         : err instanceof Error ? err.message : String(err)
     }
     commit(tokens)
