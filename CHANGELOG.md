@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.11.0...miii-agent-v3.12.0) (2026-10-08)
+
+
+### Features
+
+* **web:** permission card matches the terminal prompt ([#127](https://github.com/maruakshay/miii-cli/issues/127)) ([fb14ccd](https://github.com/maruakshay/miii-cli/commit/fb14ccd562e3100333587c44a4b1000834736b6f))
+
 ## [3.11.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.10.3...miii-agent-v3.11.0) (2026-10-08)
 
 
