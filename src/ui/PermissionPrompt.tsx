@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import type { PermissionRequest } from './types.js'
 import { describeTool } from './toolLabel.js'
-import { subjectFor, widestPattern } from '../permissions/policy.js'
+import { subjectFor, widestPatterns, describePatterns } from '../permissions/policy.js'
 import { C } from './theme.js'
 
 function summarizeInput(input: unknown): string {
@@ -60,17 +60,17 @@ function PlanApproval({ cursor }: { cursor: number }) {
 export function PermissionPrompt({ req, cursor }: { req: PermissionRequest; cursor: number }) {
   if (req.toolName === 'exit_plan_mode') return <PlanApproval cursor={cursor} />
   const { text: label } = describeTool(req.toolName, req.input as Record<string, unknown>)
-  // The widest glob an "always" choice would persist. Showing it makes the blast
-  // radius explicit — e.g. "npm run *" auto-allows every npm script, while a
-  // destructive or compound command persists exact so it can't blanket-authorize
-  // the whole program.
-  const rule = widestPattern(req.toolName, subjectFor(req.toolName, req.input))
+  // The widest glob an "always" choice would persist, one per part of a compound
+  // command not already allowed. Showing it makes the blast radius explicit —
+  // "npm run *" auto-allows every npm script, while a destructive command
+  // persists exact so it can't blanket-authorize the whole program.
+  const rule = describePatterns(widestPatterns(req.toolName, subjectFor(req.toolName, req.input)))
   const options = [
     { label: 'Yes', key: 'yes' },
     {
       // Naming the scope matters: the rule goes in the project's own
       // .miii/permissions.json, so "don't ask again" means here, not everywhere.
-      label: rule ? `Yes, don't ask again for ${rule} (this project)` : "Yes, don't ask again in this project",
+      label: rule ? `Yes, and don't ask again for ${rule} in this project` : "Yes, and don't ask again in this project",
       key: 'always',
     },
     { label: 'No', key: 'no' },

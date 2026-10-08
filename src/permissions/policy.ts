@@ -22,8 +22,12 @@
  * promise in the system prompt true. Globs (e.g. "npm test *") can also be added
  * by hand-editing the JSON file.
  *
- * A wildcard rule never authorizes a compound command ("npm test && rm -rf ~"):
- * see ruleAllows(). That holds for hand-edited globs too.
+ * A wildcard rule never spans a command boundary ("npm test && rm -rf ~"): see
+ * ruleAllows(). A compound command is instead split into its parts, and runs
+ * only when every part is allowed on its own — by a rule, or because it only
+ * reads inside the project (see commandAllowed()). "Always" persists one rule
+ * per part, so approving `cd x && npm test | tail` remembers `npm test *`, not
+ * the whole line.
  *
  * On top of the rules sits the permission MODE (shift+tab in the UI), which can
  * widen or narrow the whole gate: `plan` makes the session read-only, `default`
@@ -31,7 +35,7 @@
  * stops asking about anything.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'fs'
-import { join } from 'path'
+import { join, resolve, relative, isAbsolute } from 'path'
 import { homedir } from 'os'
 import { settingsAllowRules, settingsDenyRules } from '../settings.js'
 import { isProjectTrusted, trustProject } from '../trust.js'
@@ -301,6 +305,157 @@ export function hasUnquotedShellOperator(command: string): boolean {
 }
 
 /**
+ * Split a shell command into the commands it chains — on unquoted `&&`, `||`,
+ * `;`, `|`, `&` and newlines — so each can be judged on its own.
+ *
+ * Returns null when the line does something a per-part check can't see:
+ * command substitution (`$(…)`, backticks) or a redirect that reads or writes
+ * a file. The harmless redirects (`2>&1`, `>/dev/null`, `2>/dev/null`,
+ * `&>/dev/null`) are dropped instead, since they're on half the commands a
+ * model writes.
+ */
+export function splitCommand(command: string): string[] | null {
+  const parts: string[] = []
+  let cur = ''
+  let quote: "'" | '"' | null = null
+  const push = () => {
+    if (cur.trim()) parts.push(cur.trim())
+    cur = ''
+  }
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    if (ch === '\\' && quote !== "'") {
+      cur += ch + (command[i + 1] ?? '')
+      i++
+      continue
+    }
+    if (quote) {
+      if (ch === quote) quote = null
+      else if (quote === '"' && (ch === '`' || (ch === '$' && command[i + 1] === '('))) return null
+      cur += ch
+      continue
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch
+      cur += ch
+      continue
+    }
+    if (ch === '`' || (ch === '$' && command[i + 1] === '(')) return null
+    if (ch === '>' || (ch === '&' && command[i + 1] === '>')) {
+      const rest = command.slice(i)
+      const safe = /^(?:>&\d|&?>>?\s*\/dev\/null(?![^\s;&|]))/.exec(rest)
+      if (!safe) return null
+      // The fd number belongs to the redirect: "2>&1", not a "2" argument.
+      if (/(?:^|\s)\d$/.test(cur)) cur = cur.slice(0, -1)
+      i += safe[0].length - 1
+      continue
+    }
+    if (ch === '<') return null
+    if (ch === ';' || ch === '\n' || ch === '|' || ch === '&') {
+      push()
+      if ((ch === '|' || ch === '&') && (command[i + 1] === ch || (ch === '|' && command[i + 1] === '&'))) i++
+      continue
+    }
+    cur += ch
+  }
+  if (quote) return null
+  push()
+  return parts
+}
+
+/** Programs isReadOnlyCommand lists that can still run arbitrary code or print secrets. */
+const NOT_AUTO_SAFE = new Set(['node', 'python', 'python3', 'env', 'printenv'])
+
+/** xargs flags that take a separate argument: `-n 1`, `-I {}`. */
+const XARGS_ARG_FLAGS = new Set(['-n', '-I', '-L', '-P', '-d', '-s', '-E', '-a'])
+
+function unquote(token: string): string {
+  return token.replace(/^(['"])(.*)\1$/, '$2')
+}
+
+function inside(dir: string, root: string): boolean {
+  const rel = relative(root, dir)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/** Where a path argument points, resolved from `dir`. `~` is home. */
+function resolveArg(arg: string, dir: string): string {
+  if (arg === '~' || arg.startsWith('~/')) return join(homedir(), arg.slice(1))
+  return resolve(dir, arg)
+}
+
+/**
+ * Does one part of a command only read, and only inside the project?
+ *
+ * Built on isReadOnlyCommand, minus the programs that merely *may* be read-only
+ * (node, python) or that print the environment. Any argument that looks like a
+ * path — absolute, `~`, or with `..` — must resolve inside the project, so
+ * `cat ~/.ssh/id_rsa` still asks. `xargs` is as safe as what it runs.
+ */
+function isAutoSafe(part: string, dir: string, root: string): boolean {
+  const tokens = part.trim().split(/\s+/)
+  let prog = tokens[0]
+  let args = tokens.slice(1)
+  if (prog === 'xargs') {
+    let i = 1
+    while (i < tokens.length && tokens[i].startsWith('-')) i += XARGS_ARG_FLAGS.has(tokens[i]) ? 2 : 1
+    if (i >= tokens.length) return false
+    prog = tokens[i]
+    args = tokens.slice(i + 1)
+  }
+  if (NOT_AUTO_SAFE.has(prog)) return false
+  if (prog === 'sort' && args.some((a) => a === '-o' || a.startsWith('--output'))) return false
+  if (!isReadOnlyCommand([prog, ...args].join(' '))) return false
+  return args.every((raw) => {
+    const a = unquote(raw)
+    if (a.startsWith('-')) return true
+    if (!(a.startsWith('/') || a.startsWith('~') || a.split('/').includes('..'))) return true
+    return inside(resolveArg(a, dir), root)
+  })
+}
+
+/**
+ * Is this run_bash command allowed without asking? True when an exact rule
+ * matches the whole line, or when every part of it is either covered by a rule
+ * or only reads inside the project. A `cd` that stays inside the project is
+ * allowed too, and moves where the parts after it are judged from.
+ *
+ * `uncovered`, when passed, collects the parts that are not allowed — what the
+ * prompt should offer to remember.
+ */
+export function commandAllowed(
+  command: string,
+  rules: Rule[],
+  root: string = process.cwd(),
+  uncovered?: string[],
+): boolean {
+  if (rules.some((r) => ruleAllows(r, 'run_bash', command))) return true
+  const parts = splitCommand(command)
+  if (!parts || parts.length === 0) {
+    uncovered?.push(command.trim())
+    return false
+  }
+  let dir = root
+  let ok = true
+  for (const part of parts) {
+    const tokens = part.split(/\s+/)
+    if (tokens[0] === 'cd' && tokens.length === 2) {
+      const target = resolveArg(unquote(tokens[1]), dir)
+      if (inside(target, root)) {
+        dir = target
+        continue
+      }
+    }
+    if (isAutoSafe(part, dir, root)) continue
+    if (rules.some((r) => ruleAllows(r, 'run_bash', part))) continue
+    ok = false
+    if (!uncovered) return false
+    uncovered.push(part)
+  }
+  return ok
+}
+
+/**
  * Turn a concrete command into a generalized glob to persist on "always".
  * "npm run build" → "npm run *", "npx tsc --noEmit" → "npx tsc *",
  * "git commit -m '...'" → "git commit *". Destructive commands (rm, dd, sudo,
@@ -335,20 +490,43 @@ export function generalizeCommand(command: string): string {
  * approved would keep re-prompting forever. Destructive commands generalize to
  * themselves, so the list collapses to the single exact rule.
  */
-export function patternsToPersist(toolName: string, subject: string): string[] {
+export function patternsToPersist(toolName: string, subject: string, rules: Rule[] = []): string[] {
   if (toolName !== 'run_bash') return [subject]
-  const exact = subject.trim()
-  const glob = generalizeCommand(subject)
-  return glob === exact ? [exact] : [exact, glob]
+  return partsToRemember(subject, rules).flatMap((part) => {
+    const glob = generalizeCommand(part)
+    return glob === part ? [part] : [part, glob]
+  })
 }
 
 /**
- * The widest rule an "always" answer would persist — what the prompt shows the
- * user as the blast radius of that choice.
+ * The parts of a command an "always" answer is about: the ones not already
+ * allowed. A line that can't be split (it redirects into a file, or runs a
+ * substitution) is one part — remembered exact, as before.
  */
+function partsToRemember(command: string, rules: Rule[]): string[] {
+  const uncovered: string[] = []
+  commandAllowed(command, rules, process.cwd(), uncovered)
+  return uncovered.length ? uncovered : [command.trim()]
+}
+
+/**
+ * The widest rule an "always" answer would persist, per part — what the prompt
+ * shows as the blast radius of that choice: "npm run *, cargo build *".
+ */
+export function widestPatterns(toolName: string, subject: string, rules: Rule[] = loadRules()): string[] {
+  if (toolName !== 'run_bash') return subject ? [subject] : []
+  return partsToRemember(subject, rules).map(generalizeCommand)
+}
+
+/** The prompt's wording for those rules, kept short enough for one line. */
+export function describePatterns(patterns: string[]): string {
+  const short = patterns.map((p) => (p.length > 48 ? p.slice(0, 47) + '…' : p))
+  return short.length > 3 ? `${short.slice(0, 3).join(', ')} +${short.length - 3} more` : short.join(', ')
+}
+
+/** Single-pattern form, kept for callers that show one rule. */
 export function widestPattern(toolName: string, subject: string): string {
-  const patterns = patternsToPersist(toolName, subject)
-  return patterns[patterns.length - 1] ?? ''
+  return describePatterns(widestPatterns(toolName, subject, []))
 }
 
 /** Convert a glob (only `*` and `?` special) into an anchored RegExp. */
@@ -504,10 +682,12 @@ export async function check(
   if (mode === 'acceptEdits' && EDIT_TOOLS.has(toolName)) return 'allow'
 
   const rules = loadRules()
-  if (rules.some((r) => ruleAllows(r, toolName, subject))) return 'allow'
+  if (toolName === 'run_bash' ? commandAllowed(subject, rules) : rules.some((r) => ruleAllows(r, toolName, subject))) {
+    return 'allow'
+  }
 
   const answer = await ctx.ask(toolName, input)
   if (answer === 'no') return 'deny'
-  if (answer === 'always') addRules(toolName, patternsToPersist(toolName, subject))
+  if (answer === 'always') addRules(toolName, patternsToPersist(toolName, subject, rules))
   return 'allow'
 }

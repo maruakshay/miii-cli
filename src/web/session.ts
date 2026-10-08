@@ -25,7 +25,7 @@ import {
   type Effort,
 } from '../config.js'
 import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
-import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPattern, type PermissionMode } from '../permissions/policy.js'
+import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPatterns, describePatterns, type PermissionMode } from '../permissions/policy.js'
 import { defaultPermissionMode } from '../settings.js'
 import { describeTool } from '../ui/toolLabel.js'
 import { stoppedLine } from '../ui/layout.js'
@@ -377,7 +377,7 @@ export class WebAgent {
         toolName,
         input,
         label: describeTool(toolName, inp).text,
-        rule: toolName === 'exit_plan_mode' ? '' : widestPattern(toolName, subjectFor(toolName, input)),
+        rule: toolName === 'exit_plan_mode' ? '' : describePatterns(widestPatterns(toolName, subjectFor(toolName, input))),
         ...(toolName === 'exit_plan_mode' && typeof inp.plan === 'string' ? { plan: inp.plan } : {}),
         resolve,
       }
