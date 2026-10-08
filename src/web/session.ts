@@ -272,15 +272,16 @@ export class WebAgent {
 
   // ── models and backends ───────────────────────────────────────────────────
 
-  async models(): Promise<{ models: string[]; error?: string }> {
+  /** `listed: false` means the provider has no /models — the list is a suggestion and any typed name goes. */
+  async models(): Promise<{ models: string[]; listed: boolean; error?: string }> {
     try {
       const { models, listed } = await listModels()
       // Without a list, the configured model is the one we know works.
       const current = loadConfig().model
-      return { models: !listed && current && !models.includes(current) ? [current, ...models] : models }
+      return { models: !listed && current && !models.includes(current) ? [current, ...models] : models, listed }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      return { models: [], error: isAvailable() ? msg : NOT_AVAILABLE() }
+      return { models: [], listed: false, error: isAvailable() ? msg : NOT_AVAILABLE() }
     }
   }
 
