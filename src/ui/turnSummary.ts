@@ -60,7 +60,7 @@ export interface SummaryPart { text: string; tone?: 'good' | 'bad' }
  */
 export function summaryParts(
   summary: TurnSummary | undefined,
-  tokens: string,
+  tokens: string | undefined,
   duration: string | undefined,
 ): SummaryPart[] {
   const parts: SummaryPart[] = []
@@ -76,7 +76,7 @@ export function summaryParts(
   }
   if (summary?.tests === 'passed') parts.push({ text: 'tests passed', tone: 'good' })
   if (summary?.tests === 'failed') parts.push({ text: 'tests failed', tone: 'bad' })
-  parts.push({ text: `${tokens} tokens` })
+  if (tokens) parts.push({ text: `${tokens} tokens` })
   if (duration) parts.push({ text: duration })
   if (files.length) parts.push({ text: '/rewind last to undo' })
   return parts

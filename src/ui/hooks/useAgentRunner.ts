@@ -15,6 +15,7 @@ import { isHiddenTool } from '../mergeSteps.js'
 import type { MiiMessage } from '../../agent/types.js'
 import { MODE_HINT, MODE_LABEL, nextMode, type PermissionMode } from '../../permissions/policy.js'
 import { describeTool } from '../toolLabel.js'
+import { stoppedLine } from '../layout.js'
 
 // How often (ms) we flush streaming text to React state — avoids a re-render per token.
 const FLUSH_MS = 100
@@ -374,7 +375,8 @@ export function useAgentRunner(
           }
           case 'done': {
             finalTokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            setUsedTokens(ev.prompt_tokens + ev.eval_tokens)
+            // Some providers never report usage — keep the estimate rather than zero it.
+            if (ev.context_tokens > 0) setUsedTokens(ev.context_tokens)
             setTotals((t) => ({
               input: t.input + ev.prompt_tokens,
               output: t.output + ev.eval_tokens,
@@ -385,11 +387,11 @@ export function useAgentRunner(
           }
           case 'aborted': {
             finalTokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            setUsedTokens(ev.prompt_tokens + ev.eval_tokens)
+            if (ev.context_tokens > 0) setUsedTokens(ev.context_tokens)
             setStreaming(false)
             setThinking(false)
             flushTurn(finalTokens)
-            setError(`Aborted · ${ev.prompt_tokens + ev.eval_tokens} tokens · ${(ev.duration_ms / 1000).toFixed(1)}s`)
+            setError(stoppedLine(ev.prompt_tokens + ev.eval_tokens, ev.duration_ms))
             break
           }
           case 'error': {
@@ -408,7 +410,7 @@ export function useAgentRunner(
       setThinking(false)
       setStreaming(false)
       if (accumulated || turnUses.length || turnResults.length) flushTurn(null)
-      setError(aborted ? `Aborted · ${((Date.now() - startTime) / 1000).toFixed(1)}s` : msg)
+      setError(aborted ? stoppedLine(0, Date.now() - startTime) : msg)
     }
 
     abortRef.current = null

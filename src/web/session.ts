@@ -25,9 +25,10 @@ import {
   type Effort,
 } from '../config.js'
 import { listModels, modelContext, isAvailable, NOT_AVAILABLE } from '../llm/client.js'
-import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPattern, type PermissionMode } from '../permissions/policy.js'
+import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPatterns, describePatterns, type PermissionMode } from '../permissions/policy.js'
 import { defaultPermissionMode } from '../settings.js'
 import { describeTool } from '../ui/toolLabel.js'
+import { stoppedLine } from '../ui/layout.js'
 import { expandCommand, findCustomCommand, customCommands, invalidateCustomCommands } from '../commands/custom.js'
 import { COMMANDS } from '../ui/constants.js'
 import { INIT_PROMPT, reviewPrompt, contextReport, costReport, mcpReport, agentsReport, settingsReport } from '../ui/reports.js'
@@ -376,7 +377,7 @@ export class WebAgent {
         toolName,
         input,
         label: describeTool(toolName, inp).text,
-        rule: toolName === 'exit_plan_mode' ? '' : widestPattern(toolName, subjectFor(toolName, input)),
+        rule: toolName === 'exit_plan_mode' ? '' : describePatterns(widestPatterns(toolName, subjectFor(toolName, input))),
         ...(toolName === 'exit_plan_mode' && typeof inp.plan === 'string' ? { plan: inp.plan } : {}),
         resolve,
       }
@@ -533,7 +534,8 @@ export class WebAgent {
             break
           case 'done':
             tokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            this.usedTokens = ev.prompt_tokens + ev.eval_tokens
+            // Some providers never report usage — keep the last figure rather than zero it.
+            if (ev.context_tokens > 0) this.usedTokens = ev.context_tokens
             this.totals = {
               input: this.totals.input + ev.prompt_tokens,
               output: this.totals.output + ev.eval_tokens,
@@ -543,7 +545,7 @@ export class WebAgent {
             break
           case 'aborted':
             tokens = { prompt: ev.prompt_tokens, eval: ev.eval_tokens }
-            this.error = `Stopped · ${(ev.duration_ms / 1000).toFixed(1)}s`
+            this.error = stoppedLine(ev.prompt_tokens + ev.eval_tokens, ev.duration_ms)
             break
           case 'error':
             this.error = ev.message
@@ -552,7 +554,7 @@ export class WebAgent {
       }
     } catch (err) {
       this.error = controller.signal.aborted
-        ? `Stopped · ${((Date.now() - started) / 1000).toFixed(1)}s`
+        ? stoppedLine(tokens.prompt + tokens.eval, Date.now() - started)
         : err instanceof Error ? err.message : String(err)
     }
     commit(tokens)

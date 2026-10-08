@@ -4,7 +4,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { CopyButton, Markdown } from '@/components/Markdown'
 import { ToolCall } from '@/components/ToolCall'
 import type { WebMessage } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, fmtDuration } from '@/lib/utils'
 
 function Thinking({ text, live }: { text: string; live?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -67,11 +67,12 @@ export function MessageView({ m, onRewind }: { m: WebMessage; onRewind?: (m: Web
       {m.thinking && <Thinking text={m.thinking} live={m.live && !hasText && !m.tools?.length} />}
       {m.tools?.length ? <div className="flex flex-col gap-1.5">{m.tools.map((t) => <ToolCall key={t.id} tool={t} />)}</div> : null}
       {(hasText || (m.live && !m.thinking && !m.tools?.length)) && <Markdown text={m.content} streaming={m.live} />}
-      {!m.live && m.tokens && (
+      {!m.live && (m.tokens || m.duration) && (
         <div className="flex items-center gap-3 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
           {hasText && <CopyButton text={m.content} label="Copy" className="-ml-1.5" />}
-          <span>{fmtTokens(m.tokens.prompt + m.tokens.eval)} tokens</span>
-          {m.duration ? <span>{(m.duration / 1000).toFixed(1)}s</span> : null}
+          {/* Zero means the provider didn't report usage, not that it was free. */}
+          {m.tokens && m.tokens.prompt + m.tokens.eval > 0 ? <span>{fmtTokens(m.tokens.prompt + m.tokens.eval)} tokens</span> : null}
+          {m.duration ? <span>{fmtDuration(m.duration, true)}</span> : null}
         </div>
       )}
     </div>

@@ -77,6 +77,10 @@ export type AgentEvent =
   /** A message the user sent mid-run was handed to the model with the last results. */
   | { type: 'steer'; text: string }
   | { type: 'turn-end'; stop_reason: StopReason }
-  | { type: 'done'; prompt_tokens: number; eval_tokens: number }
-  | { type: 'aborted'; prompt_tokens: number; eval_tokens: number; duration_ms: number }
+  /**
+   * prompt/eval are summed over every step (the turn's cost); context_tokens is
+   * the last step's prompt + output (how full the window is). 0 = not reported.
+   */
+  | { type: 'done'; prompt_tokens: number; eval_tokens: number; context_tokens: number }
+  | { type: 'aborted'; prompt_tokens: number; eval_tokens: number; context_tokens: number; duration_ms: number }
   | { type: 'error'; message: string }

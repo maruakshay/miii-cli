@@ -426,7 +426,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       for (const w of gate.warnings) yield { type: 'hook-notice', message: w }
       if (gate.blocked) {
         yield { type: 'error', message: `Prompt blocked by a UserPromptSubmit hook: ${gate.reason}` }
-        yield { type: 'done', prompt_tokens: 0, eval_tokens: 0 }
+        yield { type: 'done', prompt_tokens: 0, eval_tokens: 0, context_tokens: 0 }
         return opts.history
       }
       if (gate.context) promptContext = gate.context
@@ -442,8 +442,12 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     },
   ]
 
+  // Summed across steps: what the turn cost.
   let promptTokens = 0
   let evalTokens = 0
+  // The last step's prompt + output: how full the context window is now.
+  // Summing prompts would count the shared history once per step.
+  let contextTokens = 0
   let lastAssistantSig = ''
   let repeatCount = 0
   // How many times we've asked the model to re-emit a leaked text tool call via
@@ -536,6 +540,8 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         if (chunk.done) {
           promptTokens += chunk.prompt_eval_count ?? 0
           evalTokens += chunk.eval_count ?? 0
+          const stepTokens = (chunk.prompt_eval_count ?? 0) + (chunk.eval_count ?? 0)
+          if (stepTokens > 0) contextTokens = stepTokens
           if (chunk.done_reason === 'length') truncated = true
         }
       }
@@ -558,6 +564,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         type: 'aborted',
         prompt_tokens: promptTokens,
         eval_tokens: evalTokens,
+        context_tokens: contextTokens,
         duration_ms: Date.now() - startTime,
       }
       return history
@@ -657,7 +664,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
             'output cap was consumed by thinking before any answer. Retry, switch models, or ' +
             'lower the context/effort.',
         }
-        yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens }
+        yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens, context_tokens: contextTokens }
         return history
       }
       // A Stop hook gets a veto on "I'm done". The use is a completion gate —
@@ -992,6 +999,6 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       message: `Stopped after ${maxTurns} tool-use turns — the task may be incomplete. Send another message to continue where it left off.`,
     }
   }
-  yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens }
+  yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens, context_tokens: contextTokens }
   return history
 }

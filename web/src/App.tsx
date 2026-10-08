@@ -9,7 +9,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { useMiii } from '@/hooks/useMiii'
 import { get, post, token } from '@/lib/api'
 import type { Answer, Checkpoint, WebMessage, WebState } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, fmtDuration } from '@/lib/utils'
 
 function useTheme() {
   const [dark, setDark] = useState(() => {
@@ -34,7 +34,7 @@ function Elapsed({ busy }: { busy: boolean }) {
     const t = setInterval(() => tick((n) => n + 1), 1000)
     return () => clearInterval(t)
   }, [busy])
-  return <span className="font-mono text-xs text-muted-foreground/70">{Math.floor((Date.now() - start) / 1000)}s</span>
+  return <span className="font-mono text-xs text-muted-foreground/70 tabular-nums">{fmtDuration(Date.now() - start)}</span>
 }
 
 function Meter({ state }: { state: WebState }) {
@@ -204,8 +204,7 @@ export function App() {
     // The card held focus for its 1/2/3 keys; hand it back to the composer.
     document.querySelector<HTMLTextAreaElement>('main textarea')?.focus()
   }
-  const last = messages[messages.length - 1]
-  const showStatus = state.busy && !state.pending && !(last?.live && last.content && state.status === 'Writing…')
+  const showStatus = state.busy && !state.pending
 
   return (
     <TooltipProvider>
