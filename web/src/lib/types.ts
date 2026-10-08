@@ -38,7 +38,8 @@ export interface PendingPermission {
   toolName: string
   input: unknown
   label: string
-  rule: string
+  /** Globs an "always" answer remembers, one per part of the command. */
+  rules: string[]
   plan?: string
 }
 
