@@ -3,22 +3,27 @@ import { ChevronRight, CircleCheck, CircleX, Loader2, ListTodo, Circle, CircleDo
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { DiffView } from '@/components/Diff'
 import { Markdown } from '@/components/Markdown'
-import type { WebTool } from '@/lib/types'
+import type { Todo, WebTool } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed' }
-
-function Todos({ todos }: { todos: Todo[] }) {
+/**
+ * The agent's task list, pinned above the composer while there is work on it.
+ * A progress bar fills as tasks land, and each one ticks over in place.
+ */
+export function Todos({ todos }: { todos: Todo[] }) {
   const done = todos.filter((t) => t.status === 'completed').length
   return (
-    <div className="rounded-xl border bg-card px-4 py-3">
+    <div className="max-h-56 overflow-y-auto rounded-xl border bg-card px-4 py-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <ListTodo className="size-3.5" /> Tasks · {done}/{todos.length}
+        <span className="ml-auto h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+          <span className="block h-full rounded-full bg-success transition-[width] duration-500" style={{ width: `${(done / todos.length) * 100}%` }} />
+        </span>
       </div>
       <ul className="space-y-1 text-sm">
         {todos.map((t, i) => (
           <li key={i} className="flex items-start gap-2">
-            {t.status === 'completed' ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" />
+            {t.status === 'completed' ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-success animate-in zoom-in-50 duration-300" />
               : t.status === 'in_progress' ? <CircleDot className="mt-0.5 size-4 shrink-0 text-primary" />
               : <Circle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
             <span className={cn(t.status === 'completed' && 'text-muted-foreground line-through', t.status === 'in_progress' && 'font-medium')}>
@@ -53,7 +58,20 @@ function inputPreview(tool: WebTool): string | null {
 export function ToolCall({ tool }: { tool: WebTool }) {
   const [open, setOpen] = useState(false)
 
-  if (tool.name === 'write_todos' && Array.isArray(tool.input.todos)) return <Todos todos={tool.input.todos as Todo[]} />
+  // The full list lives pinned above the composer; in the transcript an update
+  // is one quiet line, so a long run isn't a stack of near-identical cards.
+  if (tool.name === 'write_todos' && Array.isArray(tool.input.todos)) {
+    const todos = tool.input.todos as Todo[]
+    const done = todos.filter((t) => t.status === 'completed').length
+    const active = todos.find((t) => t.status === 'in_progress')
+    return (
+      <div className="flex min-w-0 items-center gap-2 px-1 text-sm text-muted-foreground">
+        <ListTodo className="size-4 shrink-0" />
+        <span className="shrink-0">Tasks {done}/{todos.length}</span>
+        {active && <span className="truncate">· {active.content}</span>}
+      </div>
+    )
+  }
   if (tool.name === 'exit_plan_mode' && typeof tool.input.plan === 'string') return <Plan plan={tool.input.plan} />
 
   const r = tool.result

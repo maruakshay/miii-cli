@@ -7,7 +7,7 @@ import { isHiddenTool } from './mergeSteps.js'
 import { formatTokens, formatDuration, contentWidth, padLines, userTextWidth } from './layout.js'
 import { useTerminalWidth } from './hooks/useTerminalWidth.js'
 import { useThinkingVisible, CHALK } from './ThinkingBlock.js'
-import { summaryParts } from './turnSummary.js'
+import { formatStat, summaryMark, summaryParts } from './turnSummary.js'
 import { C } from './theme.js'
 
 /**
@@ -31,6 +31,28 @@ const USER_RULE = '\u258c'
  */
 export const ASST_ACCENT = C.white
 export const ASST_RULE = '\u25cf '
+
+function toneColor(tone: 'good' | 'bad' | undefined): string | undefined {
+  return tone === 'good' ? C.green : tone === 'bad' ? C.red : undefined
+}
+
+/** The ✓ / ✗ / ■ a turn's closing line leads with — the glance that says it landed. */
+function SummaryMark({ summary }: { summary: ChatMessage['summary'] }) {
+  const { mark, tone } = summaryMark(summary)
+  return <Text color={toneColor(tone)} dimColor={!tone} bold={!!tone}>{`${mark} `}</Text>
+}
+
+/** "+42 −10" in sage and rose: the size of a change, readable at a glance. */
+export function DiffStat({ added, removed }: { added: number; removed: number }) {
+  const [plus, minus] = formatStat(added, removed).split(' ')
+  return (
+    <Text>
+      {' '}
+      <Text color={C.green}>{plus}</Text>
+      {minus && <Text color={C.red}>{` ${minus}`}</Text>}
+    </Text>
+  )
+}
 
 export const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage }) {
   // Read through the hook, not process.stdout: this component is memoised, so a
@@ -97,16 +119,17 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
         // One Text with nested runs, not sibling Texts: siblings are flex
         // items, and each would wrap in its own column on a narrow terminal.
         <Box width={contentWidth() + 2}>
-          <Text dimColor wrap="wrap">
-            {'↳ '}
+          <Text wrap="wrap">
+            <SummaryMark summary={msg.summary} />
             {summaryParts(
               msg.summary,
               // Zero means the provider didn't report usage, not that it was free.
               msg.tokens.prompt_eval + msg.tokens.eval > 0 ? formatTokens(msg.tokens.prompt_eval + msg.tokens.eval) : undefined,
               msg.duration != null ? formatDuration(msg.duration) : undefined,
             ).map((p, i) => (
-              <Text key={i} color={p.tone === 'good' ? C.green : p.tone === 'bad' ? C.red : undefined} dimColor={!p.tone}>
-                {i > 0 ? ' · ' : ''}{p.text}
+              <Text key={i}>
+                <Text color={toneColor(p.tone)} dimColor={!p.tone}>{i > 0 ? ' · ' : ''}{p.text}</Text>
+                {p.added != null && <DiffStat added={p.added} removed={p.removed ?? 0} />}
               </Text>
             ))}
           </Text>

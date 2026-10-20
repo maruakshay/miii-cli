@@ -225,7 +225,7 @@ export function useAgentRunner(
     const usesById = new Map<string, ToolUseDisplay>()
 
     /** Commit accumulated text + tool activity as a finished assistant message. */
-    const flushTurn = (final: { prompt: number; eval: number } | null) => {
+    const flushTurn = (final: { prompt: number; eval: number } | null, stopped = false) => {
       const msg: ChatMessage = {
         role: 'assistant',
         content: accumulated,
@@ -237,6 +237,7 @@ export function useAgentRunner(
         msg.tokens = { prompt_eval: final.prompt, eval: final.eval }
         msg.duration = Date.now() - startTime
         msg.summary = summary.build()
+        if (stopped) msg.summary.stopped = true
       }
       setMessages((prev) => [...prev, msg])
       accumulated = ''
@@ -390,7 +391,7 @@ export function useAgentRunner(
             if (ev.context_tokens > 0) setUsedTokens(ev.context_tokens)
             setStreaming(false)
             setThinking(false)
-            flushTurn(finalTokens)
+            flushTurn(finalTokens, true)
             setError(stoppedLine(ev.prompt_tokens + ev.eval_tokens, ev.duration_ms))
             break
           }
@@ -465,16 +466,7 @@ export function useAgentRunner(
       })
       setAgentHistory(res.history)
       setUsedTokens(estimateHistoryTokens(res.history))
-      const kept = res.keptMessages ? `, last ${res.keptMessages} kept verbatim` : ''
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content:
-            `⧉ **context compacted** — ${res.droppedMessages} messages summarised${kept}. ` +
-            `~${res.beforeTokens} → ~${res.afterTokens} tokens.\n\n${res.summary}`,
-        },
-      ])
+      setMessages((prev) => [...prev, { role: 'assistant', content: '⧉ **Compaction completed**' }])
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

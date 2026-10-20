@@ -49,14 +49,59 @@ export class TurnSummaryBuilder {
   }
 }
 
-/** One piece of the closing line; `tone` colours the parts worth a glance. */
-export interface SummaryPart { text: string; tone?: 'good' | 'bad' }
+/**
+ * One piece of the closing line; `tone` colours the parts worth a glance. The
+ * change part carries its line counts apart from its text, so each surface can
+ * paint them green and red rather than burying them in a dim parenthesis.
+ */
+export interface SummaryPart { text: string; tone?: 'good' | 'bad'; added?: number; removed?: number }
+
+/** "+42 −10", or "+42" alone when nothing was removed. */
+export function formatStat(added: number, removed: number): string {
+  return `+${added}${removed ? ` −${removed}` : ''}`
+}
+
+/**
+ * The glyph a turn's closing line leads with: a check for a turn that finished,
+ * a cross when its last test run failed, a square when it was stopped. It's the
+ * thing the eye lands on when scrolling back — did that one work?
+ *
+ * Only a turn that did something — changed files, passed tests — gets the
+ * green check. A plain answer keeps a quiet one: if every reply celebrated,
+ * the green would stop meaning anything.
+ */
+export function summaryMark(summary: TurnSummary | undefined): { mark: string; tone?: 'good' | 'bad' } {
+  if (summary?.tests === 'failed') return { mark: '✗', tone: 'bad' }
+  if (summary?.stopped) return { mark: '■' }
+  if (summary?.files.length || summary?.tests === 'passed') return { mark: '✓', tone: 'good' }
+  return { mark: '✓' }
+}
+
+/** What a whole session has changed so far — the running tally by the input. */
+export interface SessionTally { files: number; added: number; removed: number; turns: number }
+
+export function sessionTally(summaries: Array<TurnSummary | undefined>): SessionTally {
+  const files = new Set<string>()
+  let added = 0
+  let removed = 0
+  let turns = 0
+  for (const s of summaries) {
+    if (!s) continue
+    turns++
+    for (const f of s.files) {
+      files.add(f.path)
+      added += f.added
+      removed += f.removed
+    }
+  }
+  return { files: files.size, added, removed, turns }
+}
 
 /**
  * A finished turn's closing line, in the order a reviewer asks: what changed,
  * did the tests pass, what did it cost, how do I back it out.
  *
- *   ↳ Changed src/a.ts, src/b.ts (+42 −10) · tests passed · 1.5k tokens · 4.2s · /rewind last to undo
+ *   ✓ Changed src/a.ts, src/b.ts +42 −10 · tests passed · 1.5k tokens · 4.2s · /rewind last to undo
  */
 export function summaryParts(
   summary: TurnSummary | undefined,
@@ -70,9 +115,9 @@ export function summaryParts(
     const removed = files.reduce((n, f) => n + f.removed, 0)
     // Two paths still read at a glance; past that the count says more.
     const what = files.length <= 2 ? files.map((f) => f.path).join(', ') : `${files.length} files`
-    parts.push({ text: `Changed ${what} (+${added}${removed ? ` −${removed}` : ''})` })
+    parts.push({ text: `Changed ${what}`, added, removed })
   } else {
-    parts.push({ text: 'Completed' })
+    parts.push({ text: summary?.stopped ? 'Stopped' : 'Completed' })
   }
   if (summary?.tests === 'passed') parts.push({ text: 'tests passed', tone: 'good' })
   if (summary?.tests === 'failed') parts.push({ text: 'tests failed', tone: 'bad' })

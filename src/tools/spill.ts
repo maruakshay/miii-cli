@@ -1,7 +1,7 @@
-import { writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { randomBytes } from 'crypto'
+import { writeFileShell, removeOlderThanShell } from './shellFs.js'
 
 /**
  * Overflow handling for tool output. Instead of truncating (lossy) we spill the
@@ -18,11 +18,6 @@ export const INLINE_BUDGET = 10_000
 /** Keep this fraction of the budget as head; the rest is tail (errors live at the bottom). */
 const HEAD_FRACTION = 0.3
 
-function ensureDir(): string {
-  mkdirSync(OUTPUT_DIR, { recursive: true })
-  return OUTPUT_DIR
-}
-
 /**
  * If `full` fits the budget, return it unchanged. Otherwise write it to a file
  * and return a head+tail preview plus a pointer telling the model how to read
@@ -32,10 +27,11 @@ export function spillIfLarge(full: string, label = 'output', budget = INLINE_BUD
   if (full.length <= budget) return full
 
   const id = randomBytes(6).toString('hex')
-  const file = join(ensureDir(), `${id}.txt`)
+  const file = join(OUTPUT_DIR, `${id}.txt`)
   let path = file
   try {
-    writeFileSync(file, full, 'utf-8')
+    // Creates OUTPUT_DIR on the way.
+    writeFileShell(file, full)
   } catch {
     // Spill failed (e.g. read-only home) — fall back to lossy head+tail so we
     // never blow the context window, but say the tail was dropped.
@@ -54,16 +50,8 @@ export function spillIfLarge(full: string, label = 'output', budget = INLINE_BUD
 /** Delete spilled output files older than `maxAgeMs` (default 24h). Best-effort. */
 export function cleanupSpill(maxAgeMs = 24 * 60 * 60 * 1000): void {
   try {
-    const now = Date.now()
-    for (const name of readdirSync(OUTPUT_DIR)) {
-      const f = join(OUTPUT_DIR, name)
-      try {
-        if (now - statSync(f).mtimeMs > maxAgeMs) rmSync(f, { force: true })
-      } catch {
-        /* ignore individual file errors */
-      }
-    }
+    removeOlderThanShell(OUTPUT_DIR, maxAgeMs)
   } catch {
-    /* dir missing — nothing to clean */
+    /* best-effort */
   }
 }

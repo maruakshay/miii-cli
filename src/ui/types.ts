@@ -19,6 +19,8 @@ export interface TurnSummary {
   files: Array<{ path: string; added: number; removed: number }>
   /** Outcome of the last test command the turn ran, if it ran one. */
   tests?: 'passed' | 'failed'
+  /** The turn was interrupted rather than finishing on its own. */
+  stopped?: boolean
 }
 
 export interface ChatMessage {
