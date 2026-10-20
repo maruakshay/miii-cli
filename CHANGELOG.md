@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.12.0...miii-agent-v3.12.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **ui:** turn receipts, pinned task list, session tally and terminal bell ([#130](https://github.com/maruakshay/miii-cli/issues/130)) ([9fd919b](https://github.com/maruakshay/miii-cli/commit/9fd919b6a7794d22536a5bf26f24a6b2587868e7))
+
 ## [3.12.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.11.0...miii-agent-v3.12.0) (2026-10-08)
 
 
