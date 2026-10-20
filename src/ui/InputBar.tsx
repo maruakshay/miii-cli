@@ -3,6 +3,7 @@ import { Box, Text, useStdout } from 'ink'
 import { INPUT_PLACEHOLDER, BUSY_PLACEHOLDER, INPUT_HINTS, BUSY_HINTS } from './constants.js'
 import { MODE_LABEL, type PermissionMode } from '../permissions/policy.js'
 import { C } from './theme.js'
+import { formatStat, type SessionTally } from './turnSummary.js'
 
 interface Props {
   input: string
@@ -15,6 +16,8 @@ interface Props {
   mode?: PermissionMode
   /** Vim mode, or null when vim keys are off. Shown as a chip on the hint row. */
   vim?: 'insert' | 'normal' | null
+  /** What the session has changed so far, shown at the right of the hint row. */
+  tally?: SessionTally
 }
 
 /**
@@ -105,6 +108,7 @@ export const InputBar = memo(function InputBar({
   hint,
   mode = 'default',
   vim = null,
+  tally,
 }: Props) {
   // The stream Ink is actually rendering to, not the global process.stdout —
   // they differ under test and when the app is driven programmatically.
@@ -112,6 +116,9 @@ export const InputBar = memo(function InputBar({
   const view = viewport(input, caret ?? input.length, fieldWidth(stdout?.columns ?? 80))
   const showPlaceholder = input.length === 0
   const placeholder = busy ? BUSY_PLACEHOLDER : INPUT_PLACEHOLDER
+  const tallyText = tally?.files
+    ? `${tally.files} file${tally.files === 1 ? '' : 's'} ${formatStat(tally.added, tally.removed)}`
+    : null
 
   return (
     <Box flexDirection="column" width="100%">
@@ -155,13 +162,26 @@ export const InputBar = memo(function InputBar({
         <Text dimColor>
           {fitHint(
             hint ?? (busy ? BUSY_HINTS : INPUT_HINTS),
-            // The mode chip eats into the same row, so the hints have to fit
-            // what's left of it or the bar wraps and pushes the frame.
+            // The mode chip and the tally eat into the same row, so the hints
+            // have to fit what's left of it or the bar wraps and pushes the frame.
             (stdout?.columns ?? 80)
               - (mode === 'default' ? 0 : MODE_LABEL[mode].length + 3)
-              - (vim === 'normal' ? 9 : 0),
+              - (vim === 'normal' ? 9 : 0)
+              - (tallyText ? tallyText.length + 2 : 0),
           )}
         </Text>
+        {/* The session's running score: every file it has touched, and the
+            lines in and out. Watching it climb is half the fun. */}
+        {tallyText && tally && (
+          <>
+            <Box flexGrow={1} />
+            <Text>
+              <Text dimColor>{`${tally.files} file${tally.files === 1 ? '' : 's'} `}</Text>
+              <Text color={C.green}>{`+${tally.added}`}</Text>
+              {tally.removed > 0 && <Text color={C.red}>{` −${tally.removed}`}</Text>}
+            </Text>
+          </>
+        )}
       </Box>
     </Box>
   )

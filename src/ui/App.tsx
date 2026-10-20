@@ -4,7 +4,7 @@
  * Owns top-level state (model list, selected model, app screen) and
  * delegates streaming logic to useAgentRunner and key handling to useKeyboard.
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Box, Text, measureElement, useApp, useStdout, type DOMElement } from 'ink'
 import { homedir } from 'os'
 import { sep } from 'path'
@@ -23,6 +23,10 @@ import { enableMouse, disableMouse, isMouseEnabled, onMouseChange } from './mous
 import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { StatusLine, QueuedMessages } from './StatusLine.js'
+import { sessionTally } from './turnSummary.js'
+import { latestTodos } from './todos.js'
+import { TodoPanel } from './TodoPanel.js'
+import { NOTIFY_AFTER_MS, notifyTerminal } from './notify.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
 import { useKeyboard, vimIndicator } from './hooks/useKeyboard.js'
 import { checkForUpdate, autoUpdate } from '../updateCheck.js'
@@ -432,6 +436,35 @@ export function App({ resumeId, continueLast }: AppProps) {
   // compaction — so it drops the moment the history shrinks.
   const contextPct = activeCtx && agent.usedTokens ? agent.usedTokens / activeCtx : 0
   const contextWarning = contextPct >= CONTEXT_WARN_AT ? Math.round(contextPct * 100) : null
+  const tally = useMemo(() => sessionTally(agent.messages.map((m) => m.summary)), [agent.messages])
+  // The live step counts too: a list the agent just wrote should show before the step commits.
+  const todos = useMemo(
+    () => latestTodos([...agent.messages, { tool_uses: agent.activeToolUses, tool_results: agent.activeToolResults }]),
+    [agent.messages, agent.activeToolUses, agent.activeToolResults],
+  )
+  // Pinned while there is work on it; a finished list steps aside once the turn
+  // ends, and the turn's closing line takes over.
+  const showTodos = !!todos && (agent.busy || todos.some((t) => t.status !== 'completed'))
+
+  // Long turns are when you switch windows. Ring the terminal when one ends, or
+  // when it stops to ask permission — a short turn you watched needs no ping.
+  const turnStart = useRef<number | null>(null)
+  if (agent.busy && agent.startedAt !== null) turnStart.current = agent.startedAt
+  const longTurn = () => turnStart.current !== null && Date.now() - turnStart.current >= NOTIFY_AFTER_MS
+  const wasBusy = useRef(false)
+  useEffect(() => {
+    const finished = wasBusy.current && !agent.busy
+    wasBusy.current = agent.busy
+    if (!finished || !longTurn()) return
+    // esc means you were here to press it.
+    if (agent.error?.startsWith('Stopped')) return
+    const files = agent.messages.at(-1)?.summary?.files.length ?? 0
+    notifyTerminal(agent.error ? 'Stopped with an error' : files ? `Done — changed ${files} file${files > 1 ? 's' : ''}` : 'Done')
+  }, [agent.busy])
+  useEffect(() => {
+    if (!agent.pendingPermission || !longTurn()) return
+    notifyTerminal(agent.pendingPermission.toolName === 'exit_plan_mode' ? 'Plan ready for review' : 'Waiting for your approval')
+  }, [agent.pendingPermission])
 
   // Auto-compact when the window is nearly full, between turns. The ref latches
   // so a compaction that fails (or one whose summary is still large) isn't
@@ -562,6 +595,7 @@ export function App({ resumeId, continueLast }: AppProps) {
               entirely (avoids a stray "processing" prompt). */}
           {state === 'ready' && (
             <Box flexShrink={0} flexDirection="column">
+              {showTodos && todos && <TodoPanel todos={todos} maxRows={Math.max(3, Math.min(8, termRows - 18))} />}
               {agent.busy && agent.startedAt !== null && (
                 <StatusLine
                   label={agent.processingLabel ?? 'Thinking…'}
@@ -576,6 +610,7 @@ export function App({ resumeId, continueLast }: AppProps) {
                 busy={agent.busy}
                 mode={agent.mode}
                 vim={vimIndicator()}
+                tally={tally}
                 hint={
                   providerDown
                     ? 'provider unavailable — /provider to switch · /models to pick a model'

@@ -32,8 +32,9 @@ export const StatusLine = memo(function StatusLine({
   const [frame, setFrame] = useState(0)
   useEffect(() => {
     // 200ms is a clean 2× of the runner's 100ms flush, so the two timers
-    // phase-lock instead of repainting on drifting, unsynced clocks.
-    const t = setInterval(() => setFrame((f) => (f + 1) % SPIN.length), 200)
+    // phase-lock instead of repainting on drifting, unsynced clocks. The count
+    // runs on past the spinner's length: the shimmer sweeps on the same clock.
+    const t = setInterval(() => setFrame((f) => f + 1), 200)
     return () => clearInterval(t)
   }, [])
 
@@ -48,18 +49,41 @@ export const StatusLine = memo(function StatusLine({
 
   return (
     <Box marginLeft={1}>
-      <Text color={C.yellow}>{SPIN[frame]} </Text>
+      <Text color={C.yellow}>{SPIN[frame % SPIN.length]} </Text>
       {cut < 0 ? (
-        <Text>{line}</Text>
+        <Shimmer text={line} frame={frame} />
       ) : (
         <>
-          <Text>{line.slice(0, cut)}</Text>
+          <Shimmer text={line.slice(0, cut)} frame={frame} />
           <Text dimColor>{line.slice(cut)}</Text>
         </>
       )}
     </Box>
   )
 })
+
+const SHIMMER_WIDTH = 3
+/** Frames the highlight rests off-screen between sweeps, so it reads as a pulse, not a scroll. */
+const SHIMMER_REST = 6
+
+/**
+ * The label with a bright band sweeping across it — the line is visibly alive
+ * even when the elapsed counter is the only other thing moving. One row of
+ * three Text runs, so it never changes width or wraps.
+ */
+function Shimmer({ text, frame }: { text: string; frame: number }) {
+  const at = (frame % (text.length + SHIMMER_REST)) - SHIMMER_WIDTH + 1
+  if (at + SHIMMER_WIDTH <= 0 || at >= text.length) return <Text>{text}</Text>
+  const from = Math.max(0, at)
+  const to = Math.min(text.length, at + SHIMMER_WIDTH)
+  return (
+    <Text>
+      {text.slice(0, from)}
+      <Text color={C.yellow} bold>{text.slice(from, to)}</Text>
+      {text.slice(to)}
+    </Text>
+  )
+}
 
 /**
  * Messages sent while the agent works, shown until it picks them up — so a

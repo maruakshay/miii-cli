@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Brain, ChevronRight, ImageIcon, Undo2 } from 'lucide-react'
+import { Brain, ChevronRight, CircleCheck, CircleStop, CircleX, FlaskConical, ImageIcon, Undo2 } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { CopyButton, Markdown } from '@/components/Markdown'
 import { ToolCall } from '@/components/ToolCall'
-import type { WebMessage } from '@/lib/types'
+import type { TurnSummary, WebMessage } from '@/lib/types'
 import { cn, fmtDuration } from '@/lib/utils'
 
 function Thinking({ text, live }: { text: string; live?: boolean }) {
@@ -24,6 +24,67 @@ function Thinking({ text, live }: { text: string; live?: boolean }) {
 
 function fmtTokens(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
+/** "+42 −10" in sage and rose, as in the terminal. */
+export function DiffStat({ added, removed, className }: { added: number; removed: number; className?: string }) {
+  return (
+    <span className={cn('font-mono tabular-nums', className)}>
+      <span className="text-diff-add-fg">+{added}</span>
+      {removed > 0 && <span className="ml-1 text-diff-del-fg">−{removed}</span>}
+    </span>
+  )
+}
+
+/**
+ * The closing line of a turn, always on show: did it land, what did it touch,
+ * did the tests pass. The mark pops in as the turn finishes — the small payoff
+ * for waiting — and the file chips say exactly where to look next.
+ */
+function TurnReceipt({ summary, tokens, duration, copy }: { summary: TurnSummary; tokens?: string; duration?: number; copy?: string }) {
+  const failed = summary.tests === 'failed'
+  const Mark = failed ? CircleX : summary.stopped ? CircleStop : CircleCheck
+  const added = summary.files.reduce((n, f) => n + f.added, 0)
+  const removed = summary.files.reduce((n, f) => n + f.removed, 0)
+  const name = (p: string) => p.split(/[\\/]/).pop() ?? p
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      <Mark
+        className={cn(
+          'size-4 shrink-0 animate-in zoom-in-50 fade-in-0 duration-300',
+          // Green only for a turn that did something; a plain answer gets a quiet check.
+          failed ? 'text-destructive' : summary.files.length || summary.tests === 'passed' ? 'text-success' : 'text-muted-foreground/60',
+        )}
+      />
+      {summary.files.length ? (
+        <>
+          <span className="font-medium text-foreground/80">
+            Changed {summary.files.length} file{summary.files.length > 1 ? 's' : ''}
+          </span>
+          <DiffStat added={added} removed={removed} />
+          {summary.files.slice(0, 4).map((f) => (
+            <span key={f.path} title={`${f.path}  +${f.added} −${f.removed}`} className="rounded-md bg-code px-1.5 py-0.5 font-mono text-[11px] text-foreground/80">
+              {name(f.path)}
+            </span>
+          ))}
+          {summary.files.length > 4 && <span>+{summary.files.length - 4} more</span>}
+        </>
+      ) : (
+        <span>{summary.stopped ? 'Stopped' : 'Done'}</span>
+      )}
+      {summary.tests && (
+        <span className={cn(
+          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium',
+          failed ? 'bg-diff-del text-diff-del-fg' : 'bg-diff-add text-diff-add-fg',
+        )}>
+          <FlaskConical className="size-3" /> tests {summary.tests}
+        </span>
+      )}
+      {tokens && <span>· {tokens} tokens</span>}
+      {duration ? <span>· {fmtDuration(duration, true)}</span> : null}
+      {copy && <CopyButton text={copy} label="Copy" className="ml-auto opacity-0 transition-opacity group-hover:opacity-100" />}
+    </div>
+  )
 }
 
 export function MessageView({ m, onRewind }: { m: WebMessage; onRewind?: (m: WebMessage) => void }) {
@@ -67,7 +128,16 @@ export function MessageView({ m, onRewind }: { m: WebMessage; onRewind?: (m: Web
       {m.thinking && <Thinking text={m.thinking} live={m.live && !hasText && !m.tools?.length} />}
       {m.tools?.length ? <div className="flex flex-col gap-1.5">{m.tools.map((t) => <ToolCall key={t.id} tool={t} />)}</div> : null}
       {(hasText || (m.live && !m.thinking && !m.tools?.length)) && <Markdown text={m.content} streaming={m.live} />}
-      {!m.live && (m.tokens || m.duration) && (
+      {!m.live && m.summary && (
+        <TurnReceipt
+          summary={m.summary}
+          // Zero means the provider didn't report usage, not that it was free.
+          tokens={m.tokens && m.tokens.prompt + m.tokens.eval > 0 ? fmtTokens(m.tokens.prompt + m.tokens.eval) : undefined}
+          duration={m.duration}
+          copy={hasText ? m.content : undefined}
+        />
+      )}
+      {!m.live && !m.summary && (m.tokens || m.duration) && (
         <div className="flex items-center gap-3 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
           {hasText && <CopyButton text={m.content} label="Copy" className="-ml-1.5" />}
           {/* Zero means the provider didn't report usage, not that it was free. */}

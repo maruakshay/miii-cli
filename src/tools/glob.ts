@@ -1,19 +1,12 @@
 import { execa } from 'execa'
-import { statSync } from 'fs'
+import { mtimesShell } from './shellFs.js'
 import { confinePath } from './paths.js'
 import type { Tool } from './types.js'
 
 // Sort newest-first; "what did I just touch" is the common intent.
 // Files that vanish between listing and stat sink to the bottom.
 function byMtimeDesc(paths: string[]): string[] {
-  const mtime = new Map<string, number>()
-  for (const p of paths) {
-    try {
-      mtime.set(p, statSync(p).mtimeMs)
-    } catch {
-      mtime.set(p, 0)
-    }
-  }
+  const mtime = mtimesShell(paths)
   return [...paths].sort((a, b) => (mtime.get(b) ?? 0) - (mtime.get(a) ?? 0))
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, utimesSync, existsSync, statSync } from 'fs'
 import { join } from 'path'
 
 /** Fresh module each time — the bash/fs decision is cached for the process. */
@@ -21,6 +21,34 @@ describe.each([
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true })
     vi.unstubAllEnvs()
+  })
+
+  it('reads mtimes for many paths and skips missing ones', async () => {
+    const { mtimesShell } = await load(noBash)
+    const a = join(dir, 'a file.txt')
+    const b = join(dir, 'b.txt')
+    writeFileSync(a, 'a')
+    writeFileSync(b, 'b')
+    utimesSync(a, 1_000_000, 1_000_000)
+    const m = mtimesShell([a, b, join(dir, 'gone.txt')])
+    expect(m.get(a)).toBe(1_000_000_000)
+    // bash reports whole seconds, fs fractional ms.
+    expect(Math.abs(m.get(b)! - statSync(b).mtimeMs)).toBeLessThan(1000)
+    expect(m.has(join(dir, 'gone.txt'))).toBe(false)
+  })
+
+  it('removes only files older than the cutoff', async () => {
+    const { removeOlderThanShell } = await load(noBash)
+    const old = join(dir, 'old.txt')
+    const fresh = join(dir, 'fresh.txt')
+    writeFileSync(old, 'o')
+    writeFileSync(fresh, 'f')
+    const twoDaysAgo = Date.now() / 1000 - 2 * 24 * 60 * 60
+    utimesSync(old, twoDaysAgo, twoDaysAgo)
+    removeOlderThanShell(dir, 24 * 60 * 60 * 1000)
+    expect(existsSync(old)).toBe(false)
+    expect(existsSync(fresh)).toBe(true)
+    removeOlderThanShell(join(dir, 'missing'), 1000)
   })
 
   it('round-trips a file, parent dirs and all', async () => {

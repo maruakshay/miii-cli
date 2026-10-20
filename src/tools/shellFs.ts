@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { dirname } from 'path'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync, statSync } from 'fs'
+import { dirname, join } from 'path'
 
 /**
  * File I/O for the file tools, performed by shelling out to bash rather than
@@ -240,5 +240,80 @@ export function replaceShell(abs: string, before: string, after: string): void {
       return
     }
     throw err
+  }
+}
+
+/**
+ * Modification times (ms since epoch) for many paths, from one `stat` run via
+ * xargs rather than a spawn per file. GNU and BSD stat take different flags,
+ * so the script asks which one it has before running. A path that can't be
+ * stat'd (it vanished since it was listed) gets no entry; the caller decides
+ * what that means. Paths must not contain newlines — the output is one line
+ * per file.
+ */
+export function mtimesShell(paths: string[]): Map<string, number> {
+  const out = new Map<string, number>()
+  if (paths.length === 0) return out
+  try {
+    const text = String(
+      bash(
+        [
+          'if stat -c %Y / >/dev/null 2>&1; then fmt="-c"; spec="%Y %n"; else fmt="-f"; spec="%m %N"; fi',
+          // xargs exits 123 when stat fails on any one file; the rest are still printed.
+          'xargs -0 stat "$fmt" "$spec" -- 2>/dev/null || true',
+        ].join('\n'),
+        '',
+        Buffer.from(paths.join('\0'), 'utf-8'),
+      ),
+    )
+    for (const line of text.split('\n')) {
+      const sp = line.indexOf(' ')
+      if (sp > 0) out.set(line.slice(sp + 1), Number(line.slice(0, sp)) * 1000)
+    }
+  } catch (err) {
+    if (!(err instanceof NoShell)) throw err
+    for (const p of paths) {
+      try {
+        out.set(p, statSync(p).mtimeMs)
+      } catch {
+        /* vanished — leave it out */
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Delete regular files directly inside `dir` last modified more than `maxAgeMs`
+ * ago. `find -mmin` and `-delete` behave the same on GNU and BSD find. A
+ * missing dir is not an error.
+ */
+export function removeOlderThanShell(dir: string, maxAgeMs: number): void {
+  const minutes = Math.max(0, Math.floor(maxAgeMs / 60_000))
+  try {
+    bash(
+      '[ -d "$MIII_P" ] || exit 0; find "$MIII_P" -maxdepth 1 -type f -mmin +"$MIII_M" -delete',
+      dir,
+      undefined,
+      { MIII_M: String(minutes) },
+    )
+  } catch (err) {
+    if (!(err instanceof NoShell)) throw err
+    const now = Date.now()
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const name of names) {
+      const f = join(dir, name)
+      try {
+        const st = statSync(f)
+        if (st.isFile() && now - st.mtimeMs > maxAgeMs) rmSync(f, { force: true })
+      } catch {
+        /* ignore individual file errors */
+      }
+    }
   }
 }

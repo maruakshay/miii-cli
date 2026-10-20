@@ -104,6 +104,8 @@ export interface Settings {
   vimMode?: boolean
   /** Snapshot files before each turn so /rewind can restore them. Default true. */
   checkpoints?: boolean
+  /** Ring the terminal when a long turn ends or a prompt is waiting. Default true. */
+  notifications?: boolean
 }
 
 export type SettingsScope = 'user' | 'project' | 'local'

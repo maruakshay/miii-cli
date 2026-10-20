@@ -168,6 +168,17 @@
 .is-streaming > :last-child::after, .is-streaming:empty::after { content: "▍"; color: var(--muted-foreground); animation: blink 1s steps(2) infinite; margin-left: 1px; }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* The working label, with a band of light sweeping across it — the web twin of the TUI's shimmer. */
+.shimmer {
+  background: linear-gradient(90deg, var(--muted-foreground) 40%, var(--warning) 50%, var(--muted-foreground) 60%) 0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.4s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .shimmer { animation: none; color: var(--muted-foreground); } }
+
 /* highlight.js classes. Diff lines keep their add/remove tint; tokens only recolor the text. */
 .hljs :is(.hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-doctag, .hljs-meta .hljs-keyword) { color: var(--hl-keyword); }
 .hljs :is(.hljs-string, .hljs-regexp, .hljs-template-tag, .hljs-addition, .hljs-selector-attr) { color: var(--hl-string); }

@@ -29,11 +29,13 @@ import { MODE_HINT, MODE_LABEL, PERMISSION_MODES, subjectFor, widestPatterns, ty
 import { defaultPermissionMode } from '../settings.js'
 import { describeTool } from '../ui/toolLabel.js'
 import { stoppedLine } from '../ui/layout.js'
+import { TurnSummaryBuilder } from '../ui/turnSummary.js'
 import { expandCommand, findCustomCommand, customCommands, invalidateCustomCommands } from '../commands/custom.js'
 import { COMMANDS } from '../ui/constants.js'
 import { INIT_PROMPT, reviewPrompt, contextReport, costReport, mcpReport, agentsReport, settingsReport } from '../ui/reports.js'
 import { mcpStatus } from '../mcp/registry.js'
 import type { FileDiff } from '../diff.js'
+import type { TurnSummary } from '../ui/types.js'
 import type { MiiMessage } from '../agent/types.js'
 
 /** Live updates to a streaming message are batched to this interval. */
@@ -71,6 +73,8 @@ export interface WebMessage {
   live?: boolean
   tokens?: { prompt: number; eval: number }
   duration?: number
+  /** On a turn's last message: what it changed, and whether its tests passed. */
+  summary?: TurnSummary
 }
 
 export interface PendingPermission {
@@ -449,11 +453,18 @@ export class WebAgent {
       if (live) this.emit({ type: 'message', message: live })
     }
     const soon = () => { if (!flushTimer) flushTimer = setTimeout(flush, FLUSH_MS) }
+    // Turn-wide, unlike `live`, which a tool round commits and replaces.
+    const summary = new TurnSummaryBuilder(this.cwd)
     const commit = (tokens?: { prompt: number; eval: number }) => {
       if (!live) return
       const m: WebMessage = live
       delete m.live
-      if (tokens) { m.tokens = tokens; m.duration = Date.now() - started }
+      if (tokens) {
+        m.tokens = tokens
+        m.duration = Date.now() - started
+        m.summary = summary.build()
+        if (controller.signal.aborted) m.summary.stopped = true
+      }
       flush()
       live = null
     }
@@ -511,6 +522,7 @@ export class WebAgent {
           case 'tool-result': {
             const t = live ? (live as WebMessage).tools?.find((x) => x.id === ev.block.tool_use_id) : undefined
             if (t) {
+              summary.add({ id: t.id, name: t.name, input: t.input }, ev.block)
               t.result = { content: clip(ev.block.content), is_error: ev.block.is_error, ...(ev.block.diff ? { diff: ev.block.diff } : {}) }
               flush()
             }
@@ -619,11 +631,7 @@ export class WebAgent {
       persistSession(this.sessionId, this.history)
       // The indices user messages carried point into the old history; nothing before this is rewindable now.
       this.resetView(this.messages.map(({ turn: _, ...m }) => m))
-      const kept = res.keptMessages ? `, last ${res.keptMessages} kept verbatim` : ''
-      this.notice(
-        `**Context compacted** — ${res.droppedMessages} messages summarised${kept}. ` +
-        `~${res.beforeTokens} → ~${res.afterTokens} tokens.\n\n${res.summary}`,
-      )
+      this.notice('**Compaction completed**')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this.error = controller.signal.aborted ? 'Compaction cancelled — context unchanged' : `Compaction failed: ${msg}`

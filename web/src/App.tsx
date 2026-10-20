@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, KeyRound, Menu, Moon, Sun, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Composer } from '@/components/Composer'
-import { MessageView } from '@/components/MessageView'
+import { DiffStat, MessageView } from '@/components/MessageView'
 import { PermissionCard } from '@/components/PermissionCard'
+import { Todos } from '@/components/ToolCall'
 import { Sidebar } from '@/components/Sidebar'
 import { useMiii } from '@/hooks/useMiii'
 import { get, post, token } from '@/lib/api'
 import type { Answer, Checkpoint, WebMessage, WebState } from '@/lib/types'
-import { cn, fmtDuration } from '@/lib/utils'
+import { cn, fmtDuration, latestTodos, sessionTally } from '@/lib/utils'
 
 function useTheme() {
   const [dark, setDark] = useState(() => {
@@ -49,6 +50,22 @@ function Meter({ state }: { state: WebState }) {
         </span>
       )}
       {k(state.usedTokens)}{state.ctx ? ` / ${k(state.ctx)}` : ''}
+    </span>
+  )
+}
+
+/** The session's running score — files touched and lines in/out — beside the context meter. */
+function Tally({ messages }: { messages: WebMessage[] }) {
+  const t = useMemo(() => sessionTally(messages.map((m) => m.summary)), [messages])
+  if (!t.files) return null
+  return (
+    <span
+      key={`${t.files}:${t.added}:${t.removed}`}
+      className="hidden items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground animate-in zoom-in-95 fade-in-0 duration-300 sm:inline-flex"
+      title="Changed this session"
+    >
+      {t.files} file{t.files > 1 ? 's' : ''}
+      <DiffStat added={t.added} removed={t.removed} />
     </span>
   )
 }
@@ -98,6 +115,7 @@ export function App() {
   const [dark, toggleTheme] = useTheme()
   const [sideOpen, setSideOpen] = useState(false)
   const [draft, setDraft] = useState<string | null>(null)
+  const todos = useMemo(() => latestTodos(messages), [messages])
   const clearDraft = useCallback(() => setDraft(null), [])
 
   // Follow the transcript while you're at the bottom; leave it alone once you scroll up to read.
@@ -205,6 +223,9 @@ export function App() {
     document.querySelector<HTMLTextAreaElement>('main textarea')?.focus()
   }
   const showStatus = state.busy && !state.pending
+  // Pinned while there is work on it; once a finished list's turn ends, the
+  // turn's receipt takes over.
+  const showTodos = !!todos && (state.busy || todos.some((t) => t.status !== 'completed'))
 
   return (
     <TooltipProvider>
@@ -222,6 +243,7 @@ export function App() {
             <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setSideOpen(true)} aria-label="Open sidebar"><Menu /></Button>
             <div className="min-w-0 flex-1 truncate font-medium">{state.title || (messages.length ? 'Untitled chat' : '')}</div>
             {!connected && <span className="flex items-center gap-1 text-xs text-destructive"><WifiOff className="size-3.5" /> reconnecting</span>}
+            <Tally messages={messages} />
             <Meter state={state} />
             <Button variant="ghost" size="icon-sm" onClick={toggleTheme} aria-label="Toggle theme">{dark ? <Sun /> : <Moon />}</Button>
           </header>
@@ -259,10 +281,11 @@ export function App() {
               </Button>
             )}
             <div className="mx-auto flex max-w-3xl flex-col gap-2">
+              {showTodos && todos && <Todos todos={todos} />}
               {showStatus && (
                 <div className="flex items-center gap-2.5 px-1 text-sm text-muted-foreground">
                   <span className="size-3.5 animate-spin rounded-full border-2 border-muted border-t-warning" />
-                  <span className="truncate">{state.status ?? 'Working…'}</span>
+                  <span className="shimmer truncate">{state.status ?? 'Working…'}</span>
                   <Elapsed key={messages.filter((m) => m.role === 'user').length} busy={state.busy} />
                   <span className="ml-auto hidden text-xs sm:inline">esc to stop</span>
                 </div>
