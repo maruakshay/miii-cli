@@ -82,6 +82,9 @@ export interface Config {
   // machines. We cap the requested window at this value. Raise it if you have
   // the VRAM/RAM. See DEFAULT_NUM_CTX_CAP.
   numCtxCap?: number
+  // Tool-use turns one message may run before the loop stops and asks the user
+  // to continue. See DEFAULT_MAX_TURNS.
+  maxTurns?: number
   // Second, much smaller model used as a yes/no judge around the agent loop —
   // currently only the stop gate. Off unless `model` is set. See DeciderConfig.
   decider?: DeciderConfig
@@ -141,6 +144,8 @@ function migrate(raw: Config): Config {
     modelContexts: raw.modelContexts,
     autoUpdate: raw.autoUpdate,
     numCtxCap: raw.numCtxCap,
+    maxTurns: raw.maxTurns,
+    decider: raw.decider,
   }
 }
 
