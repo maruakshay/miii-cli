@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.13.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.12.2...miii-agent-v3.13.0) (2026-10-22)
+
+
+### Features
+
+* **ui:** name tool calls Claude Code style ([#135](https://github.com/maruakshay/miii-cli/issues/135)) ([bf4518c](https://github.com/maruakshay/miii-cli/commit/bf4518ca46e7200b52802580c92aa403095170e2))
+
 ## [3.12.2](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.12.1...miii-agent-v3.12.2) (2026-10-22)
 
 
