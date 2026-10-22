@@ -290,7 +290,8 @@ function extractFirstJsonObject(s: string): { json: string; start: number; end: 
  * Conservative on purpose — only fires on strong markers, never on a tool name
  * merely mentioned in prose, so it cannot block a legitimate final answer.
  */
-export function looksLikeLeakedToolCall(text: string, knownToolNames: string[]): boolean {
+export function looksLikeLeakedToolCall(raw: string, knownToolNames: string[]): boolean {
+  const text = stripQuotedCode(raw)
   if (!text) return false
   if (text.includes(VAL_DELIM)) return true
   if (/<\|?tool_call/i.test(text)) return true
@@ -304,6 +305,30 @@ export function looksLikeLeakedToolCall(text: string, knownToolNames: string[]):
     if (name && resolveToolName(name, knownToolNames, false)) return true
   }
   return false
+}
+
+/**
+ * Drop code the model is quoting rather than emitting: fenced blocks tagged with
+ * a language other than json/tool_call (```ts, ```python …) and inline `code`
+ * spans. Explaining a file that itself contains tool-call syntax — this repo's
+ * own parser and tests, say — must not read as a leaked call. Untagged and
+ * json/tool_call fences stay: that is how models really do leak calls.
+ */
+function stripQuotedCode(text: string): string {
+  return text
+    .replace(/```([\w+#.-]+)[^\n]*\n[\s\S]*?(?:```|$)/g, (m, lang: string) =>
+      /^(json|tool_call)$/i.test(lang) ? m : '')
+    .replace(/`[^`\n]+`/g, '')
+}
+
+/**
+ * A task list written into the reply as HTML checkboxes or a Markdown checklist
+ * instead of sent through write_todos — it renders as noise and nothing tracks it.
+ */
+export function looksLikeTextTodoList(raw: string): boolean {
+  const text = stripQuotedCode(raw)
+  if (/<input\b[^>]*type\s*=\s*["']?checkbox/i.test(text)) return true
+  return (text.match(/^\s*[-*]\s+\[[ xX~]\]\s+\S/gm) ?? []).length >= 2
 }
 
 export function blocksFromOllama(

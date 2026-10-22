@@ -4,6 +4,7 @@ import {
   blocksFromOllama,
   toOllamaMessages,
   looksLikeLeakedToolCall,
+  looksLikeTextTodoList,
 } from './adapter.js'
 import type { MiiMessage, ToolUse } from './types.js'
 
@@ -130,6 +131,20 @@ describe('looksLikeLeakedToolCall', () => {
   it('does NOT flag prose that mentions a tool', () => {
     expect(looksLikeLeakedToolCall('I read the file with read_file earlier.', KNOWN)).toBe(false)
   })
+  it('does NOT flag tool-call syntax quoted in a language-tagged code block', () => {
+    const quoted = 'The parser splits on this:\n```ts\nconst VAL_DELIM = \'<|"|>\'\nparse(\'call:run_bash{cmd:1}\')\n```'
+    expect(looksLikeLeakedToolCall(quoted, KNOWN)).toBe(false)
+  })
+  it('does NOT flag tool-call syntax in inline code', () => {
+    expect(looksLikeLeakedToolCall('Values are wrapped in `<|"|>` and calls look like `<tool_call>`.', KNOWN)).toBe(false)
+  })
+  it('still flags a leak inside an untagged or json fence', () => {
+    expect(looksLikeLeakedToolCall('```\ncall:run_bash{cmd:1}\n```', KNOWN)).toBe(true)
+    expect(looksLikeLeakedToolCall('```json\n{"name":"read_file","arguments":{\n```', KNOWN)).toBe(true)
+  })
+  it('still flags a leak outside a quoted block in the same reply', () => {
+    expect(looksLikeLeakedToolCall('```ts\nconst x = 1\n```\ncontent:<|"|>ls<|"|>', KNOWN)).toBe(true)
+  })
   it('does NOT flag a JSON object naming an unknown tool', () => {
     expect(looksLikeLeakedToolCall('{"name":"frobnicate","arguments":{}}', KNOWN)).toBe(false)
   })
@@ -219,5 +234,20 @@ describe('toOllamaMessages', () => {
     expect(out.map((m) => m.role)).toEqual(['system', 'assistant', 'tool', 'tool'])
     expect(out[2]).toMatchObject({ content: 'A', tool_call_id: 'toolu_1' })
     expect(out[3]).toMatchObject({ content: 'B', tool_call_id: 'toolu_2' })
+  })
+})
+
+describe('looksLikeTextTodoList', () => {
+  it('flags HTML checkboxes', () => {
+    expect(looksLikeTextTodoList('<div><input type="checkbox" disabled> Fix it</div>')).toBe(true)
+  })
+  it('flags a Markdown checklist of two or more items', () => {
+    expect(looksLikeTextTodoList('- [x] Read files\n- [ ] Remove search bar')).toBe(true)
+  })
+  it('does NOT flag a single checkbox line', () => {
+    expect(looksLikeTextTodoList('- [ ] ship it')).toBe(false)
+  })
+  it('does NOT flag checkboxes inside a quoted code block', () => {
+    expect(looksLikeTextTodoList('```tsx\n<input type="checkbox" />\n- [ ] a\n- [ ] b\n```')).toBe(false)
   })
 })
