@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.13.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.13.0...miii-agent-v3.13.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **ui:** don't bring back a finished task list on the next turn ([#137](https://github.com/maruakshay/miii-cli/issues/137)) ([88bc3cf](https://github.com/maruakshay/miii-cli/commit/88bc3cfa0932c496b6cc8763c1a90e994a6b764f))
+
 ## [3.13.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.12.2...miii-agent-v3.13.0) (2026-10-22)
 
 
