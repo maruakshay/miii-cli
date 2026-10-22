@@ -2,19 +2,19 @@ import { truncate } from './layout.js'
 import type { ToolUseDisplay } from './types.js'
 
 /**
- * The technical name of each tool, for the dim `Bash(npm test)` line that only
- * shows once a block is expanded. The headline itself is a sentence — see
- * describeTool.
+ * The display name of each tool, for the `Bash(npm test)` headline a block
+ * leads with — the same names Claude Code uses, so the transcript reads the same.
  */
 export const TOOL_LABEL: Record<string, string> = {
   write_file: 'Write',
   edit_file: 'Update',
   read_file: 'Read',
   run_bash: 'Bash',
-  glob: 'Glob',
-  grep: 'Grep',
-  write_todos: 'Todos',
+  glob: 'Search',
+  grep: 'Search',
+  write_todos: 'Update Todos',
   exit_plan_mode: 'Plan',
+  task: 'Task',
 }
 
 /** Strip the leading ./ and any wrapping quotes a model likes to add. */
@@ -78,12 +78,10 @@ function describeCommand(raw: string): string {
 }
 
 /**
- * What a tool call reads as in plain English, and the technical call behind it.
- *
- * The transcript is something a person skims, so the headline is a sentence —
- * "Running the tests", not "Bash(npm test -- --run)". The exact call is never
- * lost: `technical` is printed under the headline as soon as the block is
- * expanded (click or ctrl+o).
+ * A tool call two ways: `technical` is the `Bash(npm test -- --run)` headline the
+ * transcript leads with, and `text` is the same call in plain English ("Running
+ * the tests") for the spinner, the permission prompt, and the dim line under an
+ * expanded block.
  */
 export function describeTool(
   name: string,
@@ -91,7 +89,7 @@ export function describeTool(
 ): { text: string; technical: string; subject: string } {
   const inp = (input ?? {}) as Record<string, unknown>
   const str = (k: string): string => (typeof inp[k] === 'string' ? (inp[k] as string) : '')
-  const label = TOOL_LABEL[name] ?? name
+  let label = TOOL_LABEL[name] ?? name
 
   let text: string
   let arg = ''
@@ -127,9 +125,11 @@ export function describeTool(
     }
     case 'grep': {
       const pattern = str('pattern')
-      arg = truncate(pattern, 120)
       const where = cleanPath(str('path'))
       const filter = str('glob') || str('type')
+      arg = `pattern: "${truncate(pattern, 100)}"`
+      if (where && where !== '.') arg += `, path: "${where}"`
+      if (filter) arg += `, glob: "${filter}"`
       text = `Searching for ${quote(pattern)}`
       if (filter) text += ` in ${filter} files`
       if (where && where !== '.') text += ` under ${where}`
@@ -137,14 +137,23 @@ export function describeTool(
     }
     case 'glob': {
       const pattern = str('pattern')
-      arg = truncate(pattern, 120)
+      arg = `pattern: "${truncate(pattern, 100)}"`
       text = `Finding files matching ${quote(pattern)}`
       break
     }
     case 'write_todos': {
       const todos = Array.isArray(inp.todos) ? (inp.todos as unknown[]).length : 0
-      arg = `${todos} items`
       text = 'Updating the task list'
+      return { text, technical: label, subject: `${todos} items` }
+    }
+    case 'task': {
+      // Named after the agent doing the work — Explore(…), General(…) — the
+      // way Claude Code names its subagents, rather than a generic Task(…).
+      const agent = str('subagent_type') || 'explore'
+      label = agent.charAt(0).toUpperCase() + agent.slice(1)
+      const what = str('description').trim()
+      arg = truncate(what || str('prompt').replace(/\s+/g, ' '), 80)
+      text = what || `Running the ${agent} agent`
       break
     }
     case 'exit_plan_mode':
@@ -169,15 +178,15 @@ export function describeTool(
 const GROUP_NOUN: Record<string, [one: string, many: string]> = {
   run_bash: ['shell command', 'shell commands'],
   read_file: ['file', 'files'],
-  grep: ['search', 'searches'],
-  glob: ['file search', 'file searches'],
+  grep: ['pattern', 'patterns'],
+  glob: ['pattern', 'patterns'],
 }
 
 const GROUP_VERB: Record<string, [running: string, done: string]> = {
   run_bash: ['Running', 'Ran'],
   read_file: ['Reading', 'Read'],
-  grep: ['Running', 'Ran'],
-  glob: ['Running', 'Ran'],
+  grep: ['Searching for', 'Searched for'],
+  glob: ['Searching for', 'Searched for'],
 }
 
 export function isGroupable(name: string): boolean {

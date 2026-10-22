@@ -42,6 +42,19 @@ describe('describeTool', () => {
     expect(describeTool('edit_file', { path: 'a.ts', old_str: 'x', new_str: 'y' }).text).toBe('Editing a.ts')
   })
 
+  it('names calls the way Claude Code does', () => {
+    expect(describeTool('edit_file', { path: 'a.ts' }).technical).toBe('Update(a.ts)')
+    expect(describeTool('grep', { pattern: 'TODO', path: 'src' }).technical).toBe('Search(pattern: "TODO", path: "src")')
+    expect(describeTool('glob', { pattern: '**/*.tsx' }).technical).toBe('Search(pattern: "**/*.tsx")')
+    expect(describeTool('write_todos', { todos: [{}, {}] }).technical).toBe('Update Todos')
+    expect(describeTool('task', { description: 'Map the agent loop', prompt: 'x' }).technical).toBe(
+      'Explore(Map the agent loop)',
+    )
+    expect(describeTool('task', { description: 'Fix it', prompt: 'x', subagent_type: 'general' }).technical).toBe(
+      'General(Fix it)',
+    )
+  })
+
   it('names an unknown tool rather than dumping its input', () => {
     expect(describeTool('web_fetch', { url: 'https://x.dev' }).text).toBe('Running web_fetch')
   })
@@ -60,7 +73,7 @@ describe('groupHeadline', () => {
     expect(groupHeadline('run_bash', 1, false)).toBe('Ran 1 shell command')
     expect(groupHeadline('read_file', 1, false)).toBe('Read 1 file')
     expect(groupHeadline('read_file', 6, false)).toBe('Read 6 files')
-    expect(groupHeadline('grep', 2, false)).toBe('Ran 2 searches')
+    expect(groupHeadline('grep', 2, false)).toBe('Searched for 2 patterns')
   })
 })
 
