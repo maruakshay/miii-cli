@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.2](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.12.1...miii-agent-v3.12.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **agent:** recover from output-cap truncation, configurable max turns ([#132](https://github.com/maruakshay/miii-cli/issues/132)) ([c5440e9](https://github.com/maruakshay/miii-cli/commit/c5440e9608816623c0eaf918cb24a228244a898f))
+
 ## [3.12.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.12.0...miii-agent-v3.12.1) (2026-10-20)
 
 
