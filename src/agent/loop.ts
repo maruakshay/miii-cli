@@ -26,12 +26,19 @@ import type {
   ContentBlock,
 } from './types.js'
 
-const MAX_TURNS = 25
+// Real tasks (read, edit, run tests, fix, re-run) routinely need more than a few
+// dozen tool calls; 25 cut ordinary multi-file work off mid-task. Override with
+// `maxTurns` in config.json, or --max-turns in headless mode.
+const MAX_TURNS = 100
 const REPEAT_TAIL = 120
 const REPEAT_KILL = 4
 // Max times to ask the model to re-emit a leaked text tool call via the native
 // interface before giving up and ending the turn.
 const MAX_LEAK_NUDGES = 2
+// Times to send the model back when its output cap ran out before it produced
+// an answer or a tool call — typically a reasoning model spending the whole
+// budget on thinking. Bounded so a model that always over-thinks still exits.
+const MAX_TRUNCATION_NUDGES = 2
 // How many times one byte-identical call may fail before the harness stops
 // running it. 1st failure: the plain error. 2nd: the error plus an escalation
 // that names a different action. 3rd: refused without ever reaching the tool.
@@ -380,6 +387,31 @@ export interface RunAgentOpts {
 }
 
 /**
+ * Append `text` to the last message, which must be a user one, as a new
+ * message object — earlier entries may be shared with the caller's history.
+ * A string prompt gets it as a new paragraph; a tool_result list gets it on
+ * the last result, the same way steering rides along (see takeSteering).
+ */
+function appendToLastUser(history: MiiMessage[], text: string): void {
+  const i = history.length - 1
+  const last = history[i]
+  if (typeof last.content === 'string') {
+    history[i] = { ...last, content: `${last.content}\n\n${text}` }
+    return
+  }
+  const blocks = [...last.content]
+  for (let j = blocks.length - 1; j >= 0; j--) {
+    const b = blocks[j]
+    if (b.type === 'tool_result') {
+      blocks[j] = { ...b, content: `${b.content}\n\n${text}` }
+      history[i] = { ...last, content: blocks }
+      return
+    }
+  }
+  history[i] = { ...last, content: [...blocks, { type: 'text', text }] }
+}
+
+/**
  * Canonical agent loop. Keyed on Ollama's analogue of stop_reason=="tool_use":
  * presence of tool_calls on the assistant message. Each iteration:
  *   1. assistant message accumulated (text + tool_use blocks)
@@ -392,9 +424,15 @@ export interface RunAgentOpts {
  */
 export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, MiiMessage[]> {
   const { model, cwd, permissions, hooks, signal, num_ctx } = opts
-  const maxTurns = opts.maxTurns ?? MAX_TURNS
   const startTime = Date.now()
   const cfg = loadConfig()
+  // Same rule as --max-turns in headless.ts: a finite number >= 1, floored.
+  // Anything else in config.json (a string, `true`, 0.5) falls back to the default.
+  const cfgMaxTurns =
+    typeof cfg.maxTurns === 'number' && Number.isFinite(cfg.maxTurns) && cfg.maxTurns >= 1
+      ? Math.floor(cfg.maxTurns)
+      : undefined
+  const maxTurns = opts.maxTurns ?? cfgMaxTurns ?? MAX_TURNS
   /**
    * Live for the whole run: approving a plan flips it mid-run, and everything
    * derived from it — the advertised tools, the system prompt, what the
@@ -454,6 +492,11 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
   // the native interface this run. Bounded so a model that can't comply ends the
   // turn instead of looping forever.
   let leakNudges = 0
+  // Same, for a turn whose output cap was spent before any answer or tool call.
+  // Reset by a turn that ran a tool — real progress — so two early truncations
+  // in a long run don't exhaust it. Leak or prose turns don't reset it, or a
+  // model alternating them with cut-offs would refill it until maxTurns.
+  let truncationNudges = 0
   // How many times a Stop hook has sent the model back to work this run.
   let stopNudges = 0
   // Same, for the decision box.
@@ -609,6 +652,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     }
 
     history.push({ role: 'assistant', content: blocks })
+    if (!truncated && tool_uses.length > 0) truncationNudges = 0
 
     // Output hit the token cap mid-stream. Any tool call here has truncated
     // arguments (e.g. a half-written file `content`); executing it would write a
@@ -639,7 +683,15 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
         .map((b) => b.text)
         .join('')
-      if (leakNudges < MAX_LEAK_NUDGES && looksLikeLeakedToolCall(assistantText, toolNames)) {
+      const empty = assistantText.trim() === ''
+      // A turn with no text and no tool call left an empty assistant message.
+      // Some OpenAI-compatible servers 400 on empty assistant content, and it
+      // would be saved into the session — so it never stays in history.
+      if (empty) history.pop()
+      const leaked = !empty && looksLikeLeakedToolCall(assistantText, toolNames)
+      // Checked before truncation: a leaked call that also hit the cap must be
+      // re-issued natively, not "continued" as more prose.
+      if (leakNudges < MAX_LEAK_NUDGES && leaked) {
         leakNudges++
         history.push({
           role: 'user',
@@ -651,12 +703,39 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         yield { type: 'turn-end', stop_reason: 'tool_use' }
         continue
       }
+      // The output cap ran out before the model reached an answer or a tool call
+      // — a reasoning model that spent the whole budget thinking, or prose cut
+      // off mid-sentence. Thinking isn't kept in history, so the next turn starts
+      // from scratch unless told to act; ending here reads as the app quitting.
+      // A leak whose nudges are spent is not prose to continue — let it end below.
+      if (truncated && !leaked && truncationNudges < MAX_TRUNCATION_NUDGES) {
+        truncationNudges++
+        if (empty) {
+          // The empty assistant message is gone, so the last message is a user
+          // one. Fold the nudge into it rather than pushing a second user turn:
+          // strict chat templates (Gemma, Mistral) reject roles that don't alternate.
+          appendToLastUser(
+            history,
+            'Your output limit was used up while thinking, before you answered or called a tool. ' +
+              'Think briefly this time and go straight to the next concrete step — call a tool or answer.',
+          )
+        } else {
+          history.push({
+            role: 'user',
+            content:
+              'Your reply was cut off by the output limit. Continue exactly where you stopped, ' +
+              'or call a tool for the next step.',
+          })
+        }
+        yield { type: 'turn-end', stop_reason: 'tool_use' }
+        continue
+      }
       // Turn produced literally nothing — no visible text and no tool call. This
       // is not a clean end: it usually means the model returned an empty response
       // (stream dropped mid-request, or the output cap was spent entirely on
       // hidden thinking tokens). Ending silently here looks to the user like the
       // run just aborted with no reason. Surface it instead of a bare end_turn.
-      if (assistantText.trim() === '') {
+      if (empty) {
         yield {
           type: 'error',
           message:

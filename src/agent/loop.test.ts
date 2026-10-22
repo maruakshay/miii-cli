@@ -31,6 +31,9 @@ const h = vi.hoisted(() => ({
   // the gate is shown.
   gateAnswers: [] as Array<string | null>,
   gateCalls: [] as Array<{ userText: string; finalText: string }>,
+  // config.maxTurns for the run, typed loosely so a test can feed it the junk
+  // a hand-edited config.json might hold. Unset = not in config.
+  cfgMaxTurns: undefined as unknown,
 }))
 
 vi.mock('../llm/client.js', () => ({
@@ -106,7 +109,11 @@ vi.mock('./decide.js', () => ({
   },
 }))
 vi.mock('../config.js', () => ({
-  loadConfig: () => ({ effort: 'medium', ...(h.decider ? { decider: h.decider } : {}) }),
+  loadConfig: () => ({
+    effort: 'medium',
+    ...(h.decider ? { decider: h.decider } : {}),
+    ...(h.cfgMaxTurns !== undefined ? { maxTurns: h.cfgMaxTurns } : {}),
+  }),
   EFFORT_OPTIONS: { medium: { num_predict: -1, temperature: 0.5 } },
   DEFAULT_NUM_CTX_CAP: 8192,
 }))
@@ -219,6 +226,7 @@ beforeEach(() => {
   h.decider = undefined
   h.gateAnswers = []
   h.gateCalls = []
+  h.cfgMaxTurns = undefined
 })
 
 // ---- invariants ----------------------------------------------------------
@@ -519,6 +527,129 @@ describe('runAgent guards', () => {
     assertBlockOrdering(history)
     expect(echo).not.toHaveBeenCalled()
     expect(firstResults(history)[0].is_error).toBe(true)
+  })
+})
+
+describe('runAgent output-cap nudge', () => {
+  // A turn that spent the whole output cap thinking: no text, no tool call.
+  const thoughtOut = [
+    { content: '', thinking: 'hmm', done: false },
+    { content: '', done: true, done_reason: 'length', prompt_eval_count: 1, eval_count: 1 },
+  ]
+  // A leaked text tool call, plain or also cut off by the cap.
+  const leak = textThenDone('content:<|"|>ls -la<|"|>')
+  const cutLeak = [
+    { content: 'content:<|"|>ls -la', done: false },
+    { content: '', done: true, done_reason: 'length', prompt_eval_count: 1, eval_count: 1 },
+  ]
+
+  /** Every user-side string the model sees: prompts, nudges and tool results. */
+  function userTexts(history: MiiMessage[]): string[] {
+    return history
+      .filter((m) => m.role === 'user')
+      .flatMap((m) =>
+        typeof m.content === 'string'
+          ? [m.content]
+          : m.content.map((b) => (b.type === 'tool_result' ? b.content : b.type === 'text' ? b.text : '')),
+      )
+  }
+  function count(history: MiiMessage[], needle: string): number {
+    return userTexts(history).reduce((n, t) => n + t.split(needle).length - 1, 0)
+  }
+  function emptyAssistants(history: MiiMessage[]): MiiMessage[] {
+    return history.filter(
+      (m) =>
+        m.role === 'assistant' &&
+        (typeof m.content === 'string'
+          ? m.content.trim() === ''
+          : m.content.every((b) => b.type === 'text' && b.text.trim() === '')),
+    )
+  }
+  /** No two messages in a row share a role — what strict chat templates demand. */
+  function assertAlternates(history: MiiMessage[]): void {
+    for (let i = 1; i < history.length; i++) expect(history[i].role).not.toBe(history[i - 1].role)
+  }
+
+  it('sends the model back when thinking used up the output cap, instead of erroring', async () => {
+    h.script = [thoughtOut, textThenDone('answer')]
+    const { events, history } = await drive()
+    expect(count(history, 'output limit was used up')).toBe(1)
+    expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
+    expect(types(events)).not.toContain('error')
+  })
+
+  it('stops nudging after MAX_TRUNCATION_NUDGES and surfaces the empty response', async () => {
+    h.script = [thoughtOut, thoughtOut, thoughtOut]
+    const { events, history } = await drive()
+    expect(h.callIndex).toBe(3)
+    expect(types(events)).toContain('error')
+    // The last empty turn is dropped too, or the saved session 400s next time.
+    expect(emptyAssistants(history)).toHaveLength(0)
+  })
+
+  it('folds the nudge into the prompt instead of leaving an empty assistant message', async () => {
+    h.script = [thoughtOut, textThenDone('answer')]
+    const { history } = await drive()
+    expect(emptyAssistants(history)).toHaveLength(0)
+    expect(history.map((m) => m.role)).toEqual(['user', 'assistant'])
+    expect(history[0].content).toMatch(/^hi\n\nYour output limit was used up/)
+  })
+
+  it('folds the nudge into the last tool result after a tool turn, keeping roles alternating', async () => {
+    h.script = [toolThenDone([call('echo')]), thoughtOut, textThenDone('answer')]
+    const { history } = await drive()
+    assertAlternates(history)
+    assertBlockOrdering(history)
+    const result = firstResults(history)[0]
+    expect(result.content).toBe('echo ok\n\nYour output limit was used up while thinking, before you answered or called a tool. ' +
+      'Think briefly this time and go straight to the next concrete step — call a tool or answer.')
+  })
+
+  it('does not mutate the history the caller passed in', async () => {
+    const prior: MiiMessage[] = [
+      { role: 'user', content: 'earlier' },
+      { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+    ]
+    h.script = [thoughtOut, textThenDone('answer')]
+    await drive({ history: prior })
+    expect(prior).toEqual([
+      { role: 'user', content: 'earlier' },
+      { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+    ])
+  })
+
+  it('a turn that ran a tool resets the budget', async () => {
+    // Two cut-offs on either side of a tool turn: without the reset the third
+    // would exceed MAX_TRUNCATION_NUDGES and end in the empty-response error.
+    h.script = [thoughtOut, toolThenDone([call('echo')]), thoughtOut, thoughtOut, textThenDone('answer')]
+    const { events, history } = await drive()
+    expect(count(history, 'output limit was used up')).toBe(3)
+    expect(types(events)).not.toContain('error')
+    expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
+  })
+
+  it('a leak turn does not reset the budget', async () => {
+    // Otherwise alternating leaks and cut-offs would refill it until maxTurns.
+    h.script = [thoughtOut, leak, thoughtOut, leak, thoughtOut]
+    const { events, history } = await drive()
+    expect(count(history, 'output limit was used up')).toBe(2)
+    expect(types(events)).toContain('error')
+  })
+
+  it('treats a cut-off leaked tool call as a leak, not prose to continue', async () => {
+    h.script = [cutLeak, textThenDone('answer')]
+    const { history } = await drive()
+    expect(count(history, 'function-calling interface')).toBe(1)
+    expect(count(history, 'Continue exactly where you stopped')).toBe(0)
+  })
+
+  it('still does not continue a cut-off leak once the leak nudges are spent', async () => {
+    h.script = [cutLeak, cutLeak, cutLeak, textThenDone('unreached')]
+    const { events, history } = await drive()
+    expect(h.callIndex).toBe(3)
+    expect(count(history, 'function-calling interface')).toBe(2)
+    expect(count(history, 'Continue exactly where you stopped')).toBe(0)
+    expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
   })
 })
 
@@ -1098,5 +1229,35 @@ describe('stop gate (decision box)', () => {
     const { events } = await drive({ maxTurns: 3 })
     expect(h.gateCalls).toHaveLength(0)
     expect(events.some((e) => e.type === 'error' && e.message.includes('Stopped after 3'))).toBe(true)
+  })
+})
+
+describe('runAgent maxTurns from config', () => {
+  function stoppedAfter(events: AgentEvent[]): string | undefined {
+    const e = events.find((e) => e.type === 'error' && e.message.includes('Stopped after'))
+    return e && e.type === 'error' ? e.message : undefined
+  }
+
+  it('uses a valid config value, floored', async () => {
+    h.alwaysTool = true
+    h.cfgMaxTurns = 3.7
+    const { events } = await drive()
+    expect(h.callIndex).toBe(3)
+    expect(stoppedAfter(events)).toContain('Stopped after 3 ')
+  })
+
+  it.each([true, '3', 0.5, 0, -2, Number.NaN])('ignores an invalid config value (%s) and uses the default', async (v) => {
+    h.alwaysTool = true
+    h.cfgMaxTurns = v
+    const { events } = await drive()
+    expect(h.callIndex).toBe(100)
+    expect(stoppedAfter(events)).toContain('Stopped after 100 ')
+  })
+
+  it('lets the maxTurns option win over config', async () => {
+    h.alwaysTool = true
+    h.cfgMaxTurns = 50
+    await drive({ maxTurns: 2 })
+    expect(h.callIndex).toBe(2)
   })
 })
