@@ -35,7 +35,7 @@ function render(todos: TodoItem[]): string {
 export const write_todos: Tool<Input> = {
   name: 'write_todos',
   description:
-    'Create and maintain a task list for the current session, shown to the user as a live checklist. Pass the FULL list every call — it replaces the previous one (all or nothing), so include finished items too. Each todo is {content, status} where status is pending | in_progress | completed. Keep exactly one item in_progress at a time and mark it completed before starting the next. Use for multi-step work (features, refactors, multi-file changes) so the user can see what is done, in progress, and left. Skip it for single trivial actions.',
+    'Create and maintain a task list for the current session. miii displays it to the user for you — never write the list into your reply as text, Markdown or HTML. Pass the FULL list every call — it replaces the previous one (all or nothing), so include finished items too. Each todo is {content, status} where status is pending | in_progress | completed. Keep exactly one item in_progress at a time and mark it completed before starting the next. Use for multi-step work (features, refactors, multi-file changes) so the user can see what is done, in progress, and left. Skip it for single trivial actions.',
   input_schema: {
     type: 'object',
     properties: {

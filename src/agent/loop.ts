@@ -12,6 +12,7 @@ import {
   toOllamaMessages,
   blocksFromOllama,
   looksLikeLeakedToolCall,
+  looksLikeTextTodoList,
 } from './adapter.js'
 import { resolveToolName, normalizeToolInput } from './normalize.js'
 import { deciderEnabled, stopGate } from './decide.js'
@@ -386,6 +387,12 @@ export interface RunAgentOpts {
   takeSteering?: () => string[]
 }
 
+/** The user's request, cut to a size that can be quoted back in a nudge. */
+function requestExcerpt(text: string, max = 600): string {
+  const t = text.trim()
+  return t.length <= max ? t : `${t.slice(0, max)}…`
+}
+
 /**
  * Append `text` to the last message, which must be a user one, as a new
  * message object — earlier entries may be shared with the caller's history.
@@ -703,12 +710,31 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         yield { type: 'turn-end', stop_reason: 'tool_use' }
         continue
       }
+      // Same failure, different costume: the task list drawn into the reply
+      // (HTML checkboxes, a Markdown checklist) instead of sent via write_todos.
+      // Nothing tracks it and the work it lists never starts. Shares the leak budget.
+      const textTodos = !empty && toolNames.includes('write_todos') && looksLikeTextTodoList(assistantText)
+      if (leakNudges < MAX_LEAK_NUDGES && textTodos) {
+        leakNudges++
+        history.push({
+          role: 'user',
+          content:
+            'That task list was written into your reply as text, so it is not tracked and nothing was done. ' +
+            'Send it with the write_todos tool instead, then carry on with the work. ' +
+            'If the user asked for a checklist as the answer itself, say so in one line and stop.',
+        })
+        yield { type: 'turn-end', stop_reason: 'tool_use' }
+        continue
+      }
       // The output cap ran out before the model reached an answer or a tool call
       // — a reasoning model that spent the whole budget thinking, or prose cut
       // off mid-sentence. Thinking isn't kept in history, so the next turn starts
       // from scratch unless told to act; ending here reads as the app quitting.
       // A leak whose nudges are spent is not prose to continue — let it end below.
-      if (truncated && !leaked && truncationNudges < MAX_TRUNCATION_NUDGES) {
+      // The wording matters: "call a tool or answer" with the plan forgotten
+      // read as licence to start editing after a read-only request. Restate
+      // the request and keep the model on it instead.
+      if (truncated && !leaked && !textTodos && truncationNudges < MAX_TRUNCATION_NUDGES) {
         truncationNudges++
         if (empty) {
           // The empty assistant message is gone, so the last message is a user
@@ -716,15 +742,17 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
           // strict chat templates (Gemma, Mistral) reject roles that don't alternate.
           appendToLastUser(
             history,
-            'Your output limit was used up while thinking, before you answered or called a tool. ' +
-              'Think briefly this time and go straight to the next concrete step — call a tool or answer.',
+            'Your output limit ran out while you were thinking, before you replied, and that thinking is lost. ' +
+              `The user's request is still: "${requestExcerpt(opts.userText)}"\n` +
+              'Keep your thinking short and carry on with exactly that request — answer it, or call a tool ' +
+              'only if the request needs one. Do not start work the user did not ask for.',
           )
         } else {
           history.push({
             role: 'user',
             content:
-              'Your reply was cut off by the output limit. Continue exactly where you stopped, ' +
-              'or call a tool for the next step.',
+              'Your reply was cut off by the output limit. Continue it from where it stopped, without ' +
+              'repeating what you already wrote. Do not start work the user did not ask for.',
           })
         }
         yield { type: 'turn-end', stop_reason: 'tool_use' }

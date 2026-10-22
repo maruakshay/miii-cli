@@ -34,6 +34,8 @@ const h = vi.hoisted(() => ({
   // config.maxTurns for the run, typed loosely so a test can feed it the junk
   // a hand-edited config.json might hold. Unset = not in config.
   cfgMaxTurns: undefined as unknown,
+  // Extra tool names the mocked registry advertises outside plan mode.
+  extraTools: [] as string[],
 }))
 
 vi.mock('../llm/client.js', () => ({
@@ -81,7 +83,7 @@ vi.mock('../tools/registry.js', () => ({
   getTool: (name: string) => (KNOWN.includes(name) ? makeTool(name) : undefined),
   toOllamaTools: () => [],
   toolsForMode: (mode: string) =>
-    (mode === 'plan' ? PLAN_TOOLS : ['echo', 'run_bash']).map(makeTool),
+    (mode === 'plan' ? PLAN_TOOLS : ['echo', 'run_bash', ...h.extraTools]).map(makeTool),
 }))
 
 vi.mock('../tools/validate.js', () => ({
@@ -227,6 +229,7 @@ beforeEach(() => {
   h.gateAnswers = []
   h.gateCalls = []
   h.cfgMaxTurns = undefined
+  h.extraTools = []
 })
 
 // ---- invariants ----------------------------------------------------------
@@ -573,7 +576,7 @@ describe('runAgent output-cap nudge', () => {
   it('sends the model back when thinking used up the output cap, instead of erroring', async () => {
     h.script = [thoughtOut, textThenDone('answer')]
     const { events, history } = await drive()
-    expect(count(history, 'output limit was used up')).toBe(1)
+    expect(count(history, 'output limit ran out')).toBe(1)
     expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
     expect(types(events)).not.toContain('error')
   })
@@ -592,7 +595,7 @@ describe('runAgent output-cap nudge', () => {
     const { history } = await drive()
     expect(emptyAssistants(history)).toHaveLength(0)
     expect(history.map((m) => m.role)).toEqual(['user', 'assistant'])
-    expect(history[0].content).toMatch(/^hi\n\nYour output limit was used up/)
+    expect(history[0].content).toMatch(/^hi\n\nYour output limit ran out/)
   })
 
   it('folds the nudge into the last tool result after a tool turn, keeping roles alternating', async () => {
@@ -601,8 +604,29 @@ describe('runAgent output-cap nudge', () => {
     assertAlternates(history)
     assertBlockOrdering(history)
     const result = firstResults(history)[0]
-    expect(result.content).toBe('echo ok\n\nYour output limit was used up while thinking, before you answered or called a tool. ' +
-      'Think briefly this time and go straight to the next concrete step — call a tool or answer.')
+    expect(result.content).toMatch(/^echo ok\n\nYour output limit ran out/)
+  })
+
+  it('restates the user request instead of pushing the model to act', async () => {
+    h.script = [thoughtOut, textThenDone('answer')]
+    const { history } = await drive({ userText: 'explain what Navigation.tsx does' })
+    const nudge = history[0].content as string
+    expect(nudge).toContain(`The user's request is still: "explain what Navigation.tsx does"`)
+    expect(nudge).toContain('Do not start work the user did not ask for')
+    expect(nudge).not.toMatch(/next concrete step/)
+  })
+
+  it('tells a cut-off reply to continue the reply, not to call a tool', async () => {
+    h.script = [
+      [
+        { content: 'Navigation.tsx renders the top bar and', done: false },
+        { content: '', done: true, done_reason: 'length', prompt_eval_count: 1, eval_count: 1 },
+      ],
+      textThenDone(' the search box.'),
+    ]
+    const { history } = await drive()
+    expect(count(history, 'Continue it from where it stopped')).toBe(1)
+    expect(count(history, 'call a tool')).toBe(0)
   })
 
   it('does not mutate the history the caller passed in', async () => {
@@ -623,7 +647,7 @@ describe('runAgent output-cap nudge', () => {
     // would exceed MAX_TRUNCATION_NUDGES and end in the empty-response error.
     h.script = [thoughtOut, toolThenDone([call('echo')]), thoughtOut, thoughtOut, textThenDone('answer')]
     const { events, history } = await drive()
-    expect(count(history, 'output limit was used up')).toBe(3)
+    expect(count(history, 'output limit ran out')).toBe(3)
     expect(types(events)).not.toContain('error')
     expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
   })
@@ -632,7 +656,7 @@ describe('runAgent output-cap nudge', () => {
     // Otherwise alternating leaks and cut-offs would refill it until maxTurns.
     h.script = [thoughtOut, leak, thoughtOut, leak, thoughtOut]
     const { events, history } = await drive()
-    expect(count(history, 'output limit was used up')).toBe(2)
+    expect(count(history, 'output limit ran out')).toBe(2)
     expect(types(events)).toContain('error')
   })
 
@@ -650,6 +674,57 @@ describe('runAgent output-cap nudge', () => {
     expect(count(history, 'function-calling interface')).toBe(2)
     expect(count(history, 'Continue exactly where you stopped')).toBe(0)
     expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
+  })
+})
+
+describe('runAgent task-list-as-text nudge', () => {
+  const htmlList =
+    '<div class="flex flex-col gap-2">\n' +
+    '  <div><input type="checkbox" checked disabled><span>Analyze search bar usage</span></div>\n' +
+    '  <div><input type="checkbox" disabled><span>Remove search bar from Navigation.tsx</span></div>\n' +
+    '</div>'
+  const nudgeText = 'Send it with the write_todos tool'
+  function nudges(history: MiiMessage[]): number {
+    return history.filter((m) => m.role === 'user' && typeof m.content === 'string' && m.content.includes(nudgeText)).length
+  }
+  beforeEach(() => {
+    h.extraTools = ['write_todos']
+  })
+
+  it('sends an HTML checklist back to be written with write_todos', async () => {
+    h.script = [textThenDone(htmlList), textThenDone('done')]
+    const { events, history } = await drive()
+    expect(nudges(history)).toBe(1)
+    expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
+  })
+
+  it('catches a Markdown checklist too', async () => {
+    h.script = [textThenDone('Plan:\n- [x] Analyze search bar usage\n- [ ] Remove it from Navigation.tsx'), textThenDone('done')]
+    const { history } = await drive()
+    expect(nudges(history)).toBe(1)
+  })
+
+  it('leaves a single checkbox line or a quoted code block alone', async () => {
+    h.script = [
+      textThenDone('One thing left:\n- [ ] ship it\n\n```tsx\n<input type="checkbox" checked />\n```'),
+    ]
+    const { history } = await drive()
+    expect(nudges(history)).toBe(0)
+  })
+
+  it('is bounded by the leak budget, then lets the turn end', async () => {
+    h.script = [textThenDone(htmlList), textThenDone(htmlList), textThenDone(htmlList)]
+    const { events, history } = await drive()
+    expect(nudges(history)).toBe(2)
+    expect(h.callIndex).toBe(3)
+    expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
+  })
+
+  it('does nothing when write_todos is not offered', async () => {
+    h.extraTools = []
+    h.script = [textThenDone(htmlList)]
+    const { history } = await drive()
+    expect(nudges(history)).toBe(0)
   })
 })
 
