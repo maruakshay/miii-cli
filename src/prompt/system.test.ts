@@ -47,9 +47,10 @@ describe('tiering', () => {
   it('adds the extended layer on a roomy window', () => {
     const p = large()
     expect(p).toContain('# Task list')
-    expect(p).toContain('# Verifying')
+    expect(p).toContain('# Goal-driven execution')
     expect(p).toContain('# Simplicity')
     expect(p).toContain('# Surgical changes')
+    expect(p).toContain('# Think before coding')
     expect(p).toContain('# Tone')
   })
 
