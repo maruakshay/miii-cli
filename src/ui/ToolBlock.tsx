@@ -64,12 +64,9 @@ function ToolBlockFrame({ id, children }: { id: string; children: ReactNode }) {
 }
 
 /**
- * The one line every tool block leads with: what the call does, in English.
- *
- * "Running the tests" is what a reader skimming the transcript needs; the exact
- * call — Bash(npm test -- --run) — is a detail they want only when something
- * looks wrong, so it appears under the headline once the block is expanded
- * (click anywhere, or ctrl+o).
+ * The one line every tool block leads with: the call itself, Claude Code style —
+ * Bash(npm test -- --run). The plain-English reading ("Running the tests")
+ * appears under it once the block is expanded (click anywhere, or ctrl+o).
  */
 function ToolHeader({ use }: { use: ToolUseDisplay }) {
   const expanded = useToolExpanded(use.id)
@@ -78,11 +75,11 @@ function ToolHeader({ use }: { use: ToolUseDisplay }) {
     <Box flexDirection="column">
       <Box>
         <Text color={C.green}>● </Text>
-        <Text color={C.white}>{text}</Text>
+        <Text color={C.white}>{technical}</Text>
       </Box>
       {expanded && (
         <Box marginLeft={2}>
-          <Text dimColor>{technical}</Text>
+          <Text dimColor>{text}</Text>
         </Box>
       )}
     </Box>
@@ -396,19 +393,14 @@ function ToolGroupBlock({
       <Box>
         <Text color={C.green}>● </Text>
         <Text color={C.white}>
-          {lone ? describeTool(name, uses[0].input).text : groupHeadline(name, uses.length, pending)}
+          {lone ? describeTool(name, uses[0].input).technical : groupHeadline(name, uses.length, pending)}
         </Text>
-        {/* A path names itself in the headline, but "Linting" or "Listing
-            files" hides which command ran, so a lone shell call carries it. */}
-        {lone && name === 'run_bash' && (
-          <Text dimColor> · {truncate(String((uses[0].input as { command?: string })?.command ?? '').replace(/\s+/g, ' '), 60)}</Text>
-        )}
         {/* Collapsed, a run is its headline alone; a click opens every call. */}
         {!lone && !expanded && <Text dimColor> (click to expand)</Text>}
       </Box>
       {uses.map((use) => {
         const result = results.get(use.id)
-        const { technical, subject } = describeTool(use.name, use.input)
+        const { text, technical, subject } = describeTool(use.name, use.input)
         // Expanded, or on its own: the call in full, exactly as an ungrouped
         // block used to draw it.
         if (expanded || lone) {
@@ -416,7 +408,7 @@ function ToolGroupBlock({
             <Box key={use.id} flexDirection="column">
               {expanded && (
                 <Box marginLeft={2}>
-                  <Text dimColor>{technical}</Text>
+                  <Text dimColor>{lone ? text : technical}</Text>
                 </Box>
               )}
               {result ? (
