@@ -23,12 +23,15 @@ export function parseTodos(input: Record<string, unknown>): Todo[] | null {
  * The agent's current task list: the last write_todos call it made, read from
  * the newest step backwards. Each call replaces the whole list, so the newest
  * one the tool accepted is the board. A call the tool rejected is skipped —
- * the model will resend a fixed one.
+ * the model will resend a fixed one. A list finished before the user's latest
+ * message is spent: it belongs to an earlier turn and isn't brought back.
  */
 export function latestTodos(
-  messages: Array<Pick<ChatMessage, 'tool_uses' | 'tool_results'>>,
+  messages: Array<Partial<Pick<ChatMessage, 'role'>> & Pick<ChatMessage, 'tool_uses' | 'tool_results'>>,
 ): Todo[] | null {
+  let earlierTurn = false
   for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') earlierTurn = true
     const uses: ToolUseDisplay[] = messages[i].tool_uses ?? []
     const results: ToolResultDisplay[] = messages[i].tool_results ?? []
     for (let j = uses.length - 1; j >= 0; j--) {
@@ -36,7 +39,7 @@ export function latestTodos(
       if (u.name !== 'write_todos') continue
       if (results.find((r) => r.tool_use_id === u.id)?.is_error) continue
       const todos = parseTodos(u.input)
-      if (todos) return todos
+      if (todos) return earlierTurn && todos.every((t) => t.status === 'completed') ? null : todos
     }
   }
   return null

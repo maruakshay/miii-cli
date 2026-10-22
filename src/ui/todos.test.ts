@@ -25,6 +25,14 @@ describe('latestTodos', () => {
     expect(latestTodos(msgs)).toEqual([{ content: 'new', status: 'in_progress' }])
   })
 
+  it('drops a list finished in an earlier turn, but keeps one left open', () => {
+    const done = [{ content: 'a', status: 'completed' }]
+    const open = [{ content: 'a', status: 'in_progress' }]
+    expect(latestTodos([{ tool_uses: [call('1', done)] }, { role: 'user' as const }])).toBeNull()
+    expect(latestTodos([{ tool_uses: [call('1', open)] }, { role: 'user' as const }])).toEqual(open)
+    expect(latestTodos([{ role: 'user' as const }, { tool_uses: [call('1', done)] }])).toEqual(done)
+  })
+
   it('is null when the agent kept no list', () => {
     expect(latestTodos([{ tool_uses: [{ id: 'r', name: 'read_file', input: {} }] }])).toBeNull()
   })
