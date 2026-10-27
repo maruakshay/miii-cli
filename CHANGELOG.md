@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.14.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.13.2...miii-agent-v3.14.0) (2026-10-27)
+
+
+### Features
+
+* **todos:** update tasks by number and close the list when a turn ends ([#141](https://github.com/maruakshay/miii-cli/issues/141)) ([becafe2](https://github.com/maruakshay/miii-cli/commit/becafe21244e508e5011a8f1523ed937fcb8e68d))
+
 ## [3.13.2](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.13.1...miii-agent-v3.13.2) (2026-10-27)
 
 
