@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.14.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.14.0...miii-agent-v3.14.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **todos:** remove the task list ([#143](https://github.com/maruakshay/miii-cli/issues/143)) ([fcbf737](https://github.com/maruakshay/miii-cli/commit/fcbf7379257d74641384c475d27faae2dd0762a2))
+
 ## [3.14.0](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.13.2...miii-agent-v3.14.0) (2026-10-27)
 
 
