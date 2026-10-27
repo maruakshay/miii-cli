@@ -1,48 +1,36 @@
-import type { ChatMessage, ToolResultDisplay, ToolUseDisplay } from './types.js'
+import { applyTodos, type TodoItem as Todo } from '../tools/write_todos.js'
+import type { ChatMessage } from './types.js'
 
-export type TodoStatus = 'pending' | 'in_progress' | 'completed'
-export interface Todo { content: string; status: TodoStatus }
-
-const STATUSES = new Set<string>(['pending', 'in_progress', 'completed'])
-
-/** The list a write_todos call carried, or null if it isn't one the tool would accept. */
-export function parseTodos(input: Record<string, unknown>): Todo[] | null {
-  const list = input.todos
-  if (!Array.isArray(list) || !list.length) return null
-  const todos: Todo[] = []
-  for (const t of list) {
-    if (!t || typeof t !== 'object') return null
-    const { content, status } = t as Record<string, unknown>
-    if (typeof content !== 'string' || !content.trim() || typeof status !== 'string' || !STATUSES.has(status)) return null
-    todos.push({ content: content.trim(), status: status as TodoStatus })
-  }
-  return todos
-}
+export type { TodoStatus, TodoItem as Todo } from '../tools/write_todos.js'
 
 /**
- * The agent's current task list: the last write_todos call it made, read from
- * the newest step backwards. Each call replaces the whole list, so the newest
- * one the tool accepted is the board. A call the tool rejected is skipped —
- * the model will resend a fixed one. A list finished before the user's latest
- * message is spent: it belongs to an earlier turn and isn't brought back.
+ * The agent's current task list, rebuilt the way the tool sees it: every
+ * write_todos call replayed in order, each either redrawing the board or moving
+ * items on it. A call the tool rejected is skipped — the model will resend a
+ * fixed one. A turn that finishes on its own closes the task it left in
+ * flight — the model has stopped working, and often forgets that last update.
+ * A list finished before the user's latest message is spent: it belongs to an
+ * earlier turn and isn't brought back.
  */
 export function latestTodos(
-  messages: Array<Partial<Pick<ChatMessage, 'role'>> & Pick<ChatMessage, 'tool_uses' | 'tool_results'>>,
+  messages: Array<Partial<Pick<ChatMessage, 'role' | 'summary'>> & Pick<ChatMessage, 'tool_uses' | 'tool_results'>>,
 ): Todo[] | null {
+  const rejected = new Set<string>()
+  for (const m of messages) for (const r of m.tool_results ?? []) if (r.is_error) rejected.add(r.tool_use_id)
+  let board: Todo[] | null = null
   let earlierTurn = false
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') earlierTurn = true
-    const uses: ToolUseDisplay[] = messages[i].tool_uses ?? []
-    const results: ToolResultDisplay[] = messages[i].tool_results ?? []
-    for (let j = uses.length - 1; j >= 0; j--) {
-      const u = uses[j]
-      if (u.name !== 'write_todos') continue
-      if (results.find((r) => r.tool_use_id === u.id)?.is_error) continue
-      const todos = parseTodos(u.input)
-      if (todos) return earlierTurn && todos.every((t) => t.status === 'completed') ? null : todos
+  for (const m of messages) {
+    if (m.role === 'user') earlierTurn = true
+    for (const u of m.tool_uses ?? []) {
+      if (u.name !== 'write_todos' || rejected.has(u.id)) continue
+      const out = applyTodos(board, u.input)
+      if ('todos' in out) { board = out.todos; earlierTurn = false }
+    }
+    if (board && m.summary && !m.summary.stopped) {
+      board = board.map((t) => (t.status === 'in_progress' ? { ...t, status: 'completed' } : t))
     }
   }
-  return null
+  return board && earlierTurn && board.every((t) => t.status === 'completed') ? null : board
 }
 
 /**
