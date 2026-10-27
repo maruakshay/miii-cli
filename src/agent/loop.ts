@@ -17,6 +17,7 @@ import {
 import { resolveToolName, normalizeToolInput } from './normalize.js'
 import { deciderEnabled, stopGate } from './decide.js'
 import { bashWriteTargets } from './bashWrites.js'
+import { estimateHistoryTokens, estimateTokens } from './compact.js'
 import type { Tool } from '../tools/types.js'
 import type {
   MiiMessage,
@@ -53,6 +54,35 @@ const MAX_STOP_NUDGES = 2
 // three call sites and declared victory" case; a second mostly means the judge
 // will never be satisfied, and arguing with it costs the user the run.
 const MAX_JUDGE_NUDGES = 1
+// Prompt share we try to stay under, leaving room for the reply. Over it,
+// Ollama silently cuts the front of the prompt and the model returns nothing.
+const CTX_FILL_LIMIT = 0.85
+const ELIDED_RESULT =
+  '[Output removed to free up context. Re-run the tool (e.g. read_file with offset/limit) if you still need it.]'
+
+/**
+ * Drop the bodies of the oldest tool results until the prompt fits `limit`
+ * tokens. Auto-compact only runs between user turns, so a run that reads
+ * several big files would otherwise overflow mid-turn. The newest message is
+ * never touched — it is what the model is answering right now. Returns how
+ * many results were elided.
+ */
+export function shedOldToolResults(history: MiiMessage[], systemTokens: number, limit: number): number {
+  let est = systemTokens + estimateHistoryTokens(history)
+  let shed = 0
+  for (let i = 0; i < history.length - 1 && est > limit; i++) {
+    const m = history[i]
+    if (m.role !== 'user' || !Array.isArray(m.content)) continue
+    for (const b of m.content) {
+      if (b.type !== 'tool_result' || b.content === ELIDED_RESULT || b.content.length <= ELIDED_RESULT.length * 2) continue
+      est -= estimateTokens(b.content) - estimateTokens(ELIDED_RESULT)
+      b.content = ELIDED_RESULT
+      shed++
+      if (est <= limit) break
+    }
+  }
+  return shed
+}
 
 /**
  * Fingerprint of a file's state on disk — mtime and size. Cheap enough to take
@@ -539,6 +569,9 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
     const system = opts.buildSystem
       ? opts.buildSystem(activeTools, mode)
       : buildSystemPrompt(activeTools, cwd, projectContext, cappedCtx, mode)
+    const windowTokens = cappedCtx ?? DEFAULT_NUM_CTX_CAP
+    shedOldToolResults(history, estimateTokens(system), Math.floor(windowTokens * CTX_FILL_LIMIT))
+    const promptEstimate = estimateTokens(system) + estimateHistoryTokens(history)
 
     let text = ''
     let tool_calls: Array<{ function: { name: string; arguments: Record<string, unknown> } }> | undefined
@@ -764,12 +797,17 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       // hidden thinking tokens). Ending silently here looks to the user like the
       // run just aborted with no reason. Surface it instead of a bare end_turn.
       if (empty) {
+        // Name the overflow when it is the likely cause — "retry" never fixes it.
+        const overflow = promptEstimate >= windowTokens * CTX_FILL_LIMIT
         yield {
           type: 'error',
-          message:
-            'The model returned an empty response — likely unloaded/OOM mid-stream or the ' +
-            'output cap was consumed by thinking before any answer. Retry, switch models, or ' +
-            'lower the context/effort.',
+          message: overflow
+            ? `The model returned an empty response — the prompt (~${promptEstimate} tokens) filled the ` +
+              `${windowTokens}-token context window, so the start of it was cut off. Run /compact or /clear, ` +
+              'ask about a smaller part of the file, or raise numCtxCap in ~/.miii/config.json if you have the memory.'
+            : 'The model returned an empty response — likely unloaded/OOM mid-stream or the ' +
+              'output cap was consumed by thinking before any answer. Retry, switch models, or ' +
+              'lower the context/effort.',
         }
         yield { type: 'done', prompt_tokens: promptTokens, eval_tokens: evalTokens, context_tokens: contextTokens }
         return history
