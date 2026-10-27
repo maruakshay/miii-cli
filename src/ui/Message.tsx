@@ -3,7 +3,6 @@ import { Box, Text } from 'ink'
 import { renderMarkdown } from './markdown.js'
 import type { ChatMessage } from './types.js'
 import { ToolUseList } from './ToolBlock.js'
-import { isHiddenTool } from './mergeSteps.js'
 import { formatTokens, formatDuration, contentWidth, padLines, userTextWidth } from './layout.js'
 import { useTerminalWidth } from './hooks/useTerminalWidth.js'
 import { useThinkingVisible, CHALK } from './ThinkingBlock.js'
@@ -82,9 +81,9 @@ export const AssistantMessage = memo(function AssistantMessage({ msg }: { msg: C
   // subscription also defeats the memo on toggle, which is the point.
   const showThoughts = useThinkingVisible()
   const thoughts = msg.thinking?.trim()
-  const tools = msg.tool_uses?.some((u) => !isHiddenTool(u.name))
-  // A step with nothing to draw (only hidden tool calls, or thoughts while
-  // they're hidden) would still carry its top margin — a stray blank row.
+  const tools = !!msg.tool_uses?.length
+  // A step with nothing to draw (thoughts while they're hidden) would still
+  // carry its top margin — a stray blank row.
   if (!(showThoughts && thoughts) && !msg.content && !tools && !msg.tokens) return null
 
   return (

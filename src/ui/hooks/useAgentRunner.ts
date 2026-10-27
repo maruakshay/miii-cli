@@ -11,7 +11,6 @@ import { checkpointPreToolHook, snapshotForTurn } from '../../session/checkpoint
 import { compactHistory, estimateHistoryTokens, CHARS_PER_TOKEN } from '../../agent/compact.js'
 import type { ChatMessage, PermissionRequest, PermissionAnswer, ToolUseDisplay, ToolResultDisplay } from '../types.js'
 import { TurnSummaryBuilder } from '../turnSummary.js'
-import { isHiddenTool } from '../mergeSteps.js'
 import type { MiiMessage } from '../../agent/types.js'
 import { MODE_HINT, MODE_LABEL, nextMode, type PermissionMode } from '../../permissions/policy.js'
 import { describeTool } from '../toolLabel.js'
@@ -304,9 +303,7 @@ export function useAgentRunner(
             setActiveToolUses([...turnUses])
             // The spinner says what the call does, not which tool it is —
             // "Running the tests…" reads like a status, "running run_bash…" doesn't.
-            // Hidden tools stay hidden here too: "Updating the task list…" is
-            // the one status nobody needs to see.
-            if (!isHiddenTool(ev.block.name)) setProcessingLabel(`${describeTool(ev.block.name, ev.block.input).text}…`)
+            setProcessingLabel(`${describeTool(ev.block.name, ev.block.input).text}…`)
             break
           }
           case 'tool-result': {

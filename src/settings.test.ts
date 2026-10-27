@@ -47,7 +47,7 @@ describe('parseRuleSpec', () => {
     })
   })
   it('reads an empty pattern as any arguments', () => {
-    expect(parseRuleSpec('write_todos()')).toEqual({ tool: 'write_todos', pattern: '*' })
+    expect(parseRuleSpec('glob()')).toEqual({ tool: 'glob', pattern: '*' })
   })
   it('rejects nonsense rather than inventing a rule', () => {
     expect(parseRuleSpec('')).toBeNull()

@@ -39,14 +39,12 @@ describe('prompt budget', () => {
 
 describe('tiering', () => {
   it('sends core only on a window below the threshold', () => {
-    expect(small()).not.toContain('# Task list')
     expect(small()).not.toContain('# Simplicity')
     expect(small()).not.toContain('# Tone')
   })
 
   it('adds the extended layer on a roomy window', () => {
     const p = large()
-    expect(p).toContain('# Task list')
     expect(p).toContain('# Goal-driven execution')
     expect(p).toContain('# Simplicity')
     expect(p).toContain('# Surgical changes')
@@ -55,7 +53,7 @@ describe('tiering', () => {
   })
 
   it('treats an unreported window as roomy', () => {
-    expect(buildSystemPrompt(TOOLS, CWD)).toContain('# Task list')
+    expect(buildSystemPrompt(TOOLS, CWD)).toContain('# Tone')
   })
 
   it('switches exactly at the threshold', () => {

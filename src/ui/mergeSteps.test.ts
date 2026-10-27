@@ -47,20 +47,6 @@ describe('mergeToolSteps', () => {
     expect(out[0].tokens).toEqual({ prompt_eval: 5, eval: 5 })
   })
 
-  it('hides the task list, so it neither shows nor breaks a run of reads', () => {
-    const out = mergeToolSteps([
-      step('', ['a', 'read_file']),
-      step('', ['t', 'write_todos']),
-      step('', ['b', 'read_file']),
-    ])
-    expect(out).toHaveLength(1)
-    expect(names(out[0])).toEqual(['a', 'b'])
-  })
-
-  it('drops a step that only updated the task list', () => {
-    const out = mergeToolSteps([{ role: 'user', content: 'go' }, step('', ['t', 'write_todos'])])
-    expect(out).toHaveLength(1)
-  })
 })
 
 describe('splitTextFromTools', () => {

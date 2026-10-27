@@ -321,16 +321,6 @@ function stripQuotedCode(text: string): string {
     .replace(/`[^`\n]+`/g, '')
 }
 
-/**
- * A task list written into the reply as HTML checkboxes or a Markdown checklist
- * instead of sent through write_todos — it renders as noise and nothing tracks it.
- */
-export function looksLikeTextTodoList(raw: string): boolean {
-  const text = stripQuotedCode(raw)
-  if (/<input\b[^>]*type\s*=\s*["']?checkbox/i.test(text)) return true
-  return (text.match(/^\s*[-*]\s+\[[ xX~]\]\s+\S/gm) ?? []).length >= 2
-}
-
 export function blocksFromOllama(
   text: string,
   tool_calls: RawToolCall[] | undefined,

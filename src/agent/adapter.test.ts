@@ -4,7 +4,6 @@ import {
   blocksFromOllama,
   toOllamaMessages,
   looksLikeLeakedToolCall,
-  looksLikeTextTodoList,
 } from './adapter.js'
 import type { MiiMessage, ToolUse } from './types.js'
 
@@ -234,20 +233,5 @@ describe('toOllamaMessages', () => {
     expect(out.map((m) => m.role)).toEqual(['system', 'assistant', 'tool', 'tool'])
     expect(out[2]).toMatchObject({ content: 'A', tool_call_id: 'toolu_1' })
     expect(out[3]).toMatchObject({ content: 'B', tool_call_id: 'toolu_2' })
-  })
-})
-
-describe('looksLikeTextTodoList', () => {
-  it('flags HTML checkboxes', () => {
-    expect(looksLikeTextTodoList('<div><input type="checkbox" disabled> Fix it</div>')).toBe(true)
-  })
-  it('flags a Markdown checklist of two or more items', () => {
-    expect(looksLikeTextTodoList('- [x] Read files\n- [ ] Remove search bar')).toBe(true)
-  })
-  it('does NOT flag a single checkbox line', () => {
-    expect(looksLikeTextTodoList('- [ ] ship it')).toBe(false)
-  })
-  it('does NOT flag checkboxes inside a quoted code block', () => {
-    expect(looksLikeTextTodoList('```tsx\n<input type="checkbox" />\n- [ ] a\n- [ ] b\n```')).toBe(false)
   })
 })

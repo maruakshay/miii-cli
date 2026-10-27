@@ -34,8 +34,6 @@ const h = vi.hoisted(() => ({
   // config.maxTurns for the run, typed loosely so a test can feed it the junk
   // a hand-edited config.json might hold. Unset = not in config.
   cfgMaxTurns: undefined as unknown,
-  // Extra tool names the mocked registry advertises outside plan mode.
-  extraTools: [] as string[],
 }))
 
 vi.mock('../llm/client.js', () => ({
@@ -83,7 +81,7 @@ vi.mock('../tools/registry.js', () => ({
   getTool: (name: string) => (KNOWN.includes(name) ? makeTool(name) : undefined),
   toOllamaTools: () => [],
   toolsForMode: (mode: string) =>
-    (mode === 'plan' ? PLAN_TOOLS : ['echo', 'run_bash', ...h.extraTools]).map(makeTool),
+    (mode === 'plan' ? PLAN_TOOLS : ['echo', 'run_bash']).map(makeTool),
 }))
 
 vi.mock('../tools/validate.js', () => ({
@@ -229,7 +227,6 @@ beforeEach(() => {
   h.gateAnswers = []
   h.gateCalls = []
   h.cfgMaxTurns = undefined
-  h.extraTools = []
 })
 
 // ---- invariants ----------------------------------------------------------
@@ -674,57 +671,6 @@ describe('runAgent output-cap nudge', () => {
     expect(count(history, 'function-calling interface')).toBe(2)
     expect(count(history, 'Continue exactly where you stopped')).toBe(0)
     expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
-  })
-})
-
-describe('runAgent task-list-as-text nudge', () => {
-  const htmlList =
-    '<div class="flex flex-col gap-2">\n' +
-    '  <div><input type="checkbox" checked disabled><span>Analyze search bar usage</span></div>\n' +
-    '  <div><input type="checkbox" disabled><span>Remove search bar from Navigation.tsx</span></div>\n' +
-    '</div>'
-  const nudgeText = 'Send it with the write_todos tool'
-  function nudges(history: MiiMessage[]): number {
-    return history.filter((m) => m.role === 'user' && typeof m.content === 'string' && m.content.includes(nudgeText)).length
-  }
-  beforeEach(() => {
-    h.extraTools = ['write_todos']
-  })
-
-  it('sends an HTML checklist back to be written with write_todos', async () => {
-    h.script = [textThenDone(htmlList), textThenDone('done')]
-    const { events, history } = await drive()
-    expect(nudges(history)).toBe(1)
-    expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
-  })
-
-  it('catches a Markdown checklist too', async () => {
-    h.script = [textThenDone('Plan:\n- [x] Analyze search bar usage\n- [ ] Remove it from Navigation.tsx'), textThenDone('done')]
-    const { history } = await drive()
-    expect(nudges(history)).toBe(1)
-  })
-
-  it('leaves a single checkbox line or a quoted code block alone', async () => {
-    h.script = [
-      textThenDone('One thing left:\n- [ ] ship it\n\n```tsx\n<input type="checkbox" checked />\n```'),
-    ]
-    const { history } = await drive()
-    expect(nudges(history)).toBe(0)
-  })
-
-  it('is bounded by the leak budget, then lets the turn end', async () => {
-    h.script = [textThenDone(htmlList), textThenDone(htmlList), textThenDone(htmlList)]
-    const { events, history } = await drive()
-    expect(nudges(history)).toBe(2)
-    expect(h.callIndex).toBe(3)
-    expect(events).toContainEqual({ type: 'turn-end', stop_reason: 'end_turn' })
-  })
-
-  it('does nothing when write_todos is not offered', async () => {
-    h.extraTools = []
-    h.script = [textThenDone(htmlList)]
-    const { history } = await drive()
-    expect(nudges(history)).toBe(0)
   })
 })
 

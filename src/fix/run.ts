@@ -447,8 +447,6 @@ export async function runFix(opts: FixOptions): Promise<number> {
       // needs a mode or a saved rule, same as any headless run.
       ask: async (toolName: string, input: unknown) => {
         if (toolName === 'run_bash' && (input as { command?: unknown })?.command === opts.check) return 'yes' as const
-        // A plan list touches nothing on disk.
-        if (toolName === 'write_todos') return 'yes' as const
         denied.push(toolName)
         return 'no' as const
       },
