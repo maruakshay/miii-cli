@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.13.2](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.13.1...miii-agent-v3.13.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **agent:** keep large file reads inside the context window ([#139](https://github.com/maruakshay/miii-cli/issues/139)) ([243c54f](https://github.com/maruakshay/miii-cli/commit/243c54f1977e7c98e024567fb38ea305e1d853d1))
+
 ## [3.13.1](https://github.com/maruakshay/miii-cli/compare/miii-agent-v3.13.0...miii-agent-v3.13.1) (2026-10-22)
 
 
