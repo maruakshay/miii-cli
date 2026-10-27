@@ -3,7 +3,6 @@ import { chat } from '../llm/client.js'
 import { confinePath } from '../tools/paths.js'
 import { getTool, toOllamaTools, toolsForMode } from '../tools/registry.js'
 import { validateInput, exampleInput } from '../tools/validate.js'
-import { replayTodos } from '../tools/write_todos.js'
 import { buildSystemPrompt } from '../prompt/system.js'
 import { loadProjectContext } from '../prompt/context.js'
 import { check, deniedBySettings, isReadOnlyCommand, type PermissionContext, type PermissionMode } from '../permissions/policy.js'
@@ -13,7 +12,6 @@ import {
   toOllamaMessages,
   blocksFromOllama,
   looksLikeLeakedToolCall,
-  looksLikeTextTodoList,
 } from './adapter.js'
 import { resolveToolName, normalizeToolInput } from './normalize.js'
 import { deciderEnabled, stopGate } from './decide.js'
@@ -425,28 +423,6 @@ function requestExcerpt(text: string, max = 600): string {
 }
 
 /**
- * The write_todos inputs the tool accepted, oldest first: each call in history
- * plus this step's already-finished ones, skipping any it refused or that are
- * still waiting on a result. Replaying them gives the board the next call edits.
- */
-function acceptedTodoCalls(history: MiiMessage[], finished: ToolResultBlock[]): Record<string, unknown>[] {
-  const accepted = new Map<string, boolean>()
-  for (const m of history) {
-    if (!Array.isArray(m.content)) continue
-    for (const b of m.content) if (b.type === 'tool_result') accepted.set(b.tool_use_id, !b.is_error)
-  }
-  for (const r of finished) accepted.set(r.tool_use_id, !r.is_error)
-  const calls: Record<string, unknown>[] = []
-  for (const m of history) {
-    if (m.role !== 'assistant' || !Array.isArray(m.content)) continue
-    for (const b of m.content) {
-      if (b.type === 'tool_use' && b.name === 'write_todos' && accepted.get(b.id)) calls.push(b.input)
-    }
-  }
-  return calls
-}
-
-/**
  * Append `text` to the last message, which must be a user one, as a new
  * message object — earlier entries may be shared with the caller's history.
  * A string prompt gets it as a new paragraph; a tool_result list gets it on
@@ -766,22 +742,6 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
         yield { type: 'turn-end', stop_reason: 'tool_use' }
         continue
       }
-      // Same failure, different costume: the task list drawn into the reply
-      // (HTML checkboxes, a Markdown checklist) instead of sent via write_todos.
-      // Nothing tracks it and the work it lists never starts. Shares the leak budget.
-      const textTodos = !empty && toolNames.includes('write_todos') && looksLikeTextTodoList(assistantText)
-      if (leakNudges < MAX_LEAK_NUDGES && textTodos) {
-        leakNudges++
-        history.push({
-          role: 'user',
-          content:
-            'That task list was written into your reply as text, so it is not tracked and nothing was done. ' +
-            'Send it with the write_todos tool instead, then carry on with the work. ' +
-            'If the user asked for a checklist as the answer itself, say so in one line and stop.',
-        })
-        yield { type: 'turn-end', stop_reason: 'tool_use' }
-        continue
-      }
       // The output cap ran out before the model reached an answer or a tool call
       // — a reasoning model that spent the whole budget thinking, or prose cut
       // off mid-sentence. Thinking isn't kept in history, so the next turn starts
@@ -790,7 +750,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
       // The wording matters: "call a tool or answer" with the plan forgotten
       // read as licence to start editing after a read-only request. Restate
       // the request and keep the model on it instead.
-      if (truncated && !leaked && !textTodos && truncationNudges < MAX_TRUNCATION_NUDGES) {
+      if (truncated && !leaked && truncationNudges < MAX_TRUNCATION_NUDGES) {
         truncationNudges++
         if (empty) {
           // The empty assistant message is gone, so the last message is a user
@@ -1034,7 +994,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
             'available again' +
             (mode === 'acceptEdits' ? ', and file edits will no longer be prompted' : '') +
             '. Carry it out now, starting with the first step. Do not restate the plan — the ' +
-            'user has read it. Track progress with write_todos if it runs to several steps.',
+            'user has read it.',
         }
         results.push(note(r))
         yield { type: 'tool-result', block: r }
@@ -1113,7 +1073,6 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
             ...(hooks ? { hooks } : {}),
             ...(cappedCtx !== undefined ? { num_ctx: cappedCtx } : {}),
           },
-          ...(use.name === 'write_todos' ? { todos: replayTodos(acceptedTodoCalls(history, results)) } : {}),
         })
         r = {
           type: 'tool_result',

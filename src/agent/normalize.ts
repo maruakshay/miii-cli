@@ -60,10 +60,6 @@ const NAME_ALIASES: Record<string, string> = {
   // glob
   find: 'glob', findfiles: 'glob', listfiles: 'glob', ls: 'glob',
   listdir: 'glob', listdirectory: 'glob', filesearch: 'glob', globsearch: 'glob',
-  // write_todos
-  todo: 'write_todos', todos: 'write_todos', todowrite: 'write_todos',
-  writetodo: 'write_todos', settodos: 'write_todos', updatetodos: 'write_todos',
-  tasklist: 'write_todos', updatetasklist: 'write_todos',
 }
 
 /** Levenshtein distance, capped — we only ever care about "is it ≤ 2". */
@@ -235,7 +231,7 @@ export function unwrapEnvelope(input: Record<string, unknown>): Record<string, u
  */
 const KEY_ALIASES: Record<string, string[]> = {
   path: ['filepath', 'file', 'filename', 'targetfile', 'fname', 'src', 'source', 'directory', 'dir', 'rootpath', 'root', 'location'],
-  content: ['contents', 'text', 'data', 'body', 'filecontent', 'filecontents', 'newcontent', 'code', 'value', 'task', 'title', 'label', 'step', 'item', 'todo', 'description'],
+  content: ['contents', 'text', 'data', 'body', 'filecontent', 'filecontents', 'newcontent', 'code', 'value'],
   command: ['cmd', 'shellcommand', 'bashcommand', 'script', 'commandline', 'run', 'commandtorun'],
   pattern: ['query', 'regex', 'regexp', 'searchpattern', 'searchstring', 'expression', 'globpattern', 'term', 'keyword', 'q', 'search', 'filepattern'],
   old_str: ['oldstring', 'old', 'oldtext', 'searchtext', 'find', 'from', 'original', 'target', 'oldcontent'],
@@ -252,10 +248,6 @@ const KEY_ALIASES: Record<string, string[]> = {
   context: ['contextlines', 'around', 'nearby', 'c'],
   glob: ['fileglob', 'include', 'filefilter', 'filesglob'],
   type: ['filetype', 'lang', 'language', 'ext'],
-  todos: ['tasks', 'items', 'todolist', 'tasklist', 'list', 'plan'],
-  updates: ['changes', 'statusupdates', 'patch'],
-  id: ['index', 'number', 'num', 'taskid', 'todoid', 'item', 'task', 'position'],
-  status: ['state'],
   timeout_ms: ['timeout', 'timeoutms', 'maxtime'],
 }
 
@@ -387,7 +379,7 @@ function coerce(spec: PropSpec, value: unknown, path: string, repairs: string[])
         } catch { /* not JSON — fall through to the wrap below */ }
       }
       if (!Array.isArray(arr)) {
-        // A single edit / single todo sent bare instead of in a list.
+        // A single edit sent bare instead of in a list.
         if (typeof arr === 'object' || typeof arr === 'string') { note('wrapped in array'); arr = [arr] }
         else return arr
       }

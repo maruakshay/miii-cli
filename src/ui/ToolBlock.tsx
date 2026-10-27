@@ -2,7 +2,6 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Box, Text, type DOMElement } from 'ink'
 import { highlight, supportsLanguage } from 'cli-highlight'
 import type { ToolUseDisplay, ToolResultDisplay } from './types.js'
-import { isHiddenTool } from './mergeSteps.js'
 import type { DiffLine, FileDiff } from '../diff.js'
 import { useToolExpanded } from './toolExpand.js'
 import { registerToolBlock, unregisterToolBlock } from './toolHit.js'
@@ -456,7 +455,7 @@ export function ToolUseList({
   const byId = new Map((results ?? []).map((r) => [r.tool_use_id, r]))
   return (
     <>
-      {groupToolUses(uses.filter((u) => !isHiddenTool(u.name))).map((group) => (
+      {groupToolUses(uses).map((group) => (
         <ToolBlockFrame key={group[0].id} id={group[0].id}>
           {isGroupable(group[0].name) ? (
             <ToolGroupBlock uses={group} results={byId} />

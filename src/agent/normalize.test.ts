@@ -25,7 +25,6 @@ describe('resolveToolName', () => {
     expect(resolveToolName('bash', NAMES)).toBe('run_bash')
     expect(resolveToolName('str_replace_editor', NAMES)).toBe('edit_file')
     expect(resolveToolName('ripgrep', NAMES)).toBe('grep')
-    expect(resolveToolName('TodoWrite', NAMES)).toBe('write_todos')
     expect(resolveToolName('list_files', NAMES)).toBe('glob')
   })
 
@@ -70,8 +69,8 @@ describe('repairJson', () => {
   })
 
   it('closes nested structures', () => {
-    expect(repairJson('{"todos":[{"content":"do it","status":"pend')).toEqual({
-      todos: [{ content: 'do it', status: 'pend' }],
+    expect(repairJson('{"edits":[{"old_str":"a","new_str":"b')).toEqual({
+      edits: [{ old_str: 'a', new_str: 'b' }],
     })
   })
 
@@ -165,17 +164,17 @@ describe('normalizeToolInput', () => {
   })
 
   it('parses an array field sent as a JSON string', () => {
-    const { input } = normalizeToolInput(schema('write_todos'), {
-      todos: '[{"content":"ship it","status":"pending"}]',
+    const { input } = normalizeToolInput(schema('edit_file'), {
+      path: 'a.ts', edits: '[{"old_str":"a","new_str":"b"}]',
     })
-    expect(input.todos).toEqual([{ content: 'ship it', status: 'pending' }])
+    expect(input.edits).toEqual([{ old_str: 'a', new_str: 'b' }])
   })
 
   it('wraps a single item where a list is declared, and fixes its keys', () => {
-    const { input } = normalizeToolInput(schema('write_todos'), {
-      tasks: { task: 'ship it', state: 'pending' },
+    const { input } = normalizeToolInput(schema('edit_file'), {
+      path: 'a.ts', changes: { old_string: 'a', new_string: 'b' },
     })
-    expect(input.todos).toEqual([{ content: 'ship it', status: 'pending' }])
+    expect(input.edits).toEqual([{ old_str: 'a', new_str: 'b' }])
   })
 
   it('fixes keys inside array items', () => {

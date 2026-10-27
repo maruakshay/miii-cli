@@ -5,12 +5,11 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Composer } from '@/components/Composer'
 import { DiffStat, MessageView } from '@/components/MessageView'
 import { PermissionCard } from '@/components/PermissionCard'
-import { Todos } from '@/components/ToolCall'
 import { Sidebar } from '@/components/Sidebar'
 import { useMiii } from '@/hooks/useMiii'
 import { get, post, token } from '@/lib/api'
 import type { Answer, Checkpoint, WebMessage, WebState } from '@/lib/types'
-import { cn, fmtDuration, latestTodos, sessionTally } from '@/lib/utils'
+import { cn, fmtDuration, sessionTally } from '@/lib/utils'
 
 function useTheme() {
   const [dark, setDark] = useState(() => {
@@ -115,7 +114,6 @@ export function App() {
   const [dark, toggleTheme] = useTheme()
   const [sideOpen, setSideOpen] = useState(false)
   const [draft, setDraft] = useState<string | null>(null)
-  const todos = useMemo(() => latestTodos(messages), [messages])
   const clearDraft = useCallback(() => setDraft(null), [])
 
   // Follow the transcript while you're at the bottom; leave it alone once you scroll up to read.
@@ -225,7 +223,6 @@ export function App() {
   const showStatus = state.busy && !state.pending
   // Pinned while there is work on it; once a finished list's turn ends, the
   // turn's receipt takes over.
-  const showTodos = !!todos && (state.busy || todos.some((t) => t.status !== 'completed'))
 
   return (
     <TooltipProvider>
@@ -281,7 +278,6 @@ export function App() {
               </Button>
             )}
             <div className="mx-auto flex max-w-3xl flex-col gap-2">
-              {showTodos && todos && <Todos todos={todos} />}
               {showStatus && (
                 <div className="flex items-center gap-2.5 px-1 text-sm text-muted-foreground">
                   <span className="size-3.5 animate-spin rounded-full border-2 border-muted border-t-warning" />

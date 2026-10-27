@@ -24,8 +24,6 @@ import { FilePicker, parseMention, searchFiles } from './FilePicker.js'
 import { ChatView } from './ChatView.js'
 import { StatusLine, QueuedMessages } from './StatusLine.js'
 import { sessionTally } from './turnSummary.js'
-import { latestTodos } from './todos.js'
-import { TodoPanel } from './TodoPanel.js'
 import { NOTIFY_AFTER_MS, notifyTerminal } from './notify.js'
 import { useAgentRunner } from './hooks/useAgentRunner.js'
 import { useKeyboard, vimIndicator } from './hooks/useKeyboard.js'
@@ -437,15 +435,6 @@ export function App({ resumeId, continueLast }: AppProps) {
   const contextPct = activeCtx && agent.usedTokens ? agent.usedTokens / activeCtx : 0
   const contextWarning = contextPct >= CONTEXT_WARN_AT ? Math.round(contextPct * 100) : null
   const tally = useMemo(() => sessionTally(agent.messages.map((m) => m.summary)), [agent.messages])
-  // The live step counts too: a list the agent just wrote should show before the step commits.
-  const todos = useMemo(
-    () => latestTodos([...agent.messages, { tool_uses: agent.activeToolUses, tool_results: agent.activeToolResults }]),
-    [agent.messages, agent.activeToolUses, agent.activeToolResults],
-  )
-  // Pinned only while the agent is working; once the turn ends the list steps
-  // aside, open items or not, and the turn's closing line takes over. A list
-  // left open comes back with the next turn.
-  const showTodos = !!todos && agent.busy
 
   // Long turns are when you switch windows. Ring the terminal when one ends, or
   // when it stops to ask permission — a short turn you watched needs no ping.
@@ -596,7 +585,6 @@ export function App({ resumeId, continueLast }: AppProps) {
               entirely (avoids a stray "processing" prompt). */}
           {state === 'ready' && (
             <Box flexShrink={0} flexDirection="column">
-              {showTodos && todos && <TodoPanel todos={todos} maxRows={Math.max(3, Math.min(8, termRows - 18))} />}
               {agent.busy && agent.startedAt !== null && (
                 <StatusLine
                   label={agent.processingLabel ?? 'Thinking…'}

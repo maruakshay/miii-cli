@@ -19,8 +19,6 @@ export interface WebTool {
   result?: { content: string; is_error?: boolean; diff?: FileDiff }
 }
 
-export interface Todo { content: string; status: 'pending' | 'in_progress' | 'completed' }
-
 /** What a finished turn did — mirrors TurnSummary in src/ui/types.ts. */
 export interface TurnSummary {
   files: Array<{ path: string; added: number; removed: number }>

@@ -69,7 +69,6 @@ Tool calling is what makes an agent usable. `qwen3-coder` and `devstral` are tra
 ## Features
 
 - **📋 Plan mode.** `/plan` researches your code read-only and proposes a plan. Nothing is written until you approve it.
-- **✅ Live task list.** The agent's checklist stays pinned above the input, with a progress bar that fills as tasks finish.
 - **🎯 Turn receipts.** Each turn ends with ✓, a coloured `+42 −10` diffstat and the test result, and a running total of changes stays on screen.
 - **🔁 Fix until green.** `miii fix` runs your tests, fixes what fails and repeats until they pass. Attempts that don't help are rolled back.
 - **⚖️ Done-check.** A second, smaller model checks the work is really finished before the agent stops.
@@ -92,7 +91,6 @@ Tool calling is what makes an agent usable. `qwen3-coder` and `devstral` are tra
 
 - **Rewards only for real progress.** Dopamine responds to *unexpected* reward and fades for rewards you can predict (Schultz et al., 1997). So the green ✓ appears only when files changed or tests passed. A plain answer gets a quiet check.
 - **Useful information during the wait.** Uncertain outcomes keep the reward system active (Fiorillo et al., 2003). Instead of a bare spinner, the status line shows what the agent is doing, how long it has taken and how many tokens it has written.
-- **Progress you can see.** People speed up as a goal gets closer (Kivetz et al., 2006), so the task list has a progress bar.
 - **No random rewards.** Every signal comes from a real diff, test result or finished turn.
 
 <sub>Design inspiration, not a clinical claim.</sub>

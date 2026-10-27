@@ -46,7 +46,6 @@ describe('describeTool', () => {
     expect(describeTool('edit_file', { path: 'a.ts' }).technical).toBe('Update(a.ts)')
     expect(describeTool('grep', { pattern: 'TODO', path: 'src' }).technical).toBe('Search(pattern: "TODO", path: "src")')
     expect(describeTool('glob', { pattern: '**/*.tsx' }).technical).toBe('Search(pattern: "**/*.tsx")')
-    expect(describeTool('write_todos', { todos: [{}, {}] }).technical).toBe('Update Todos')
     expect(describeTool('task', { description: 'Map the agent loop', prompt: 'x' }).technical).toBe(
       'Explore(Map the agent loop)',
     )

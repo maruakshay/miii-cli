@@ -46,11 +46,11 @@ export interface AgentDef {
  * bound bolted on, and nothing miii does needs it.
  */
 export const DEFAULT_SUBAGENT_TOOLS = [
-  'read_file', 'grep', 'glob', 'run_bash', 'write_todos', 'write_file', 'edit_file',
+  'read_file', 'grep', 'glob', 'run_bash', 'write_file', 'edit_file',
 ]
 
 /** The read-only subset — what a research agent is held to. */
-export const READ_ONLY_SUBAGENT_TOOLS = ['read_file', 'grep', 'glob', 'run_bash', 'write_todos']
+export const READ_ONLY_SUBAGENT_TOOLS = ['read_file', 'grep', 'glob', 'run_bash']
 
 const BUILTIN: AgentDef[] = [
   {
