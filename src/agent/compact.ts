@@ -40,10 +40,21 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN)
 }
 
-/** Estimated prompt tokens for a whole history (text only — images excluded). */
+/**
+ * Estimated prompt tokens for a whole history (text only — images excluded).
+ * Counts every tool result in full: `flatten` trims them for the summariser,
+ * and measuring through it hid a 50K-token file read from the context meter.
+ */
 export function estimateHistoryTokens(history: MiiMessage[]): number {
   let chars = 0
-  for (const m of history) chars += flatten(m).length
+  for (const m of history) {
+    if (!Array.isArray(m.content)) { chars += m.content.length; continue }
+    for (const b of m.content) {
+      if (b.type === 'text') chars += b.text.length
+      else if (b.type === 'tool_use') chars += b.name.length + JSON.stringify(b.input ?? {}).length
+      else if (b.type === 'tool_result') chars += (b.content ?? '').length
+    }
+  }
   return Math.ceil(chars / CHARS_PER_TOKEN)
 }
 

@@ -1,5 +1,6 @@
 import { readFileShell } from './shellFs.js'
 import { confinePath } from './paths.js'
+import { DEFAULT_NUM_CTX_CAP } from '../config.js'
 import type { Tool } from './types.js'
 
 interface Input {
@@ -23,6 +24,19 @@ const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'])
 // Base64 roughly quadruples size and rides in the prompt; refuse oversized images
 // rather than blow the context window.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+// One read may take this share of the context window. A whole large file sent
+// inline overflows num_ctx; Ollama then silently drops the front of the prompt
+// (system prompt, the request) and the model answers with nothing at all.
+const READ_CTX_SHARE = 0.35
+const CHARS_PER_TOKEN = 4
+const HARD_MAX_CHARS = 200_000
+
+/** Chars one read may inline, sized to the window this run actually negotiated. */
+export function readBudget(numCtx?: number): number {
+  const ctx = numCtx && numCtx > 0 ? numCtx : DEFAULT_NUM_CTX_CAP
+  return Math.min(HARD_MAX_CHARS, Math.floor(ctx * READ_CTX_SHARE * CHARS_PER_TOKEN))
+}
 
 /** Sniff the leading magic bytes so an image with a wrong/missing extension is still caught. */
 function looksImage(buf: Buffer): boolean {
@@ -49,9 +63,9 @@ export const read_file: Tool<Input> = {
     },
     required: ['path'],
   },
-  handler: ({ path, offset, limit }) => {
+  handler: ({ path, offset, limit }, ctx) => {
     try {
-      const MAX_CHARS = 200_000
+      const maxChars = readBudget(ctx?.run?.num_ctx)
       const buf = readFileShell(confinePath(path))
 
       // Image: hand the raw pixels back as a base64 attachment for a vision model
@@ -84,9 +98,23 @@ export const read_file: Tool<Input> = {
       const count = limit != null ? Math.max(0, Math.floor(limit)) : total
       const slice = allLines.slice(start - 1, start - 1 + count)
 
-      let body = numbered(slice, start)
-      if (body.length > MAX_CHARS) {
-        body = body.slice(0, MAX_CHARS) + `\n[There's more — this hit the ${MAX_CHARS}-char limit. Use offset/limit to read the rest.]`
+      // Cut on a line boundary so the model never sees half a line, and say
+      // exactly where to resume rather than leaving it to guess.
+      let shown = slice
+      let used = 0
+      for (let i = 0; i < slice.length; i++) {
+        used += slice[i].length + 8
+        if (used > maxChars) { shown = slice.slice(0, Math.max(1, i)); break }
+      }
+      let body = numbered(shown, start)
+      if (body.length > maxChars) body = body.slice(0, maxChars)
+      if (shown.length < slice.length) {
+        const end = start - 1 + shown.length
+        return {
+          content:
+            `${body}\n[Showing lines ${start}-${end} of ${total} — the file is too large to read whole ` +
+            `within the context window. Continue with offset=${end + 1}, or use grep to find the part you need.]`,
+        }
       }
       if (ranged) {
         const end = start - 1 + slice.length
