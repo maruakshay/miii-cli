@@ -3,6 +3,7 @@ import { chat } from '../llm/client.js'
 import { confinePath } from '../tools/paths.js'
 import { getTool, toOllamaTools, toolsForMode } from '../tools/registry.js'
 import { validateInput, exampleInput } from '../tools/validate.js'
+import { replayTodos } from '../tools/write_todos.js'
 import { buildSystemPrompt } from '../prompt/system.js'
 import { loadProjectContext } from '../prompt/context.js'
 import { check, deniedBySettings, isReadOnlyCommand, type PermissionContext, type PermissionMode } from '../permissions/policy.js'
@@ -421,6 +422,28 @@ export interface RunAgentOpts {
 function requestExcerpt(text: string, max = 600): string {
   const t = text.trim()
   return t.length <= max ? t : `${t.slice(0, max)}…`
+}
+
+/**
+ * The write_todos inputs the tool accepted, oldest first: each call in history
+ * plus this step's already-finished ones, skipping any it refused or that are
+ * still waiting on a result. Replaying them gives the board the next call edits.
+ */
+function acceptedTodoCalls(history: MiiMessage[], finished: ToolResultBlock[]): Record<string, unknown>[] {
+  const accepted = new Map<string, boolean>()
+  for (const m of history) {
+    if (!Array.isArray(m.content)) continue
+    for (const b of m.content) if (b.type === 'tool_result') accepted.set(b.tool_use_id, !b.is_error)
+  }
+  for (const r of finished) accepted.set(r.tool_use_id, !r.is_error)
+  const calls: Record<string, unknown>[] = []
+  for (const m of history) {
+    if (m.role !== 'assistant' || !Array.isArray(m.content)) continue
+    for (const b of m.content) {
+      if (b.type === 'tool_use' && b.name === 'write_todos' && accepted.get(b.id)) calls.push(b.input)
+    }
+  }
+  return calls
 }
 
 /**
@@ -1090,6 +1113,7 @@ export async function* runAgent(opts: RunAgentOpts): AsyncGenerator<AgentEvent, 
             ...(hooks ? { hooks } : {}),
             ...(cappedCtx !== undefined ? { num_ctx: cappedCtx } : {}),
           },
+          ...(use.name === 'write_todos' ? { todos: replayTodos(acceptedTodoCalls(history, results)) } : {}),
         })
         r = {
           type: 'tool_result',

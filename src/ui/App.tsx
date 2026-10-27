@@ -442,9 +442,10 @@ export function App({ resumeId, continueLast }: AppProps) {
     () => latestTodos([...agent.messages, { tool_uses: agent.activeToolUses, tool_results: agent.activeToolResults }]),
     [agent.messages, agent.activeToolUses, agent.activeToolResults],
   )
-  // Pinned while there is work on it; a finished list steps aside once the turn
-  // ends, and the turn's closing line takes over.
-  const showTodos = !!todos && (agent.busy || todos.some((t) => t.status !== 'completed'))
+  // Pinned only while the agent is working; once the turn ends the list steps
+  // aside, open items or not, and the turn's closing line takes over. A list
+  // left open comes back with the next turn.
+  const showTodos = !!todos && agent.busy
 
   // Long turns are when you switch windows. Ring the terminal when one ends, or
   // when it stops to ask permission — a short turn you watched needs no ping.

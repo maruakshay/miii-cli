@@ -253,6 +253,8 @@ const KEY_ALIASES: Record<string, string[]> = {
   glob: ['fileglob', 'include', 'filefilter', 'filesglob'],
   type: ['filetype', 'lang', 'language', 'ext'],
   todos: ['tasks', 'items', 'todolist', 'tasklist', 'list', 'plan'],
+  updates: ['changes', 'statusupdates', 'patch'],
+  id: ['index', 'number', 'num', 'taskid', 'todoid', 'item', 'task', 'position'],
   status: ['state'],
   timeout_ms: ['timeout', 'timeoutms', 'maxtime'],
 }

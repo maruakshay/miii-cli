@@ -143,8 +143,9 @@ export function describeTool(
     }
     case 'write_todos': {
       const todos = Array.isArray(inp.todos) ? (inp.todos as unknown[]).length : 0
+      const updates = Array.isArray(inp.updates) ? (inp.updates as unknown[]).length : 0
       text = 'Updating the task list'
-      return { text, technical: label, subject: `${todos} items` }
+      return { text, technical: label, subject: todos ? `${todos} items` : `${updates} updates` }
     }
     case 'task': {
       // Named after the agent doing the work — Explore(…), General(…) — the

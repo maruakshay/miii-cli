@@ -1,6 +1,7 @@
 import type { FileDiff } from '../diff.js'
 import type { PermissionContext, PermissionMode } from '../permissions/policy.js'
 import type { HookBus } from '../hooks/bus.js'
+import type { TodoItem } from './write_todos.js'
 
 /** A single property spec in a tool's JSON schema. */
 export interface PropSpec {
@@ -57,6 +58,11 @@ export interface ToolContext {
   signal?: AbortSignal
   /** Present only inside a real agent run — absent in unit tests and eval. */
   run?: RunContext
+  /**
+   * The task list as the run's accepted write_todos calls left it, so that
+   * tool can apply updates by item number without holding state itself.
+   */
+  todos?: TodoItem[] | null
 }
 
 export interface Tool<I = Record<string, unknown>> {
